@@ -132,7 +132,7 @@ def test_without_consent_an_earlier_failure_is_still_a_failure(
     assert status.visual.stage is stage
     assert status.visual.error_code is code
     assert status.visual.skip_reason is None  # 동의 여부와 관계없이 지금과 같은 실패 처리
-    assert status.visual.quality_status is QualityStatus.PENDING
+    assert status.visual.quality_status is None  # 검증 판정 전에 끝났다
     assert ports.realize.calls == []
 
 
@@ -168,10 +168,21 @@ def test_garment_not_ready_has_no_quality_status(body, make_garment):
 
 
 def test_examples_use_null_quality_only_for_skipped_validation():
-    for path in EXAMPLES.glob("fitting_status_*.json"):
-        visual = json.loads(path.read_text(encoding="utf-8"))["visual"]
-        skipped = visual["status"] == "SKIPPED" or visual["skip_reason"] == "CONSENT_NOT_GIVEN"
-        assert (visual["quality_status"] is None) == skipped, path.name
+    """판정이 있는 예시만 PASS·FAIL이고, 진행 중 예시만 PENDING, 나머지는 null이다."""
+    expected = {
+        "fitting_status_running.json": "PENDING",
+        "fitting_status_succeeded.json": "PASS",
+        "fitting_status_validation_failed.json": "FAIL",
+        "fitting_status_no_consent.json": None,
+        "fitting_status_report_only.json": None,
+        "fitting_status_drape_failed.json": None,
+        "fitting_status_realize_failed.json": None,
+    }
+    found = {
+        path.name: json.loads(path.read_text(encoding="utf-8"))["visual"]["quality_status"]
+        for path in EXAMPLES.glob("fitting_status_*.json")
+    }
+    assert found == expected
 
 
 # --- (3) 상태 응답의 리포트 요약·경고 -------------------------------------------------------

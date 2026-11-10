@@ -100,7 +100,7 @@
     "error_code": "REALIZE_TIMEOUT",
     "frame_artifact_id": null,
     "quality_metrics": null,
-    "quality_status": "PENDING",
+    "quality_status": null,
     "render_artifact_id": "fit_sample_001_render_clip",
     "render_frame_artifact_id": null,
     "skip_reason": null,

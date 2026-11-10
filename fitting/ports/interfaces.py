@@ -84,13 +84,19 @@ class BodyBuilder(Protocol):
 
 
 class Draper(Protocol):
-    """몸에 옷을 입힌다 (C4). 산출물은 `DRAPE_OUTPUTS`."""
+    """몸에 옷을 입힌다 (C4). 산출물은 `DRAPE_OUTPUTS`.
+
+    지표 키는 C4에서 정한다.
+    """
 
     def drape(self, request: PortRequest, garment: GarmentVariant) -> PortResult: ...
 
 
 class Renderer(Protocol):
-    """정면 고정 카메라 클립을 렌더한다 (C5). 산출물은 `RENDER_OUTPUTS`."""
+    """정면 고정 카메라 클립을 렌더한다 (C5). 산출물은 `RENDER_OUTPUTS`.
+
+    지표 키는 C5에서 정한다.
+    """
 
     def render(self, request: PortRequest, garment: GarmentVariant) -> PortResult: ...
 

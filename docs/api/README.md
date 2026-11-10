@@ -31,7 +31,8 @@ python -m tools.export_contracts --check  # 최신인지 확인 (pytest도 확�
 - `report`(핏 경로)와 `visual`(영상 경로)은 서로 독립입니다. `visual.status`가 `FAILED`여도 `report.regions`는 그대로 보여 줍니다(#12). 이때 작업 전체 `status`는 `PARTIAL_SUCCEEDED`입니다.
 - `visual.stage`와 `visual.error_code`는 어디서 왜 멈췄는지 알려 줍니다. 화면에는 오류 코드에 맞는 안내 문구를 씁니다.
 - `visual.quality_status`가 `PASS`일 때만 실사 영상을 정상 결과로 보여 줍니다. `FAIL`·`UNVERIFIABLE`은 검증 실패로 구분해 표시합니다(#11).
-- `visual.quality_status`가 `null`이면 검증을 건너뛴 것입니다(영상 경로 `SKIPPED`, 실사화 미동의). `PENDING`("검증 대기 중")과 구분합니다.
+- `visual.quality_status`는 검증 판정이 있을 때만 `PASS`·`FAIL`·`UNVERIFIABLE`입니다. `PENDING`은 영상 경로가 아직 진행 중일 때만 씁니다(`fitting_status_running.json`).
+- 작업이 끝났는데 검증 판정이 없으면 `null`입니다: 영상 경로 `SKIPPED`, 실사화 미동의, 검증 판정 전 실패(몸·착장·렌더·실사화 실패나 검증 단계 자체의 실패). 이때 `quality_metrics`도 `null`입니다.
 - `visual.skip_reason`은 사용자가 골라서 건너뛴 이유입니다.
   - `REPORT_ONLY`: 핏 리포트만 요청했습니다. 영상 경로 전체가 `SKIPPED`입니다.
   - `CONSENT_NOT_GIVEN`: 실사화(외부 전송)에 동의하지 않았습니다(`realize_consent: false`, 기본값). 렌더까지 하고 `visual.status`는 `SUCCEEDED`, `visual.stage`는 `RENDER`, 작업 `status`도 `SUCCEEDED`입니다. 3D 미리보기와 렌더 클립을 보여 줍니다.

@@ -163,8 +163,8 @@ def test_realize_failure_keeps_3d_preview_and_render(request_for, make_garment):
     assert visual.drape_preview_artifact_id == f"{JOB}_drape_preview"
     assert visual.render_artifact_id == f"{JOB}_render_clip"
     assert visual.video_artifact_id is None
-    # 실사화가 실패한 결과를 실사화 성공으로 보이지 않는다
-    assert visual.quality_status is QualityStatus.PENDING
+    # 실사화가 실패한 결과를 실사화 성공으로 보이지 않는다. 검증 판정이 없으므로 null이다
+    assert visual.quality_status is None
 
 
 @pytest.mark.parametrize(

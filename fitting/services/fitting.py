@@ -176,7 +176,8 @@ def _run_visual(
         "render_frame_artifact_id": None,
         "quality_metrics": None,
     }
-    quality = QualityStatus.PENDING
+    # 검증 판정. Validator가 판정을 돌려주기 전에 끝나면(실패 포함) None으로 남는다.
+    quality: QualityStatus | None = None
 
     def step(stage: Stage, inputs: list[str], call) -> PortResult:
         progress[stage] = StageStatus.RUNNING
@@ -246,8 +247,6 @@ def _run_visual(
         for stage in VISUAL_STAGES:
             if progress[stage] is StageStatus.WAITING:
                 progress[stage] = StageStatus.SKIPPED
-        if failed.stage is Stage.VALIDATE and quality is QualityStatus.PENDING:
-            quality = QualityStatus.UNVERIFIABLE
         return VisualPart(
             status=StageStatus.FAILED,
             stage=failed.stage,

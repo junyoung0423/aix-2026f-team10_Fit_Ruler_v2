@@ -140,7 +140,18 @@ class FakeBodyBuilder(_FakeStep):
     outputs: tuple[str, ...] = BODY_OUTPUTS
 
     def build_body(self, request: PortRequest, body: BodyInput) -> PortResult:
-        return self._run(request, {"max_error_cm": 0.0})
+        """다시 잰 치수는 입력 그대로, 오차는 0인 가짜 지표."""
+        return self._run(
+            request,
+            {
+                "fitted_height_cm": body.height_cm,
+                "fitted_chest_cm": body.chest_cm,
+                "fitted_waist_cm": body.waist_cm,
+                "fitted_shoulder_cm": body.shoulder_cm,
+                "fitted_arm_length_cm": body.arm_length_cm,
+                "max_abs_error_cm": 0.0,
+            },
+        )
 
 
 @dataclass
@@ -167,7 +178,16 @@ class FakeRealizer(_FakeStep):
     outputs: tuple[str, ...] = REALIZE_OUTPUTS
 
     def realize(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
-        return self._run(request, {"audio": "off"})
+        """가짜 외부 요청 ID와 0 비용·시간 지표."""
+        return self._run(
+            request,
+            {
+                "external_request_id": f"fake_{request.job_id}",
+                "cost_usd": 0.0,
+                "queue_s": 0.0,
+                "processing_s": 0.0,
+            },
+        )
 
 
 @dataclass

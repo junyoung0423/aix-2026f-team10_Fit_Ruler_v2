@@ -53,7 +53,9 @@ class VisualPart(BaseModel):
 
     status: StageStatus
     stage: Stage | None = None
-    # 검증을 건너뛰면(영상 경로 SKIPPED, 실사화 미동의) null이다. "검증 대기 중"과 구분한다.
+    # 검증 판정이 있을 때만 PASS·FAIL·UNVERIFIABLE이다. PENDING은 영상 경로가 진행 중일 때만 쓴다.
+    # 작업이 끝났는데 판정이 없으면 null이다: 영상 경로 SKIPPED, 실사화 미동의, 검증 판정 전 실패
+    # (몸·착장·렌더·실사화 실패, Validator 포트 자체의 실패).
     quality_status: QualityStatus | None = QualityStatus.PENDING
     skip_reason: VisualSkipReason | None = None  # 사용자가 골라서 건너뛴 경우의 이유
     drape_preview_artifact_id: str | None = None  # 3D 착장 미리보기 (#8)
