@@ -35,4 +35,34 @@ jobs:
       - name: 테스트
         run: pytest
 
-  # 웹 lint·타입 검사·빌드는 A1에서 web/을 만들 때 여기에 job을 추가한다.
+  # 웹(A): lint·타입 검사·테스트·빌드 (A1에서 추가)
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 설치
+        run: npm ci
+
+      - name: 린트
+        run: npm run lint
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      # 가짜 API를 팀 계약 예시(docs/api/examples)와 비교한다.
+      - name: 테스트
+        run: npm test
+
+      - name: 빌드
+        run: npm run build
