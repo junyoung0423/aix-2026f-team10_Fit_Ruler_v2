@@ -1,6 +1,6 @@
 # Fit Ruler 웹 (A 화면과 사용성)
 
-A1에서 만든 웹 뼈대다. 화면 세 개(입력 → 티셔츠 선택 → 결과)와 이동 순서, 그리고 서버 없이도 화면을 개발할 수 있는 가짜 API가 들어 있다. 화면 설계는 [`docs/ux/wireframes.md`](../docs/ux/wireframes.md)를 따른다. 요청·응답 형식은 팀 계약 [`docs/api/`](../docs/api/README.md)(B1·B2)를 따른다.
+화면 세 개(입력 → 티셔츠 선택 → 결과)와 서버 없이도 화면을 개발할 수 있는 가짜 API가 들어 있다. A1에서 뼈대를, A2에서 입력 검사·재는 법 안내·핏 리포트 표시를 만들었다. 화면 설계는 [`docs/ux/wireframes.md`](../docs/ux/wireframes.md)를 따른다. 요청·응답 형식은 팀 계약 [`docs/api/`](../docs/api/README.md)(B1·B2)를 따른다.
 
 ## 실행
 
@@ -65,6 +65,46 @@ http://localhost:5173/garments?mockFail=realize
 
 단계 이름은 `body`, `drape`, `render`, `realize`, `validate` 중 하나다.
 
+### 서버가 치수를 거절하는 화면 확인
+
+티셔츠 선택 화면 주소 뒤에 `?mockReject=칸`을 붙이고 핏 보기를 누르면, 가짜 API가 그 칸을 422 `INPUT_INVALID`로 거절한다. 화면은 `fields[]`를 칸별 오류로 바꿔 입력 화면으로 돌아간다.
+
+```text
+http://localhost:5173/garments?mockReject=shoulder_cm
+```
+
+칸 이름은 `height_cm`, `chest_cm`, `waist_cm`, `shoulder_cm`, `arm_length_cm` 중 하나다.
+
+## 입력 검사
+
+규칙은 `src/validation/body.ts`에 있다. 범위와 문구는 서버(`server/errors.py`)와 같게 맞췄다.
+
+| 칸 | 지원 범위(cm, 경계 포함) |
+|---|---|
+| 키 | 140~210 |
+| 가슴둘레 | 60~160 |
+| 허리둘레 | 50~160 |
+| 어깨너비 | 28~60 |
+| 팔길이 | 40~85 |
+
+- **서버와 같은 문구:** 빈칸, 숫자 아님, 범위 밖은 서버와 같은 문구로 칸 바로 아래에 보여 준다(예: "가슴둘레 값은 60~160 cm 사이로 입력해 주세요.").
+- **화면에서만 하는 검사**
+  - 소수 둘째 자리 이상을 막는다.
+  - 범위 밖 값이 m·인치·mm로 잰 값처럼 보이면 cm로 바꾼 값을 알려 준다.
+  - 끝의 `cm`와 쉼표 소수점은 받아 준다.
+- **다음 버튼:** 모든 칸을 검사하고 첫 오류 칸으로 이동한다. 오류가 보이는 칸은 고치는 즉시 다시 검사한다.
+- **서버가 거절하면(422):** `safe_message`를 폼 위에, `fields[].message`를 해당 칸 아래에 보여 준다. 404·409는 티셔츠 선택 화면에 서버 문구로 보여 준다.
+
+재는 법 안내(`src/guides/measureGuides.ts`)는 팀 계약의 측정 위치 표 `docs/decisions.md` "신체 측정 위치 (measure_v1)"를 따른다. 허리는 자연 허리(가장 잘록한 곳), 어깨는 어깨끝 사이 직선 거리, 팔길이는 오른팔 기준이다.
+
+## 핏 리포트 표시
+
+- **맨 위:** 서버가 준 `summary`를 그대로 보여 준다.
+- **부위마다:** 판정 배지, 차이(cm), 기준표 구간 중 위치, 서버 설명(`explanation`)을 보여 준다.
+  - 배지 이름과 구간 순서는 기준표 `fit_rules_v0`의 label_ko를 `src/labels.ts`에 옮겨 쓴다. 응답에 부위별 한국어 이름이 없기 때문이다.
+- **판정하지 않은 부위:** `UNKNOWN`·`NOT_EVALUATED`는 "판정 안 함"과 서버 설명으로 보여 준다.
+- **경고:** `warnings`(`DEMO_GARMENT`, `WAIST_NOT_EVALUATED`)는 안내 문구로 바꿔 보여 준다.
+
 ## 폴더
 
 ```text
@@ -72,13 +112,16 @@ web/
 ├─ src/
 │  ├─ api/          계약 타입(types.ts)·계약 값(contract.ts)·실제 서버 호출·가짜/실제 선택
 │  ├─ mocks/        가짜 API, 의류, 핏 계산(B2 기준표 이식), 계약 예시 비교 테스트
-│  ├─ components/   진행 단계, 핏 리포트 표, 진행 상태 목록
+│  ├─ components/   진행 단계, 핏 리포트, 진행 상태 목록, 재는 법 안내
+│  ├─ guides/       부위별 재는 법 문구 (measure_v1)
 │  ├─ pages/        입력, 티셔츠 선택, 결과 화면
-│  └─ state/        화면 사이에 신체 치수와 결과를 넘기는 상태
+│  ├─ state/        화면 사이에 신체 치수와 결과를 넘기는 상태
+│  └─ validation/   신체 치수 입력 검사 규칙과 테스트
 └─ index.html
 ```
 
-## A2에서 이어서 할 일
+## 다음에 할 일
 
-- 입력 폼의 범위 검사, 칸별 오류 문구(서버 422 `fields` 포함), 재는 법 안내(`measure_v1` 위치)
-- 핏 리포트를 읽기 쉽게 다듬기
+- B3(`/api/fittings`, `/api/artifacts`)가 나오면 실제 서버로 3D·실사화 진행을 확인한다.
+- 기준표가 바뀌면(`fit_rules_v1`) `src/mocks/fit.ts`와 `src/labels.ts`의 label_ko·구간 순서를 같이 고친다.
+- 의류 표시 이름·색 표기는 C1 결정(docs/decisions.md "색·원단 표기")에 맞춰 `src/labels.ts`를 고친다.
