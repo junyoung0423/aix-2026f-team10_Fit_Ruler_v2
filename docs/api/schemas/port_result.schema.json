@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "description": "어댑터가 돌려주는 성공 결과. 네 필드 모두 응답에 반드시 있어야 한다.\n\n기본값이 없으므로 빈 응답(`{}`)이나 일부만 담은 응답은 검증에서 거절된다.\n`output_artifact_ids`는 키는 필수이고 값은 빈 목록일 수 있다. 산출물을 만드는 단계에서\n목록이 비어 있지 않은지는 `require_output_artifacts`로 확인한다.",
+  "properties": {
+    "metrics": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "title": "Metrics",
+      "type": "object"
+    },
+    "output_artifact_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Output Artifact Ids",
+      "type": "array"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tool_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Tool Versions",
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "output_artifact_ids",
+    "metrics",
+    "tool_versions"
+  ],
+  "title": "PortResult",
+  "type": "object"
+}

@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "ErrorCode": {
+      "description": "오류 코드 (명세서 12장).",
+      "enum": [
+        "INPUT_INVALID",
+        "GARMENT_NOT_READY",
+        "BODY_FIT_NOT_CONVERGED",
+        "DRAPE_INVALID",
+        "RENDER_FAILED",
+        "REALIZE_TIMEOUT",
+        "EXTERNAL_SUBMIT_UNKNOWN",
+        "VALIDATION_FAILED",
+        "VALIDATION_UNVERIFIABLE",
+        "BUDGET_LIMIT"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    },
+    "Stage": {
+      "description": "작업 단계. 핏 경로 2개, 영상 경로 5개.\n\n명세서 11장의 수동 검수(REVIEW)·게시(PUBLISH) 단계는 활동지 범위에 없어 뺐다\n(docs/decisions.md 2026-11-10). 실사 영상의 품질은 VALIDATE(#11)의 자동 검증으로만 판정한다.",
+      "enum": [
+        "FIT_CALCULATE",
+        "FIT_REPORT",
+        "BODY_FIT",
+        "DRAPE",
+        "RENDER",
+        "REALIZE",
+        "VALIDATE"
+      ],
+      "title": "Stage",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ErrorCode"
+    },
+    "external_request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "External Request Id"
+    },
+    "internal_details_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Internal Details Ref"
+    },
+    "retryable": {
+      "title": "Retryable",
+      "type": "boolean"
+    },
+    "safe_message": {
+      "title": "Safe Message",
+      "type": "string"
+    },
+    "stage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Stage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "code",
+    "retryable",
+    "safe_message"
+  ],
+  "title": "PortError",
+  "type": "object"
+}
