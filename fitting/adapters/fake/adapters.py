@@ -16,7 +16,17 @@ from fitting.domain import (
     RegionResult,
     Stage,
 )
-from fitting.ports import PortError, PortFailure, PortRequest, PortResult
+from fitting.ports import (
+    BODY_OUTPUTS,
+    DRAPE_OUTPUTS,
+    REALIZE_OUTPUTS,
+    RENDER_OUTPUTS,
+    VALIDATE_OUTPUTS,
+    PortError,
+    PortFailure,
+    PortRequest,
+    PortResult,
+)
 from fitting.services.fitting import FittingPorts
 
 FAKE_TOOL_VERSIONS = {"fake": "0.1.0"}
@@ -127,7 +137,7 @@ class _FakeStep:
 @dataclass
 class FakeBodyBuilder(_FakeStep):
     stage: Stage = Stage.BODY_FIT
-    outputs: tuple[str, ...] = ("body_mesh",)
+    outputs: tuple[str, ...] = BODY_OUTPUTS
 
     def build_body(self, request: PortRequest, body: BodyInput) -> PortResult:
         return self._run(request, {"max_error_cm": 0.0})
@@ -136,7 +146,7 @@ class FakeBodyBuilder(_FakeStep):
 @dataclass
 class FakeDraper(_FakeStep):
     stage: Stage = Stage.DRAPE
-    outputs: tuple[str, ...] = ("drape", "drape_preview")
+    outputs: tuple[str, ...] = DRAPE_OUTPUTS
 
     def drape(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
         return self._run(request, {"penetration_ratio": 0.0})
@@ -145,7 +155,7 @@ class FakeDraper(_FakeStep):
 @dataclass
 class FakeRenderer(_FakeStep):
     stage: Stage = Stage.RENDER
-    outputs: tuple[str, ...] = ("render_clip",)
+    outputs: tuple[str, ...] = RENDER_OUTPUTS
 
     def render(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
         return self._run(request, {"frames": 48, "fps": 24})
@@ -154,7 +164,7 @@ class FakeRenderer(_FakeStep):
 @dataclass
 class FakeRealizer(_FakeStep):
     stage: Stage = Stage.REALIZE
-    outputs: tuple[str, ...] = ("video",)
+    outputs: tuple[str, ...] = REALIZE_OUTPUTS
 
     def realize(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
         return self._run(request, {"audio": "off"})
@@ -162,14 +172,26 @@ class FakeRealizer(_FakeStep):
 
 @dataclass
 class FakeValidator(_FakeStep):
-    """`quality`로 자동 검증 판정(PASS·FAIL·UNVERIFIABLE)을 정한다."""
+    """`quality`로 자동 검증 판정(PASS·FAIL·UNVERIFIABLE)을 정한다.
+
+    산출물은 [대표 프레임, 대응 렌더 프레임], 지표는 판정과 숫자 지표 두 개다. 숫자는 가짜 값이다.
+    """
 
     stage: Stage = Stage.VALIDATE
-    outputs: tuple[str, ...] = ("frame",)
+    outputs: tuple[str, ...] = VALIDATE_OUTPUTS
     quality: QualityStatus = QualityStatus.PASS
+    color_delta_e: float = 1.5
+    silhouette_iou: float = 0.95
 
     def validate(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
-        return self._run(request, {"quality_status": self.quality.value})
+        return self._run(
+            request,
+            {
+                "quality_status": self.quality.value,
+                "color_delta_e": self.color_delta_e,
+                "silhouette_iou": self.silhouette_iou,
+            },
+        )
 
 
 def fake_ports(**overrides) -> FittingPorts:

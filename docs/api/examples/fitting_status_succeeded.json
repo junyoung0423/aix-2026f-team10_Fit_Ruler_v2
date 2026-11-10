@@ -99,8 +99,13 @@
     "drape_preview_artifact_id": "fit_sample_001_drape_preview",
     "error_code": null,
     "frame_artifact_id": "fit_sample_001_frame",
+    "quality_metrics": {
+      "color_delta_e": 1.5,
+      "silhouette_iou": 0.95
+    },
     "quality_status": "PASS",
     "render_artifact_id": "fit_sample_001_render_clip",
+    "render_frame_artifact_id": "fit_sample_001_render_frame",
     "skip_reason": null,
     "stage": "VALIDATE",
     "status": "SUCCEEDED",

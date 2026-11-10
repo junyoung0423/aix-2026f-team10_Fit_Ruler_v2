@@ -311,6 +311,21 @@
           "default": null,
           "title": "Frame Artifact Id"
         },
+        "quality_metrics": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quality Metrics"
+        },
         "quality_status": {
           "anyOf": [
             {
@@ -333,6 +348,18 @@
           ],
           "default": null,
           "title": "Render Artifact Id"
+        },
+        "render_frame_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Render Frame Artifact Id"
         },
         "skip_reason": {
           "anyOf": [

@@ -45,6 +45,10 @@ class PortError(BaseModel):
     retryable: bool = Field(strict=True)
     safe_message: str
     internal_details_ref: str | None = None
+    # 외부 생성 요청은 성공했는데 결과를 받지 못했을 때의 외부 요청 ID (EXTERNAL_SUBMIT_UNKNOWN).
+    # 있으면 다시 제출하지 말고 같은 ID로 결과를 다시 조회한다. 성공 결과에는
+    # metrics["external_request_id"]로 남는다.
+    external_request_id: str | None = None
 
 
 class PortResult(BaseModel):

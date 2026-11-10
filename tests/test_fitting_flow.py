@@ -91,7 +91,7 @@ def test_artifacts_are_passed_to_the_next_stage(request_for, make_garment):
 
     assert ports.body.calls[0].input_artifact_ids == []
     assert ports.drape.calls[0].input_artifact_ids == [f"{JOB}_body_mesh"]
-    assert ports.render.calls[0].input_artifact_ids == [f"{JOB}_drape"]
+    assert ports.render.calls[0].input_artifact_ids == [f"{JOB}_drape_result"]
     assert ports.realize.calls[0].input_artifact_ids == [f"{JOB}_render_clip"]
     assert ports.validate.calls[0].input_artifact_ids == [f"{JOB}_render_clip", f"{JOB}_video"]
     for step in (ports.body, ports.drape, ports.render, ports.realize, ports.validate):

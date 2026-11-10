@@ -67,6 +67,8 @@ class ErrorCode(str, Enum):
     DRAPE_INVALID = "DRAPE_INVALID"
     RENDER_FAILED = "RENDER_FAILED"
     REALIZE_TIMEOUT = "REALIZE_TIMEOUT"
+    # 외부 제출 결과를 알 수 없다. PortError.external_request_id가 있으면 다시 제출하지 말고 같은
+    # 요청 ID로 결과를 다시 조회한다. 이때 retryable=true는 같은 요청 ID 재조회를 뜻한다(B5·D4).
     EXTERNAL_SUBMIT_UNKNOWN = "EXTERNAL_SUBMIT_UNKNOWN"
     VALIDATION_FAILED = "VALIDATION_FAILED"
     VALIDATION_UNVERIFIABLE = "VALIDATION_UNVERIFIABLE"

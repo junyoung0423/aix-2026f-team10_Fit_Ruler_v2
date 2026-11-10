@@ -60,6 +60,9 @@ class VisualPart(BaseModel):
     render_artifact_id: str | None = None  # 정면 렌더 클립 (#10)
     video_artifact_id: str | None = None  # 실사 영상 (#10)
     frame_artifact_id: str | None = None  # 대표 프레임 (#11)
+    render_frame_artifact_id: str | None = None  # 대표 프레임에 대응하는 렌더 프레임 (#11)
+    # 검증 숫자 지표. 예: color_delta_e(색 차이), silhouette_iou(실루엣 겹침). 검증 전이면 null
+    quality_metrics: dict[str, float] | None = None
     error_code: ErrorCode | None = None
 
 

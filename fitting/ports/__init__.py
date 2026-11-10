@@ -9,6 +9,11 @@ from fitting.ports.dto import (
     require_output_artifacts,
 )
 from fitting.ports.interfaces import (
+    BODY_OUTPUTS,
+    DRAPE_OUTPUTS,
+    REALIZE_OUTPUTS,
+    RENDER_OUTPUTS,
+    VALIDATE_OUTPUTS,
     BodyBuilder,
     Draper,
     FitCalculator,
@@ -16,10 +21,16 @@ from fitting.ports.interfaces import (
     Realizer,
     Renderer,
     Validator,
+    output_artifact,
 )
 
 __all__ = [
     "ARTIFACT_PRODUCING_STAGES",
+    "BODY_OUTPUTS",
+    "DRAPE_OUTPUTS",
+    "REALIZE_OUTPUTS",
+    "RENDER_OUTPUTS",
+    "VALIDATE_OUTPUTS",
     "BodyBuilder",
     "Draper",
     "FitCalculator",
@@ -31,5 +42,6 @@ __all__ = [
     "Realizer",
     "Renderer",
     "Validator",
+    "output_artifact",
     "require_output_artifacts",
 ]

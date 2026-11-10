@@ -9,6 +9,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from fitting.domain import (
     ErrorCode,
@@ -28,6 +29,11 @@ from fitting.domain import (
     VisualSkipReason,
 )
 from fitting.ports import (
+    BODY_OUTPUTS,
+    DRAPE_OUTPUTS,
+    REALIZE_OUTPUTS,
+    RENDER_OUTPUTS,
+    VALIDATE_OUTPUTS,
     BodyBuilder,
     Draper,
     FitCalculator,
@@ -38,6 +44,7 @@ from fitting.ports import (
     Realizer,
     Renderer,
     Validator,
+    output_artifact,
     require_output_artifacts,
 )
 
@@ -161,11 +168,13 @@ def _run_visual(
     settings: RunSettings,
     progress: dict[Stage, StageStatus],
 ) -> VisualPart:
-    found: dict[str, str | None] = {
+    found: dict[str, Any] = {
         "drape_preview_artifact_id": None,
         "render_artifact_id": None,
         "video_artifact_id": None,
         "frame_artifact_id": None,
+        "render_frame_artifact_id": None,
+        "quality_metrics": None,
     }
     quality = QualityStatus.PENDING
 
@@ -192,14 +201,15 @@ def _run_visual(
         body = step(
             Stage.BODY_FIT, [], lambda r: ports.body.build_body(r, request.to_body_input())
         )
-        drape = step(
-            Stage.DRAPE, body.output_artifact_ids[:1], lambda r: ports.drape.drape(r, garment)
+        body_mesh = output_artifact(body.output_artifact_ids, BODY_OUTPUTS, "body_mesh")
+        drape = step(Stage.DRAPE, [body_mesh], lambda r: ports.drape.drape(r, garment))
+        drape_ids = drape.output_artifact_ids
+        found["drape_preview_artifact_id"] = output_artifact(
+            drape_ids, DRAPE_OUTPUTS, "drape_preview"
         )
-        found["drape_preview_artifact_id"] = _nth(drape.output_artifact_ids, 1)
-        render = step(
-            Stage.RENDER, drape.output_artifact_ids[:1], lambda r: ports.render.render(r, garment)
-        )
-        render_id = render.output_artifact_ids[0]
+        drape_result = output_artifact(drape_ids, DRAPE_OUTPUTS, "drape_result")
+        render = step(Stage.RENDER, [drape_result], lambda r: ports.render.render(r, garment))
+        render_id = output_artifact(render.output_artifact_ids, RENDER_OUTPUTS, "render_clip")
         found["render_artifact_id"] = render_id
         if not request.realize_consent:
             # 실사화(외부 전송)에 동의하지 않았다. 사용자가 고른 것이라 실패가 아니다.
@@ -213,12 +223,17 @@ def _run_visual(
                 **found,
             )
         video = step(Stage.REALIZE, [render_id], lambda r: ports.realize.realize(r, garment))
-        video_id = video.output_artifact_ids[0]
+        video_id = output_artifact(video.output_artifact_ids, REALIZE_OUTPUTS, "video")
         found["video_artifact_id"] = video_id
         checked = step(
             Stage.VALIDATE, [render_id, video_id], lambda r: ports.validate.validate(r, garment)
         )
-        found["frame_artifact_id"] = _nth(checked.output_artifact_ids, 0)
+        checked_ids = checked.output_artifact_ids
+        found["frame_artifact_id"] = output_artifact(checked_ids, VALIDATE_OUTPUTS, "frame")
+        found["render_frame_artifact_id"] = output_artifact(
+            checked_ids, VALIDATE_OUTPUTS, "render_frame"
+        )
+        found["quality_metrics"] = _numeric_metrics(checked)
         quality = _quality(checked)
         if quality is QualityStatus.FAIL:
             progress[Stage.VALIDATE] = StageStatus.FAILED
@@ -256,8 +271,13 @@ def _quality(result: PortResult) -> QualityStatus:
     return quality
 
 
-def _nth(ids: list[str], index: int) -> str | None:
-    return ids[index] if len(ids) > index else None
+def _numeric_metrics(result: PortResult) -> dict[str, float]:
+    """검증 결과의 숫자 지표만 (예: color_delta_e, silhouette_iou). 문자열 지표는 뺀다."""
+    return {
+        key: float(value)
+        for key, value in result.metrics.items()
+        if isinstance(value, int | float) and not isinstance(value, bool)
+    }
 
 
 def _stages(progress: dict[Stage, StageStatus]) -> list[StageProgress]:

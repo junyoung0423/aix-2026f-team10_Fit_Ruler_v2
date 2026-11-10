@@ -37,6 +37,18 @@
     "code": {
       "$ref": "#/$defs/ErrorCode"
     },
+    "external_request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "External Request Id"
+    },
     "internal_details_ref": {
       "anyOf": [
         {
