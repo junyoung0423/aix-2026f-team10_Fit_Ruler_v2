@@ -20,7 +20,12 @@ import cv2
 import numpy as np
 
 from fitting.adapters.smpl import SmplModel, a_pose, write_obj
-from fitting.body.measure import BodyMeasurementsCm, MeasureDebug, measure_body
+from fitting.body.measure import (
+    SMPL_ACROMION_VERTICES,
+    BodyMeasurementsCm,
+    MeasureDebug,
+    measure_body,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -85,7 +90,11 @@ def save_debug_image(
             cv2.LINE_AA,
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(path), image)
+    # cv2.imwrite는 Windows에서 한글이 든 경로(예: 바탕 화면)에 조용히 실패하므로 인코딩 후 직접 쓴다.
+    ok, encoded = cv2.imencode(".png", image)
+    if not ok:
+        raise OSError(f"확인 그림을 만들지 못했습니다: {path}")
+    path.write_bytes(encoded.tobytes())
     return path
 
 
@@ -101,6 +110,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--arm-angle", type=float, default=45.0, help="A자세에서 팔을 내리는 각도(도)"
+    )
+    parser.add_argument(
+        "--acromion-vertices",
+        type=int,
+        nargs=2,
+        default=list(SMPL_ACROMION_VERTICES),
+        metavar=("LEFT", "RIGHT"),
+        help="어깨 끝점 정점 번호(기본: SMPL 3011 6470)",
     )
     parser.add_argument("--name", default=None, help="결과 폴더 이름")
     parser.add_argument("--out-dir", type=Path, default=None)
@@ -121,7 +138,13 @@ def main(argv: list[str] | None = None) -> int:
     model = SmplModel.load(args.model)
     betas = np.array(args.betas, dtype=float) if args.betas else None
     out = model.forward(betas=betas, body_pose=a_pose(args.arm_angle))
-    result, debug = measure_body(out.vertices, model.faces, out.joints, model.weights)
+    result, debug = measure_body(
+        out.vertices,
+        model.faces,
+        out.joints,
+        model.weights,
+        acromion_vertices=tuple(args.acromion_vertices),
+    )
 
     obj_path = write_obj(
         out_dir / "body_apose.obj",
@@ -137,6 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         "model_file": args.model.name,
         "betas": args.betas,
         "arm_angle_deg": args.arm_angle,
+        "acromion_vertices": list(args.acromion_vertices),
         "vertices": int(out.vertices.shape[0]),
         "measurements_cm": result.to_dict(),
         "levels_m": {

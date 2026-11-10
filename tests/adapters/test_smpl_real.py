@@ -66,6 +66,21 @@ def test_average_body_measurements_are_plausible(model: SmplModel) -> None:
     assert debug.waist_level_m < debug.chest_level_m
 
 
+def test_shoulder_tips_are_symmetric_and_above_shoulder_joints(
+    model: SmplModel,
+) -> None:
+    """어깨 끝점 정점(3011·6470)이 A자세에서 좌우 대칭이고 어깨 관절 바로 위에 있다."""
+    a = model.forward(body_pose=a_pose(45))
+    _, debug = measure_body(a.vertices, model.faces, a.joints, model.weights)
+    left, right = debug.left_shoulder_point, debug.right_shoulder_point
+    assert abs(left[0] + right[0]) < 0.01  # 좌우 거울 대칭(1cm 이내)
+    assert abs(left[1] - right[1]) < 0.01
+    for point, joint in ((left, "left_shoulder"), (right, "right_shoulder")):
+        offset = point - a.joints[JOINT[joint]]
+        assert 0.02 < offset[1] < 0.10  # 관절보다 2~10cm 위
+        assert abs(offset[0]) < 0.05  # 옆으로는 5cm 안
+
+
 def test_betas_change_measurements(model: SmplModel) -> None:
     pose = a_pose(45)
     base = model.forward(body_pose=pose)

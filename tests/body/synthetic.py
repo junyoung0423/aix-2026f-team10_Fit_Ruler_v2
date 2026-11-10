@@ -51,6 +51,7 @@ class SyntheticBody:
     joints: np.ndarray
     weights: np.ndarray
     arm_dir_left: np.ndarray
+    acromion_vertices: tuple[int, int]  # (왼쪽, 오른쪽) 어깨 끝점 정점 번호
 
 
 ARM_ANGLE = np.deg2rad(45)
@@ -59,6 +60,9 @@ UPPER_ARM = 0.30
 FOREARM = 0.27
 WAIST_RADIUS = 0.13
 CHEST_RADIUS = 0.15
+# 어깨 끝점: 어깨 관절 위쪽·바깥쪽에 둔 점 (면에는 쓰지 않는다)
+LEFT_ACROMION = np.array([0.21, 1.46, 0.0])
+RIGHT_ACROMION = np.array([-0.21, 1.46, 0.0])
 
 
 def make_body() -> SyntheticBody:
@@ -102,6 +106,13 @@ def make_body() -> SyntheticBody:
         weights.append(w)
         offset += len(verts)
 
+    # 어깨 끝점 두 개를 끝에 붙인다. 가중치는 쇄골(13·14)이라 팔 정점으로 빠지지 않는다.
+    acromion_start = offset
+    vertices.append(np.vstack([LEFT_ACROMION, RIGHT_ACROMION]))
+    w = np.zeros((2, 24))
+    w[0, 13], w[1, 14] = 1.0, 1.0
+    weights.append(w)
+
     joints = np.zeros((24, 3))
     joints[0] = (0.0, 0.95, 0.0)  # pelvis
     joints[3] = (0.0, 1.05, 0.0)  # spine1 → 허리 높이
@@ -112,5 +123,10 @@ def make_body() -> SyntheticBody:
     joints[20] = joints[18] + FOREARM * left_dir
     joints[21] = joints[19] + FOREARM * right_dir
     return SyntheticBody(
-        np.vstack(vertices), np.vstack(faces), joints, np.vstack(weights), left_dir
+        np.vstack(vertices),
+        np.vstack(faces),
+        joints,
+        np.vstack(weights),
+        left_dir,
+        (acromion_start, acromion_start + 1),
     )

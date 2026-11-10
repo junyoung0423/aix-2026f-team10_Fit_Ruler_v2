@@ -8,11 +8,13 @@
 | 키 | 메시의 가장 높은 점과 가장 낮은 점의 높이 차 |
 | 가슴둘레 | spine3 관절 높이부터 어깨 관절 4cm 아래까지 수평으로 잘라, 몸통 단면의 볼록 둘레가 가장 큰 값 (겨드랑이 아래 가장 두꺼운 곳) |
 | 허리둘레 | spine1 관절 높이(배꼽 높이 근사)에서 몸통 단면의 볼록 둘레 |
-| 어깨너비 | 좌우 어깨 끝점 사이 직선거리. 어깨 끝점 = 어깨 관절 높이 위에서 그쪽으로 가장 바깥 정점 |
+| 어깨너비 | 좌우 어깨 끝점 사이 직선거리. 어깨 끝점은 SMPL 정점 3011(왼쪽)·6470(오른쪽) |
 | 팔길이 | 왼쪽 어깨 끝점 → 팔꿈치 관절 → 손목 관절 거리의 합 |
 
 둘레는 줄자가 오목한 곳을 건너뛰므로 단면의 볼록 껍질 둘레로 잰다.
 팔 정점(스키닝 가중치가 팔 관절에 가장 큰 정점)은 몸통 단면에서 뺀다.
+어깨 끝점 정점은 실제 SMPL 모델에서 확인했다: 어깨 관절 바로 위 약 5cm, 좌우가 거울 대칭(6mm 이내),
+가중치가 쇄골 관절에 가장 커서 팔 자세가 바뀌어도 거의 움직이지 않는다. 다른 메시를 쓰면 정점 번호를 넘긴다.
 """
 
 from __future__ import annotations
@@ -32,7 +34,9 @@ CHEST_TOP_MARGIN_M = (
     0.04  # 어깨 관절 높이에서 이만큼 아래까지만 가슴 후보로 본다(겨드랑이 아래)
 )
 CHEST_SCAN_STEPS = 15
-SHOULDER_BAND_M = 0.08  # 어깨 끝점을 찾는 높이 범위(어깨 관절 높이부터 위로)
+
+# (왼쪽, 오른쪽) 어깨 끝점 정점 번호. SMPL 정점 6890개 기준이며 2026-11-10에 실제 모델로 위치를 확인했다.
+SMPL_ACROMION_VERTICES = (3011, 6470)
 
 
 @dataclass(frozen=True)
@@ -177,24 +181,12 @@ def torso_faces(faces: np.ndarray, weights: np.ndarray) -> np.ndarray:
     return faces[is_torso[faces].all(axis=1)]
 
 
-def shoulder_point(
-    vertices: np.ndarray, shoulder_joint: np.ndarray, side: int
-) -> np.ndarray:
-    """어깨 관절 높이부터 SHOULDER_BAND_M 위까지에서 side(+1 왼쪽, -1 오른쪽) 방향으로 가장 바깥 정점."""
-    y = vertices[:, 1]
-    band = (
-        (y >= shoulder_joint[1])
-        & (y <= shoulder_joint[1] + SHOULDER_BAND_M)
-        & (vertices[:, 0] * side > 0)
-    )
-    if not band.any():
-        raise ValueError("어깨 끝점을 찾을 정점이 없습니다.")
-    candidates = vertices[band]
-    return candidates[np.argmax(candidates[:, 0] * side)]
-
-
 def measure_body(
-    vertices: np.ndarray, faces: np.ndarray, joints: np.ndarray, weights: np.ndarray
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    joints: np.ndarray,
+    weights: np.ndarray,
+    acromion_vertices: tuple[int, int] = SMPL_ACROMION_VERTICES,
 ) -> tuple[BodyMeasurementsCm, MeasureDebug]:
     vertices = np.asarray(vertices, dtype=np.float64)
     faces = np.asarray(faces, dtype=np.int64)
@@ -220,8 +212,11 @@ def measure_body(
     )
     waist = convex_perimeter(waist_loop)
 
-    left = shoulder_point(vertices, joints[LEFT_SHOULDER], side=+1)
-    right = shoulder_point(vertices, joints[RIGHT_SHOULDER], side=-1)
+    left, right = vertices[acromion_vertices[0]], vertices[acromion_vertices[1]]
+    if not left[0] > right[0]:
+        raise ValueError(
+            "어깨 끝점 정점 번호를 확인하세요(왼쪽 정점이 +x 쪽에 있어야 합니다)."
+        )
     shoulder_width = float(np.linalg.norm(left - right))
 
     arm = float(

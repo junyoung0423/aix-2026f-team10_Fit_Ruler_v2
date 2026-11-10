@@ -5,16 +5,16 @@ from fitting.body.measure import (
     convex_hull,
     convex_perimeter,
     measure_body,
-    shoulder_point,
     slice_loops,
     torso_faces,
     torso_section,
 )
 
 from .synthetic import (
-    ARM_RADIUS,
     CHEST_RADIUS,
     FOREARM,
+    LEFT_ACROMION,
+    RIGHT_ACROMION,
     UPPER_ARM,
     WAIST_RADIUS,
     make_body,
@@ -67,18 +67,24 @@ def test_torso_faces_drop_arm_faces() -> None:
     assert len(kept) < len(body.faces)
 
 
-def test_shoulder_point_is_outermost_vertex_above_joint() -> None:
-    verts = np.array(
-        [[0.10, 1.50, 0.0], [0.25, 1.43, 0.0], [0.40, 1.30, 0.0], [-0.24, 1.45, 0.0]]
+def measure(body):
+    return measure_body(
+        body.vertices, body.faces, body.joints, body.weights, body.acromion_vertices
     )
-    joint = np.array([0.2, 1.42, 0.0])
-    # 0.40은 어깨 관절보다 낮아(팔 아래쪽) 빠지고, 음수 x는 반대쪽이라 빠진다
-    assert shoulder_point(verts, joint, side=+1) == pytest.approx([0.25, 1.43, 0.0])
+
+
+def test_swapped_acromion_vertices_are_rejected() -> None:
+    body = make_body()
+    left, right = body.acromion_vertices
+    with pytest.raises(ValueError, match="어깨 끝점"):
+        measure_body(
+            body.vertices, body.faces, body.joints, body.weights, (right, left)
+        )
 
 
 def test_measure_synthetic_body() -> None:
     body = make_body()
-    result, debug = measure_body(body.vertices, body.faces, body.joints, body.weights)
+    result, debug = measure(body)
 
     assert result.height_cm == pytest.approx(170.0, abs=0.05)
     assert result.chest_circumference_cm == pytest.approx(
@@ -88,14 +94,11 @@ def test_measure_synthetic_body() -> None:
         ngon_perimeter(WAIST_RADIUS) * 100, abs=0.05
     )
 
-    # 어깨 끝점: 위팔 원기둥 시작 고리에서 가장 바깥(어깨 관절 + 반지름 × 팔에 수직인 위쪽 방향)
-    d = body.arm_dir_left
-    up_normal = np.array([-d[1], d[0], 0.0])  # 팔 방향에 수직이고 위를 향하는 벡터
-    left_tip = body.joints[16] + ARM_RADIUS * up_normal
-    assert debug.left_shoulder_point == pytest.approx(left_tip, abs=1e-6)
-    assert result.shoulder_width_cm == pytest.approx(2 * left_tip[0] * 100, abs=0.05)
+    assert debug.left_shoulder_point == pytest.approx(LEFT_ACROMION)
+    assert debug.right_shoulder_point == pytest.approx(RIGHT_ACROMION)
+    assert result.shoulder_width_cm == pytest.approx(42.0, abs=0.05)
 
-    expected_arm = np.linalg.norm(left_tip - body.joints[18]) + FOREARM
+    expected_arm = np.linalg.norm(LEFT_ACROMION - body.joints[18]) + FOREARM
     assert result.arm_length_cm == pytest.approx(expected_arm * 100, abs=0.05)
     assert (
         result.arm_length_cm > (UPPER_ARM + FOREARM) * 100

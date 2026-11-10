@@ -42,17 +42,31 @@ def synthetic_model_npz(path: Path) -> Path:
 
 def test_tool_writes_obj_measurements_and_debug_image(tmp_path: Path) -> None:
     model_path = synthetic_model_npz(tmp_path / "synthetic.npz")
-    out_dir = tmp_path / "out"
+    out_dir = tmp_path / "바탕 화면" / "out"  # 한글·공백 경로에서도 저장되는지 확인
 
     # 합성 몸은 이미 A자세라 팔을 더 내리지 않는다(각도 0)
+    body = make_body()
+    left, right = body.acromion_vertices
     code = smpl_body.main(
-        ["--model", str(model_path), "--arm-angle", "0", "--out-dir", str(out_dir)]
+        [
+            "--model",
+            str(model_path),
+            "--arm-angle",
+            "0",
+            "--acromion-vertices",
+            str(left),
+            str(right),
+            "--out-dir",
+            str(out_dir),
+        ]
     )
 
     assert code == 0
     record = json.loads((out_dir / "measurements.json").read_text(encoding="utf-8"))
-    body = make_body()
-    expected, _ = measure_body(body.vertices, body.faces, body.joints, body.weights)
+    assert record["acromion_vertices"] == [left, right]
+    expected, _ = measure_body(
+        body.vertices, body.faces, body.joints, body.weights, body.acromion_vertices
+    )
     assert record["measurements_cm"] == pytest.approx(expected.to_dict())
     obj_lines = (out_dir / "body_apose.obj").read_text(encoding="utf-8").splitlines()
     assert sum(line.startswith("v ") for line in obj_lines) == len(body.vertices) + 24
