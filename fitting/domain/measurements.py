@@ -94,7 +94,7 @@ class FittingRequest(BaseModel):
 
 
 class FitRequest(BaseModel):
-    """POST /api/fit 요청 본문 (#2). `FittingRequest`에서 `mode`를 뺀 모양이다.
+    """POST /api/fit 요청 본문 (#2). `FittingRequest`에서 `mode`·`realize_consent`를 뺀 모양이다.
 
     핏 리포트만 즉시 계산한다(3D·AI 없음). 다섯 신체 치수의 범위는 `Measurements`와 같다.
     """

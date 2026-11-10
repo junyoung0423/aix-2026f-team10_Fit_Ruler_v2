@@ -40,11 +40,16 @@ def test_api_examples_pass_schema_and_model(filename):
 
 
 def test_fit_request_is_fitting_request_without_mode():
+    """핏 API는 영상 경로가 없어 실행 방식(mode)과 실사화 동의(realize_consent)를 받지 않는다."""
     fit = _sample("fit_request.json")
     fitting = _sample("fitting_request.json")
     fitting.pop("mode")
+    fitting.pop("realize_consent")
     assert fit == fitting
-    assert set(FitRequest.model_fields) == set(FittingRequest.model_fields) - {"mode"}
+    assert set(FitRequest.model_fields) == set(FittingRequest.model_fields) - {
+        "mode",
+        "realize_consent",
+    }
 
 
 def test_error_examples_cover_the_three_codes():

@@ -9,7 +9,7 @@
 |---|---|---|
 | `schemas/*.schema.json` | 요청·의류·핏 리포트·작업 상태·핏 API·포트 DTO의 JSON Schema (draft 2020-12) | 자동 |
 | `examples/fitting_request.json` | 피팅 요청 본문 (`POST /api/fittings`, B3). 실사화 동의 `realize_consent: true` | 손으로 |
-| `examples/fit_request.json` | 핏 요청 본문 (`POST /api/fit`). `fitting_request.json`에서 `mode`를 뺀 모양 | 손으로 |
+| `examples/fit_request.json` | 핏 요청 본문 (`POST /api/fit`). `fitting_request.json`에서 `mode`·`realize_consent`를 뺀 모양 | 손으로 |
 | `examples/garment.json` | 등록 의류 1벌 (시연용, 실제 의류 아님). `data/garments/`에도 같은 파일이 있다 | 손으로 |
 | `examples/fit_report.json` | 핏 리포트. 위 요청·의류를 #2 핏 계산기(기본 기준표 `fit_rules_v0`)로 계산한 결과 | 자동 (실제 계산기) |
 | `examples/garment_list.json` | 의류 목록 (`GET /api/garments`) | 자동 |
@@ -84,7 +84,7 @@ uvicorn server.app:app --reload   # http://127.0.0.1:8000/docs 에서 OpenAPI �
 ## 읽는 법 (작업 상태)
 
 - `report`(핏 경로)와 `visual`(영상 경로)은 서로 독립입니다. `visual.status`가 `FAILED`여도 `report.regions`는 그대로 보여 줍니다(#12). 이때 작업 전체 `status`는 `PARTIAL_SUCCEEDED`입니다.
-- 핏 계산기가 계산할 수 없는 의류면(`GARMENT_NOT_READY`) `report.status`는 `FAILED`, `visual.status`는 `SKIPPED`, 작업 `status`는 `FAILED`입니다.
+- 핏 계산기가 계산할 수 없는 의류면(`GARMENT_NOT_READY`) `report.status`는 `FAILED`(`summary`는 `null`, `warnings`는 `[]`), `visual.status`는 `SKIPPED`, 작업 `status`는 `FAILED`입니다. 실사화 동의 여부와 상관없이 같고, 영상 경로를 시작하지 않으므로 `visual.quality_status`·`skip_reason`·`quality_metrics`는 `null`입니다.
 - `visual.stage`와 `visual.error_code`는 어디서 왜 멈췄는지 알려 줍니다. 화면에는 오류 코드에 맞는 안내 문구를 씁니다.
 - `visual.quality_status`가 `PASS`일 때만 실사 영상을 정상 결과로 보여 줍니다. `FAIL`·`UNVERIFIABLE`은 검증 실패로 구분해 표시합니다(#11).
 - `visual.quality_status`는 검증 판정이 있을 때만 `PASS`·`FAIL`·`UNVERIFIABLE`입니다. `PENDING`은 영상 경로가 아직 진행 중일 때만 씁니다(`fitting_status_running.json`).
