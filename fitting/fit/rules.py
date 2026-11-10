@@ -74,9 +74,24 @@ class RegionRule:
 
 
 @dataclass(frozen=True)
+class BodyLengthEstimate:
+    """총장 설명에 쓸 몸통 기준 길이 추정 설정 (#2, 활동지 61행).
+
+    신체 입력에 몸통 길이가 없어서, 켜면 키 × `ratio`로 몸통 기준 길이를 추정해 의류 기장과의
+    차이를 설명한다. 추정값이므로 적정 기장 판정(구간·라벨)은 하지 않는다. 방법과 비율은 팀이
+    아직 정하지 않았다(docs/decisions.md "아직 정할 것"). 기본은 꺼져 있다.
+    """
+
+    enabled: bool = False
+    method: str = "height_ratio"
+    ratio: Decimal | None = None
+
+
+@dataclass(frozen=True)
 class FitRules:
     version: str
     applicable_families: frozenset[str]
     chest: RegionRule
     shoulder: RegionRule
     waist: RegionRule
+    body_length_estimate: BodyLengthEstimate = BodyLengthEstimate()

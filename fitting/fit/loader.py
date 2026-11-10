@@ -14,7 +14,7 @@ from typing import Any
 import yaml
 
 from fitting.domain.enums import FitLabel, Region
-from fitting.fit.rules import Band, FitRules, RegionRule
+from fitting.fit.rules import Band, BodyLengthEstimate, FitRules, RegionRule
 
 DEFAULT_RULES_PATH = Path(__file__).resolve().parents[2] / "config" / "fit_rules_v0.yaml"
 
@@ -31,6 +31,10 @@ BAND_LABELS = frozenset(
 )
 
 _TOP_KEYS = {"version", "applicable_families", "regions"}
+_OPTIONAL_TOP_KEYS = {"body_length_estimate"}
+_ESTIMATE_KEYS = {"enabled", "method", "ratio"}
+# 총장 추정 방법. 지금은 키 × 비율 하나만 있다.
+BODY_LENGTH_ESTIMATE_METHODS = frozenset({"height_ratio"})
 _REGION_KEYS = {"short_ko", "noun_ko", "negative_note", "note", "bands"}
 _BAND_KEYS = {"upper", "upper_inclusive", "label", "label_ko"}
 _RULE_REGIONS = (Region.CHEST, Region.SHOULDER, Region.WAIST)
@@ -69,7 +73,7 @@ def default_fit_rules() -> FitRules:
 
 def parse_fit_rules(data: Any) -> FitRules:
     """YAML에서 읽은 값(dict)을 검사해 `FitRules`로 바꾼다."""
-    top = _mapping(data, "기준표", required=_TOP_KEYS, allowed=_TOP_KEYS)
+    top = _mapping(data, "기준표", required=_TOP_KEYS, allowed=_TOP_KEYS | _OPTIONAL_TOP_KEYS)
     version = _text(top["version"], "version")
     families = top["applicable_families"]
     if not isinstance(families, list) or not families:
@@ -92,7 +96,30 @@ def parse_fit_rules(data: Any) -> FitRules:
         chest=rules[Region.CHEST],
         shoulder=rules[Region.SHOULDER],
         waist=rules[Region.WAIST],
+        body_length_estimate=_body_length_estimate(
+            top.get("body_length_estimate"), "body_length_estimate"
+        ),
     )
+
+
+def _body_length_estimate(data: Any, where: str) -> BodyLengthEstimate:
+    """총장 추정 설정. 없으면 꺼져 있다. 켜면 method와 0 초과 1 미만의 ratio가 있어야 한다."""
+    if data is None:
+        return BodyLengthEstimate()
+    raw = _mapping(data, where, required={"enabled"}, allowed=_ESTIMATE_KEYS)
+    enabled = raw["enabled"]
+    if not isinstance(enabled, bool):
+        raise FitRulesError(f"{where}.enabled: true 또는 false여야 합니다")
+    method = _text(raw.get("method", "height_ratio"), f"{where}.method")
+    if method not in BODY_LENGTH_ESTIMATE_METHODS:
+        allowed = ", ".join(sorted(BODY_LENGTH_ESTIMATE_METHODS))
+        raise FitRulesError(f"{where}.method: 모르는 추정 방법입니다: {method!r} (가능: {allowed})")
+    ratio = _decimal_or_none(raw.get("ratio"), f"{where}.ratio")
+    if ratio is not None and not Decimal(0) < ratio < Decimal(1):
+        raise FitRulesError(f"{where}.ratio: 0보다 크고 1보다 작아야 합니다")
+    if enabled and ratio is None:
+        raise FitRulesError(f"{where}.ratio: 추정을 켜면 비율이 있어야 합니다")
+    return BodyLengthEstimate(enabled=enabled, method=method, ratio=ratio)
 
 
 def _region_rule(region: Region, data: Any, where: str) -> RegionRule:

@@ -21,7 +21,7 @@ from fitting.domain.garment import GarmentVariant
 from fitting.domain.measurements import BodyInput
 from fitting.domain.report import FitReport, RegionResult
 from fitting.fit.loader import default_fit_rules
-from fitting.fit.rules import FitRules, RegionRule
+from fitting.fit.rules import BodyLengthEstimate, FitRules, RegionRule, display_cm
 from fitting.ports.dto import PortError
 
 _GARMENT_NOT_READY_MESSAGE = "선택한 의류를 아직 사용할 수 없어요. 다른 의류를 선택해 주세요."
@@ -158,9 +158,17 @@ def _sleeve_result(body: BodyInput, garment: GarmentVariant) -> RegionResult:
     )
 
 
-def _body_length_result(garment: GarmentVariant) -> RegionResult:
-    """몸통 길이 입력이 없으므로 적정 기장을 판정하지 않고 의류 실측만 보여준다."""
+def _body_length_result(
+    body: BodyInput, garment: GarmentVariant, estimate: BodyLengthEstimate
+) -> RegionResult:
+    """몸통 길이 입력이 없으므로 적정 기장을 판정하지 않고 의류 실측만 보여준다.
+
+    기준표의 `body_length_estimate`가 켜져 있으면 키로 추정한 몸통 기준 길이와의 차이를
+    설명에 더하고 `is_estimated=True`로 표시한다. 추정값이므로 이때도 판정은 하지 않는다.
+    """
     length = garment.measurements.body_length_cm
+    if length is not None and estimate.enabled:
+        return _estimated_body_length_result(body, length, estimate)
     if length is None:
         return RegionResult(
             region=Region.BODY_LENGTH,
@@ -180,6 +188,38 @@ def _body_length_result(garment: GarmentVariant) -> RegionResult:
         reason_code=ReasonCode.BODY_INPUT_NOT_PROVIDED,
         explanation=(
             f"기장 실측 {length:.1f} cm입니다. 몸통 길이 입력이 없어 적정 기장은 판단하지 않습니다."
+        ),
+    )
+
+
+def _estimated_body_length_result(
+    body: BodyInput, length: float, estimate: BodyLengthEstimate
+) -> RegionResult:
+    """키 × 비율로 추정한 몸통 기준 길이와 의류 기장의 차이를 설명한다. 판정은 하지 않는다."""
+    assert estimate.method == "height_ratio" and estimate.ratio is not None  # 로더가 보장한다
+    estimated = to_decimal(body.height_cm) * estimate.ratio
+    diff = to_decimal(length) - estimated
+    shown = display_cm(abs(diff))
+    if diff == 0:
+        relation = "와 같습니다"
+    elif shown == "0.0":
+        relation = "와 거의 같습니다"
+    elif diff > 0:
+        relation = f"보다 {shown} cm 깁니다"
+    else:
+        relation = f"보다 {shown} cm 짧습니다"
+    return RegionResult(
+        region=Region.BODY_LENGTH,
+        body_cm=float(estimated),
+        garment_cm=length,
+        ease_cm=float(diff),
+        label=FitLabel.NOT_EVALUATED,
+        reason_code=ReasonCode.BODY_INPUT_NOT_PROVIDED,
+        is_estimated=True,
+        explanation=(
+            f"기장 실측 {length:.1f} cm는 키로 추정한 몸통 기준 길이 "
+            f"{display_cm(estimated)} cm{relation}. 몸통 길이 입력이 없어 추정한 값이므로 "
+            "적정 기장은 판단하지 않습니다."
         ),
     )
 
@@ -214,7 +254,7 @@ def compute_report(
         shoulder,
         waist,
         _sleeve_result(body, garment),
-        _body_length_result(garment),
+        _body_length_result(body, garment, rules.body_length_estimate),
     ]
 
     # 종합 문구는 판정한 부위만 나열한다. 단일 적합 점수나 확률은 만들지 않는다.

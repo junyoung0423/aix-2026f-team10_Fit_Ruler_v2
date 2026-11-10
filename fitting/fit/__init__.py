@@ -11,11 +11,12 @@ from fitting.fit.loader import (
     load_fit_rules,
     parse_fit_rules,
 )
-from fitting.fit.rules import Band, FitRules, RegionRule
+from fitting.fit.rules import Band, BodyLengthEstimate, FitRules, RegionRule
 
 __all__ = [
     "DEFAULT_RULES_PATH",
     "Band",
+    "BodyLengthEstimate",
     "FitEngineError",
     "FitRules",
     "FitRulesError",
