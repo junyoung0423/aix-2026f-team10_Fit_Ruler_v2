@@ -1,0 +1,6 @@
+# D1 fal/LTX 스파이크와 영상 프레임 추출에 필요한 패키지
+# 2026-11-10에 Python 3.13에서 확인한 버전: fal-client 1.0.3, opencv-python-headless 5.0.0.93, numpy 2.5.4, pytest 9.2.0
+fal-client>=1.0.3,<2
+opencv-python-headless>=4.10
+numpy>=1.26
+pytest>=8
