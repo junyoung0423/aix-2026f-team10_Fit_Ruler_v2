@@ -130,7 +130,9 @@ def run_fitting(
         )
     except FitEngineError as error:
         # 의류군·프로토콜 불일치, 필수 실측 누락 등 계산할 수 없는 조합 (#2). 리포트가 없으므로
-        # 영상 경로도 시작하지 않는다. 내부 사유(error.reason)는 상태에 넣지 않는다.
+        # 영상 경로도 시작하지 않는다(동의 여부와 무관). 내부 사유(error.reason)는 넣지 않는다.
+        # 검증 판정이 없으므로 quality_status는 null이고, 사용자가 고른 건너뜀이 아니므로
+        # skip_reason도 null이다(의류 미준비와 같다).
         progress[Stage.FIT_CALCULATE] = StageStatus.FAILED
         for stage in progress:
             if progress[stage] is StageStatus.WAITING:
@@ -139,7 +141,7 @@ def run_fitting(
             job_id=job_id,
             status=JobStatus.FAILED,
             report=ReportPart(status=StageStatus.FAILED, error_code=error.code),
-            visual=VisualPart(status=StageStatus.SKIPPED),
+            visual=VisualPart(status=StageStatus.SKIPPED, quality_status=None),
             stages=_stages(progress),
         )
         return FittingOutcome(status=status, report=None)
