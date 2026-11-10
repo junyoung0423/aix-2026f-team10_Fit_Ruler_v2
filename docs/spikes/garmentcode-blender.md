@@ -3,6 +3,21 @@
 - 작성: C (의류와 착장 렌더) · 2026-11-10 · 기록 근거: C 리뷰 기록 C1·C2·C3·Csync
 - **이 문서의 숫자는 모두 명세서의 초기 검증값으로 판정한 시험 결과입니다. 검증된 성능이 아닙니다.**
 - 몸은 GarmentCode 기준 몸 `mean_all` 하나만 썼습니다(사용자 몸이 아니고, D의 T07 몸도 아닙니다).
+- 2026-11-11 C2(#4 #8): 이전 저장소 `aix-2026f-team10_Fit_Ruler`의 `pipelines/garment/`(브랜치
+  `feat/T02-garment-pattern-drape`)에서 이 저장소로 옮겼습니다. 옮긴 위치는 아래 표, 설치·실행은 6절에 있습니다.
+  아래 2~5절의 결과는 이전 저장소에서 낸 것이고, 옮긴 뒤 견본 1을 다시 돌린 결과는 6절 끝에 있습니다.
+  - 옮기지 않은 것(이전 저장소에만 있음): `pattern_fit.py`·`configs/pattern_fit_v0.json`(C4에서 옮김),
+    `garments/skus/`·`garments/MEASURING.md`(의류 등록은 `data/garments/` 형식을 씀).
+  - 실험 설정은 이전 저장소 `pipelines/garment/configs/experiments/`에 있다(C2 e01~e08, C3).
+
+| 이전 (`pipelines/garment/`) | 새 위치 |
+|---|---|
+| `export_panels.py`, `pattern_measure.py`, `coords.py` | `fitting/adapters/garmentcode/` |
+| `blender_drape.py`, `run_drape.py`, `drape_config.py`, `drape_measure.py`, `weld.py`, `metrics.py`, `analyze_drape.py` | `fitting/adapters/blender/` |
+| `configs/drape_v0.json`, `configs/drape_v1.json` | `config/drape/` |
+| `fixtures/tee_gc_default/`, `fixtures/tee_gc_sleeve045/` | `tests/fixtures/garment/` |
+| `tests/` | `tests/garment/` |
+| `tools/make_config.py` | `tools/make_drape_config.py` |
 
 ## 1. 흐름
 
@@ -15,7 +30,7 @@ GarmentCode 패턴 (패널 2D 외곽선 + 봉제선, cm)      ← pattern_measur
    │  좌표 변환 coords.py : GarmentCode(Y 위, 정면 +Z, 옷 cm·몸 m) → 명세서(Z 위, 정면 −Y, m)
    │                       회전 [[1,0,0],[0,0,-1],[0,1,0]], 옷 ×0.01  (변환 행렬은 drape_input.json에 기록)
    ▼
-Blender 5.2 cloth (blender_drape.py, 설정 configs/drape_v1.json)
+Blender 5.2 cloth (blender_drape.py, 설정 config/drape/drape_v1.json)
    │  1단계 봉제: 중력 0, 봉제 스프링으로 패널을 몸 둘레로 당김 (프레임 0–80)
    │  용접 weld.py: 봉제 쌍 정점을 하나로 합침 (용접 전 벌어짐 ≤ 10 mm 일 때만)
    │  2단계 착장: 중력 켜고 최대 300프레임 중 안정될 때까지 (지금 설정은 110프레임)
@@ -30,8 +45,8 @@ Blender 5.2 cloth (blender_drape.py, 설정 configs/drape_v1.json)
 
 | | 견본 1: 기본 티셔츠 | 견본 2: SKU 맞춤 0.1.0-draft | 견본 3: 소매 길이만 변경 |
 |---|---|---|---|
-| 패턴 파일 | `fixtures/tee_gc_default/` | `garments/skus/tee_regular_m_navy_v1/` | `fixtures/tee_gc_sleeve045/` |
-| 만든 방법 | GarmentCode 기본 디자인 그대로 | 가슴·소매·기장을 목표에 맞춤 (`pattern_fit.py fit`) | 기본 디자인에서 `sleeve.length` 0.3 → 0.45 (범위 0.1–1.15) |
+| 패턴 파일 | `tests/fixtures/garment/tee_gc_default/` | `garments/skus/tee_regular_m_navy_v1/` (이전 저장소) | `tests/fixtures/garment/tee_gc_sleeve045/` |
+| 만든 방법 | GarmentCode 기본 디자인 그대로 | 가슴·소매·기장을 목표에 맞춤 (`pattern_fit.py fit`, 이전 저장소) | 기본 디자인에서 `sleeve.length` 0.3 → 0.45 (범위 0.1–1.15) |
 | 패턴 실측 (가슴/어깨/소매/기장 cm) | 104.8 / 34.5 / 22.0 / 50.0 | 108.0 / **34.5 (목표 46.0)** / 22.0 / 70.0 | 104.8 / 34.5 / 28.9 / 50.0 |
 | 패턴 판정 | — (목표 없음) | **FIT_FAILED** (어깨 −11.5 cm) | — (목표 없음) |
 | 용접 전 최대 벌어짐 (≤ 10 mm, C 제안) | 6.81 mm ✅ | **12.59 mm ❌** → 용접 안 함 | 8.70 mm ✅ |
@@ -47,11 +62,11 @@ Blender 5.2 cloth (blender_drape.py, 설정 configs/drape_v1.json)
 - **결과**: 신장 기준을 넘은 변이 4개 패널에 1개씩 있습니다(오른 뒤소매 1.697, 오른 앞판 1.682, 왼 앞판 1.641, 왼 앞소매 1.640).
   - 모두 진동·어깨 꼭대기 근처입니다.
   - 고치지 않고 그대로 기록했습니다. 견본 1도 여유가 작았던(1.454) 같은 부위입니다.
-- 명령은 `<repo>`에서 실행합니다. 자리표시는 `pipelines/garment/README.md` "빠른 시작"과 같습니다.
-- **생성 명령**:
+- 명령은 `<repo>`에서 실행합니다. 자리표시는 6절 "설치·실행"과 같습니다.
+- **생성 명령** (이전 저장소 `<old repo>`에서. `pattern_fit.py`는 C4에서 옮긴다):
   - `<venv>\Scripts\python.exe pipelines\garment\pattern_fit.py generate pipelines\garment\fixtures\tee_gc_sleeve045\t-shirt_sleeve045.yaml <GarmentCode>\assets\bodies\mean_all.yaml <runs>\gen_sleeve045 --gc-root <GarmentCode>`
-- **착장 명령**:
-  - `<venv>\Scripts\python.exe pipelines\garment\run_drape.py --spec pipelines\garment\fixtures\tee_gc_sleeve045\pattern_specification.json --body <GarmentCode>\assets\bodies\mean_all.obj --config pipelines\garment\configs\drape_v1.json --name sleeve045_v1 --out-root <runs>\C2PR --gc-root <GarmentCode> --blender "<blender.exe>"`
+- **착장 명령** (이 저장소):
+  - `<venv>\Scripts\python.exe -m fitting.adapters.blender.run_drape --spec tests\fixtures\garment\tee_gc_sleeve045\pattern_specification.json --body <GarmentCode>\assets\bodies\mean_all.obj --config config\drape\drape_v1.json --name sleeve045_v1 --out-root <runs>\C2PR --gc-root <GarmentCode> --blender "<blender.exe>"`
 
 ## 3. 되는 것 / 안 되는 것
 
@@ -110,3 +125,133 @@ Blender 5.2 cloth (blender_drape.py, 설정 configs/drape_v1.json)
 | 18 | 소매길이 시작점 | 프로토콜은 어깨 봉제선, C 패턴은 소매 윗선 시작(0.6 cm 차이) | B (C가 영향 수치 제공) |
 | 19 | 샘플 `READY`와 C 상태 대응 | 패턴 실패 → `FAILED` 또는 `DRAFT`. READY는 사람 검수 뒤에만 | B |
 | 20 | 실물 측정 세부 위치 | 가슴 = 겨드랑이 1 cm 아래 등 (`garments/MEASURING.md` 1장) | B |
+
+## 6. 설치·실행
+
+이전 `pipelines/garment/README.md`의 설치·실행 방법을 새 위치에 맞게 옮겼습니다.
+
+경로는 자리표시입니다: `<repo>` 이 저장소 루트, `<venv>` GarmentCode용 Python 3.9 가상환경, `<GarmentCode>` GarmentCode 루트,
+`<blender.exe>` Blender 5.2 실행 파일, `<runs>` 산출물 폴더(git 밖).
+(C의 개발 PC 예: `<repo>`=`C:\dev\fitruler-c2`, `<venv>`=`C:\dev\venvs\garmentcode`, `<GarmentCode>`=`C:\dev\GarmentCode`,
+`<blender.exe>`=`C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`, `<runs>`=`C:\dev\fitruler_c\runs`)
+
+### 두 가지 Python 환경
+
+| 환경 | 용도 | 설치 |
+|---|---|---|
+| 저장소 `.venv` (Python 3.10 이상) | 단위 테스트, ruff | `pip install -e ".[dev,garment]"` (garment 없이 `.[dev]`만 깔면 garment 테스트는 건너뜀) |
+| `<venv>` (Python 3.9) | GarmentCode export, `run_drape`, `analyze_drape` | 아래 "새 PC에서 설치" |
+| Blender 5.2 내장 Python | `blender_drape.py` | Blender 설치만. 스크립트가 저장소 루트를 직접 import 경로에 넣는다 |
+
+`<venv>`가 Python 3.9인 것은 이전 스파이크를 그대로 따른 것입니다. 그래서 `fitting/adapters/garmentcode/`와
+`run_drape`·`analyze_drape`·`drape_config`·`metrics`·`drape_measure`·`weld`는 Python 3.9 문법을 지킵니다.
+
+### 새 PC에서 설치
+
+Windows PowerShell 기준입니다. 경로에 한글·공백이 없는 곳(예: `C:\dev\...`)을 권합니다. C 확장 라이브러리와 Blender가 한글 경로에서 문제를 일으킨 적이 있습니다.
+
+```powershell
+# 1) Python 3.9 가상환경 (python.org 3.9.x 설치 뒤)
+<python39>\python.exe -m venv <venv>
+
+# 2) GarmentCode: clone, 커밋 고정, 설정 템플릿 복사 (원본 코드는 고치지 않는다)
+git clone https://github.com/maria-korosteleva/GarmentCode.git <GarmentCode>
+git -C <GarmentCode> checkout d449629979028123a5c4dc9e732a2ec19b7fce31
+Copy-Item <GarmentCode>\system.template.json <GarmentCode>\system.json
+
+# 3) Python 패키지 (이전 requirements.txt의 고정 버전) + pygarment(GarmentCode 편집 설치)
+<venv>\Scripts\python.exe -m pip install numpy==1.26.4 scipy==1.13.1 trimesh==4.12.2 libigl==2.6.3 `
+    cgal==6.0.1.post202410241521 svgpathtools==1.8.0 PyYAML==6.0.3 pytest==8.4.2
+<venv>\Scripts\python.exe -m pip install -e <GarmentCode>
+
+# 4) Blender 5.2 LTS를 blender.org에서 설치 (C 개발 PC: 5.2.3). 별도 설정은 없다.
+
+# 5) 저장소 .venv (Python 3.10 이상)
+cd <repo>
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[dev,garment]"
+```
+
+- GarmentCode 경로: `--gc-root` > 환경변수 `FIT_RULER_GC_ROOT` > `C:\dev\GarmentCode`.
+- Blender 경로: `--blender` > 환경변수 `BLENDER_EXE` > `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`.
+- `run_drape`는 export를 GarmentCode 루트에서 실행하고(`system.json`이 상대경로라서) `PYTHONPATH`에 GarmentCode 루트와
+  저장소 루트를 넣습니다. 그래서 `PYTHONPATH`는 따로 맞추지 않아도 됩니다. 편집 설치(.pth)만으로는 `import pygarment`가 되지 않습니다.
+- GPU는 필요 없습니다. GarmentCode 자체 시뮬레이터(NVIDIA warp)는 쓰지 않습니다.
+- libigl·cgal은 `<venv>`에만 설치합니다(이전 requirements.txt). 이 저장소의 `garment` 선택 의존성에는 넣지 않습니다.
+
+### 테스트
+
+| 필요한 것 | 테스트 (`tests/garment/`) | 실행 |
+|---|---|---|
+| `.[dev,garment]` | `test_coords`, `test_metrics`, `test_weld`, `test_drape_measure`, `test_pattern_measure` (42개) | `pytest` (CI와 같음). garment가 없으면 건너뜀 |
+| + GarmentCode와 `<venv>` | `test_export` 3개 (마커 `garmentcode`) | `pytest -m garmentcode`. 하위 프로세스 python은 환경변수 `FIT_RULER_GC_PYTHON`(기본 `C:\dev\venvs\garmentcode\Scripts\python.exe`) |
+| + Blender | `test_blender_import` 1개 (마커 `blender`): Blender 안에서 `blender_drape.py`의 패키지 import 확인 | `pytest -m blender` |
+
+### 착장 1회 (약 2~6분)
+
+`<repo>`에서 `<venv>`의 python으로 모듈로 실행합니다.
+
+```powershell
+<venv>\Scripts\python.exe -m fitting.adapters.blender.run_drape `
+  --spec tests\fixtures\garment\tee_gc_default\t-shirt__261103-16-24-09_specification.json `
+  --body <GarmentCode>\assets\bodies\mean_all.obj `
+  --config config\drape\drape_v1.json --name try1 --out-root <runs>\quick `
+  --gc-root <GarmentCode> --blender "<blender.exe>"
+```
+
+- 결과: `<runs>\quick\try1\drape_metrics.json`(`drape_ok`, `failed_checks`)과 `front.png`.
+- 옵션: `--out-root`(기본 `C:\dev\fitruler_c\runs\C1`), `--max-frames N`(짧은 시험용, 설정의 300 이하만), `--gc-root`, `--blender`.
+  출력 폴더가 이미 있으면 덮어쓰지 않고 멈춥니다.
+
+단계별로 따로 돌릴 때:
+
+```powershell
+# export (cwd = GarmentCode, PYTHONPATH = GarmentCode;저장소 루트)
+cd <GarmentCode>; $env:PYTHONPATH = '<GarmentCode>;<repo>'
+<venv>\Scripts\python.exe -m fitting.adapters.garmentcode.export_panels <spec.json> <body.obj> <out_dir> --config <drape_vN.json>
+# 착장
+& "<blender.exe>" --background --python <repo>\fitting\adapters\blender\blender_drape.py -- <out_dir>\drape_input.json <out_dir> <drape_vN.json> [max_frames]
+# Blender 없이 지표 재계산 (cwd = 저장소 루트)
+cd <repo>; <venv>\Scripts\python.exe -m fitting.adapters.blender.analyze_drape <out_dir>
+# 설정에서 값 하나만 바꾼 실험 설정 만들기
+python -m tools.make_drape_config config\drape\drape_v1.json <out.json> --name ... --version ... --description ... --set cloth.mass=0.0001
+```
+
+설정 값을 바꿀 때는 파일을 고치지 말고 새 버전 파일을 만듭니다. 한 번에 한 값만 바꿉니다.
+모든 지표 JSON에 설정 파일 이름·버전·sha256이 들어갑니다. `config/drape/*.json`은 `.gitattributes`로 LF가 고정되어
+체크아웃마다 같은 해시가 나옵니다. `tests/fixtures/garment/`는 GarmentCode가 만든 바이트(CRLF 포함)를 그대로 둡니다(`-text`).
+
+### 산출물 (`<runs>\<단계>\<name>\`, git 제외)
+
+| 파일 | 내용 |
+|---|---|
+| `drape_input.json` | 패널 메시, 봉제 쌍, 몸 메시, 변환 기록, 입력 sha256, 설정 기록 |
+| `drape.blend` | 착장 장면 |
+| `garment_draped.obj` | 착장된 옷 (Z 위, 6자리 반올림) |
+| `garment_draped_co.npy` | 착장된 옷 정점 좌표 (float64 원값, 재계산·결정성 비교용) |
+| `garment_ref_co.npy` | 중력 반응 기준 프레임(용접 직후) 좌표 |
+| `drape_trace.json` | 프레임별 이동량 중앙값, 최종 면 중심 부호 거리 |
+| `drape_metrics.json` | 착장 검사 결과 + `error_code`, 설정 기록, 프레임·시간 |
+| `analysis.json` | Blender 없이 다시 계산한 지표, 일치 여부, 패널·봉제선별 요약 |
+| `front.png` | 착장 확인용 정면 이미지 (Workbench). 명세서 6장 렌더 클립이 아니다 |
+| `run_summary.json`, `*_log.txt` | 단계별 시간·종료 코드, 상태, 오류 코드 |
+
+오류 코드(명세서 12장): export 실패 `GARMENT_NOT_READY`, 검사 실패·착장 10분 초과 `DRAPE_INVALID`.
+
+### 옮긴 뒤 재실행 (2026-11-11, 견본 1, drape_v1, mean_all)
+
+새 위치의 `run_drape`로 한 번 돌려 이전 저장소 결과와 비교했습니다. 출력은 `C:\dev\fitruler_c\runs\C2_migrated\v1_a\`(git 밖)입니다.
+
+| 지표 | 이전 C2 `v1_a` | 이전 Csync `sync_fx_v1` | 옮긴 뒤 `C2_migrated/v1_a` |
+|---|---|---|---|
+| frames | 110 | 110 | 110 |
+| penetration_area_ratio | 0.0 | 0.0 | 0.0 |
+| stretch_max | 1.454 | 1.454 | 1.454 |
+| seam_gap_max_mm (용접 뒤) | 0.0 | 0.0 | 0.0 |
+| seam_gap_preweld_max_mm | 6.81 | 6.81 | 6.81 |
+| drape_ok | true | true | true |
+| sim_seconds | 76.1 | 151.8 | 77.0 |
+
+- 착장 좌표(`garment_draped_co.npy`)가 세 실행 모두 비트 단위로 같습니다. `garment_ref_co.npy`와 `analysis.json`(오프라인 재계산 일치, 착장 후 측정)도 Csync와 같습니다.
+- `drape_metrics.json`은 Csync와 키가 모두 같고, 다른 값은 시간(`sim_seconds`, `weld.relax_seconds`)뿐입니다.
+  C2 `v1_a`는 진단 키(`stretch_min`, `stretch_p01`, `gravity_response`)가 생기기 전 실행이라 그 키가 없습니다.
