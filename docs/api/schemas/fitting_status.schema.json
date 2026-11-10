@@ -5,6 +5,7 @@
       "enum": [
         "INPUT_INVALID",
         "GARMENT_NOT_READY",
+        "GARMENT_NOT_FOUND",
         "BODY_FIT_NOT_CONVERGED",
         "DRAPE_INVALID",
         "RENDER_FAILED",
@@ -119,6 +120,11 @@
             }
           ],
           "title": "Garment Cm"
+        },
+        "is_estimated": {
+          "default": false,
+          "title": "Is Estimated",
+          "type": "boolean"
         },
         "label": {
           "$ref": "#/$defs/FitLabel"

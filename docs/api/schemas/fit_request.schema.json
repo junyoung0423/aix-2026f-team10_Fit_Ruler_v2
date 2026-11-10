@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "Measurements": {
+      "additionalProperties": false,
+      "description": "사용자가 입력하는 다섯 신체 치수. 단위는 cm이다.",
+      "properties": {
+        "arm_length_cm": {
+          "description": "오른쪽 어깨끝에서 팔꿈치를 거쳐 손목 기준점까지. 약하게 굽힌 표준 측정 자세 사용",
+          "maximum": 85.0,
+          "minimum": 40.0,
+          "title": "Arm Length Cm",
+          "type": "number"
+        },
+        "chest_cm": {
+          "description": "가슴이 가장 돌출된 수평 위치의 둘레. 줄자를 당기지 않음",
+          "maximum": 160.0,
+          "minimum": 60.0,
+          "title": "Chest Cm",
+          "type": "number"
+        },
+        "height_cm": {
+          "description": "맨발로 선 상태의 바닥부터 정수리까지 수직 높이",
+          "maximum": 210.0,
+          "minimum": 140.0,
+          "title": "Height Cm",
+          "type": "number"
+        },
+        "shoulder_cm": {
+          "description": "좌우 어깨끝 기준점 사이의 직선 거리. 몸 표면을 따른 곡선 길이와 구분",
+          "maximum": 60.0,
+          "minimum": 28.0,
+          "title": "Shoulder Cm",
+          "type": "number"
+        },
+        "waist_cm": {
+          "description": "자연 허리 위치의 수평 둘레. 배꼽 둘레와 구분",
+          "maximum": 160.0,
+          "minimum": 50.0,
+          "title": "Waist Cm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "height_cm",
+        "chest_cm",
+        "waist_cm",
+        "shoulder_cm",
+        "arm_length_cm"
+      ],
+      "title": "Measurements",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "POST /api/fit 요청 본문 (#2). `FittingRequest`에서 `mode`·`realize_consent`를 뺀 모양이다.\n\n핏 리포트만 즉시 계산한다(3D·AI 없음). 다섯 신체 치수의 범위는 `Measurements`와 같다.",
+  "properties": {
+    "garment_variant_id": {
+      "minLength": 1,
+      "title": "Garment Variant Id",
+      "type": "string"
+    },
+    "measurement_protocol_version": {
+      "enum": [
+        "measure_v1"
+      ],
+      "title": "Measurement Protocol Version",
+      "type": "string"
+    },
+    "measurements": {
+      "$ref": "#/$defs/Measurements"
+    }
+  },
+  "required": [
+    "garment_variant_id",
+    "measurements",
+    "measurement_protocol_version"
+  ],
+  "title": "FitRequest",
+  "type": "object"
+}

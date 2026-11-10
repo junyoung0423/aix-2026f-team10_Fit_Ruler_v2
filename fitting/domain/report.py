@@ -25,6 +25,9 @@ class RegionResult(BaseModel):
     label: FitLabel
     reason_code: ReasonCode | None = None
     explanation: str
+    # 입력에 없는 신체 위치를 추정해 비교했는지 (#2, 활동지 61행). true면 body_cm은 추정값이고
+    # 화면에 추정임을 표시한다. 지금은 총장(body_length)에만 쓰고, 기준표에서 끄면 항상 false다.
+    is_estimated: bool = False
 
 
 class FitReport(BaseModel):

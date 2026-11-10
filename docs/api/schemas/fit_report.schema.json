@@ -79,6 +79,11 @@
           ],
           "title": "Garment Cm"
         },
+        "is_estimated": {
+          "default": false,
+          "title": "Is Estimated",
+          "type": "boolean"
+        },
         "label": {
           "$ref": "#/$defs/FitLabel"
         },

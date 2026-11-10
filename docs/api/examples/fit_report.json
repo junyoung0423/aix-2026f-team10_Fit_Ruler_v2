@@ -7,6 +7,7 @@
       "ease_cm": 8.0,
       "explanation": "가슴둘레가 몸보다 8.0 cm 커서 초기 기준상 기본 여유에 해당합니다.",
       "garment_cm": 108.0,
+      "is_estimated": false,
       "label": "REGULAR",
       "reason_code": null,
       "region": "chest"
@@ -16,6 +17,7 @@
       "ease_cm": 2.0,
       "explanation": "어깨너비가 몸보다 2.0 cm 커서 초기 기준상 기본 범위에 해당합니다. 어깨 여유는 양쪽을 합한 값이며 한쪽 어깨당 값이 아닙니다.",
       "garment_cm": 46.0,
+      "is_estimated": false,
       "label": "REGULAR",
       "reason_code": null,
       "region": "shoulder"
@@ -25,6 +27,7 @@
       "ease_cm": 16.0,
       "explanation": "허리둘레가 몸보다 16.0 cm 커서 초기 기준상 넉넉에 해당합니다.",
       "garment_cm": 96.0,
+      "is_estimated": false,
       "label": "LOOSE",
       "reason_code": null,
       "region": "waist"
@@ -34,6 +37,7 @@
       "ease_cm": null,
       "explanation": "소매 실측 22.0 cm입니다. 사람의 전체 팔길이와 직접 비교하지 않아 적정 여부는 판단하지 않습니다.",
       "garment_cm": 22.0,
+      "is_estimated": false,
       "label": "NOT_EVALUATED",
       "reason_code": "NO_DIRECT_BODY_COUNTERPART",
       "region": "sleeve"
@@ -43,6 +47,7 @@
       "ease_cm": null,
       "explanation": "기장 실측 70.0 cm입니다. 몸통 길이 입력이 없어 적정 기장은 판단하지 않습니다.",
       "garment_cm": 70.0,
+      "is_estimated": false,
       "label": "NOT_EVALUATED",
       "reason_code": "BODY_INPUT_NOT_PROVIDED",
       "region": "body_length"
