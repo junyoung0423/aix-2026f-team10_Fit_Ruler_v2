@@ -1,5 +1,5 @@
 import { ApiError, type FittingApi } from '../api/api';
-import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL, MEASUREMENT_RANGES } from '../api/contract';
+import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL, MEASUREMENT_RANGES, type MeasurementField } from '../api/contract';
 import type {
   ErrorCode,
   FieldError,
@@ -70,6 +70,8 @@ export interface MockApiOptions {
   storage?: Storage | null;
   /** 실패를 흉내 낼 단계. 기본은 주소의 ?mockFail= 값(body·drape·render·realize·validate). */
   failStage?: () => Stage | null;
+  /** 서버가 거절한 것처럼 422를 돌려줄 치수 칸. 기본은 주소의 ?mockReject= 값(height_cm 등). */
+  rejectField?: () => MeasurementField | null;
 }
 
 const STORAGE_KEY = 'fit-ruler.mock-jobs.v2';
@@ -79,6 +81,7 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
   const latencyMs = options.latencyMs ?? 300;
   const storage = options.storage === undefined ? sessionStorageOrNull() : options.storage;
   const failStage = options.failStage ?? failStageFromUrl;
+  const rejectField = options.rejectField ?? rejectFieldFromUrl;
   const jobs = new Map<string, JobRecord>(loadJobs(storage).map((record) => [record.jobId, record]));
   const isoNow = () => new Date(now()).toISOString();
 
@@ -90,7 +93,7 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
 
     async fit(request: FitRequest) {
       await wait(latencyMs);
-      validateRequest(request);
+      validateRequest(request, rejectField());
       const garment = findGarment(request.garment_variant_id);
       if (notComputableReason(garment, request.measurement_protocol_version)) throw garmentNotReady();
       return computeFitReport(request.measurements, garment, { jobId: makeId('fit', now()), createdAt: isoNow() });
@@ -98,7 +101,7 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
 
     async createFitting(request: FittingRequest) {
       await wait(latencyMs);
-      validateRequest(request);
+      validateRequest(request, rejectField());
       const garment = findGarment(request.garment_variant_id);
       const createdAt = now();
       const jobId = makeId('job', createdAt);
@@ -260,8 +263,11 @@ function status(
   return { schema_version: 'v1', job_id: jobId, status: jobStatus, report, visual, stages };
 }
 
-/** 서버(B2)의 입력 검사를 흉내 낸다. 오류 형식과 문구는 `server/errors.py`와 같다. */
-function validateRequest(request: FitRequest): void {
+/**
+ * 서버(B2)의 입력 검사를 흉내 낸다. 오류 형식과 문구는 `server/errors.py`와 같다.
+ * rejectField가 있으면 범위 안의 값이어도 그 칸을 서버가 거절한 것처럼 만든다(화면 확인용).
+ */
+function validateRequest(request: FitRequest, rejectField: MeasurementField | null = null): void {
   const fields: FieldError[] = [];
   if (!request.garment_variant_id) {
     fields.push({ field: 'garment_variant_id', code: 'INVALID', message: '의류 값의 형식이 올바르지 않습니다.' });
@@ -288,6 +294,13 @@ function validateRequest(request: FitRequest): void {
       }
     }
   }
+  if (rejectField && !fields.some((item) => item.field === `measurements.${rejectField}`)) {
+    fields.push({
+      field: `measurements.${rejectField}`,
+      code: 'INVALID',
+      message: `${MEASUREMENT_LABEL[rejectField]} 값을 서버가 받지 않았습니다. 다시 재서 입력해 주세요. (가짜 API)`,
+    });
+  }
   if (fields.length > 0) throw new ApiError(422, 'INPUT_INVALID', '입력한 값을 확인해 주세요.', fields);
 }
 
@@ -306,6 +319,12 @@ function failStageFromUrl(): Stage | null {
   if (typeof window === 'undefined') return null;
   const value = new URLSearchParams(window.location.search).get('mockFail')?.toLowerCase() ?? '';
   return FAIL_ALIASES[value] ?? null;
+}
+
+function rejectFieldFromUrl(): MeasurementField | null {
+  if (typeof window === 'undefined') return null;
+  const value = new URLSearchParams(window.location.search).get('mockReject') ?? '';
+  return MEASUREMENT_FIELDS.find((field) => field === value) ?? null;
 }
 
 function makeId(prefix: string, at: number): string {
