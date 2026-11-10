@@ -1,7 +1,8 @@
-import numpy as np
 import pytest
 
-import drape_measure as dm
+np = pytest.importorskip("numpy", reason="garment 선택 의존성 필요: pip install -e .[garment]")
+
+from fitting.adapters.blender import drape_measure as dm  # noqa: E402
 
 # 한 패널: 2D 10 x 10 cm 정사각형(삼각형 2개). 3D 좌표는 2D x 0.01 (m)
 UV = [[0, 0], [10, 0], [10, 10], [0, 10]]

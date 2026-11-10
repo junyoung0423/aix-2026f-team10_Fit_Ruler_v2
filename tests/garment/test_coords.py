@@ -1,6 +1,14 @@
-import numpy as np
+import pytest
 
-from coords import BODY_SCALE, GARMENT_SCALE, GC_TO_SPEC, to_spec, transform_record
+np = pytest.importorskip("numpy", reason="garment 선택 의존성 필요: pip install -e .[garment]")
+
+from fitting.adapters.garmentcode.coords import (  # noqa: E402
+    BODY_SCALE,
+    GARMENT_SCALE,
+    GC_TO_SPEC,
+    to_spec,
+    transform_record,
+)
 
 
 def test_rotation_is_proper():

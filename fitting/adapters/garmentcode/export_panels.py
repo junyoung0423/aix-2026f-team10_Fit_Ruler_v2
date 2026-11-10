@@ -6,21 +6,25 @@ BoxMesh는 봉제선 정점을 하나로 합쳐 저장하지만, Blender의 sewi
 
 좌표는 coords.py(명세서 6장 규약)로 바꾼다. 의류 실측은 바꾸지 않는다(R06): 축 회전과 cm->m만 한다.
 
-사용 (cwd=C:\\dev\\GarmentCode, PYTHONPATH=C:\\dev\\GarmentCode, 가상환경 garmentcode):
-    python export_panels.py <spec.json> <body.obj> <out_dir> --config <drape_vN.json>
+사용 (cwd=C:\\dev\\GarmentCode, PYTHONPATH=C:\\dev\\GarmentCode;<저장소 루트>, 가상환경 garmentcode):
+    python -m fitting.adapters.garmentcode.export_panels <spec.json> <body.obj> <out_dir> \
+        --config <drape_vN.json>
 """
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 import trimesh
 from pygarment.meshgen.boxmeshgen import BoxMesh, Edge
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from coords import BODY_SCALE, GARMENT_SCALE, to_spec, transform_record  # noqa: E402
-from drape_config import load_config, sha256_file  # noqa: E402
+from fitting.adapters.blender.drape_config import load_config, sha256_file
+from fitting.adapters.garmentcode.coords import (
+    BODY_SCALE,
+    GARMENT_SCALE,
+    to_spec,
+    transform_record,
+)
 
 # GarmentCode 2.0.2 버그: res > 1.0에서 짧은 모서리 경고를 출력할 때 없는 Edge.name을 참조한다.
 # 원본 코드는 고치지 않고 여기서 클래스 속성만 채운다.
@@ -35,7 +39,9 @@ def collect_stitch_pairs(box, offsets):
         if len(r1) != len(r2):
             raise ValueError(f'stitch {sid}: vertex count mismatch {len(r1)} != {len(r2)}')
         o1, o2 = offsets[stitch.panel_1], offsets[stitch.panel_2]
-        for a, b in zip(r1, r2):
+        # strict=는 Python 3.10부터라 쓰지 않는다(이 파일은 GarmentCode용 Python 3.9에서 돈다).
+        # 길이는 바로 위에서 같은지 확인한다.
+        for a, b in zip(r1, r2):  # noqa: B905
             if stitch.panel_1 == stitch.panel_2 and a == b:
                 continue
             pairs.append([int(o1 + a), int(o2 + b), sid])

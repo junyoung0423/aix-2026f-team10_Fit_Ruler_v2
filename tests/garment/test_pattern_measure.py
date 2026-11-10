@@ -4,7 +4,11 @@ import math
 
 import pytest
 
-import pattern_measure as pm
+pytest.importorskip("numpy", reason="garment 선택 의존성 필요: pip install -e .[garment]")
+pytest.importorskip("scipy", reason="garment 선택 의존성 필요: pip install -e .[garment]")
+pytest.importorskip("svgpathtools", reason="garment 선택 의존성 필요: pip install -e .[garment]")
+
+from fitting.adapters.garmentcode import pattern_measure as pm  # noqa: E402
 
 
 def mirror(verts):
@@ -100,7 +104,8 @@ def test_wrong_seam_structure_raises():
 def test_garmentcode_default_tee_fixture():
     import json
     from pathlib import Path
-    p = Path(__file__).resolve().parents[1] / 'fixtures' / 'tee_gc_default' / 't-shirt__261103-16-24-09_specification.json'
+    p = (Path(__file__).resolve().parents[1] / 'fixtures' / 'garment' / 'tee_gc_default'
+         / 't-shirt__261103-16-24-09_specification.json')
     m, _ = pm.measure(json.loads(p.read_text(encoding='utf-8')))
     # GarmentCode 식으로 손 계산: 가슴 = shirt.width x bust = 1.05 x 99.8407 = 104.833
     assert m['chest_girth_cm'] == pytest.approx(1.05 * 99.8407, abs=0.01)

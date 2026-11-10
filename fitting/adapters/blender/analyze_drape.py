@@ -3,22 +3,19 @@
 같은 메시에 같은 결과가 나오는지 보려고 blender_drape.py와 같은 metrics.evaluate를 쓴다.
 침투의 부호 거리는 Blender BVH 결과(drape_trace.json)를 그대로 받는다.
 
-사용: python analyze_drape.py <run_dir> [--config <drape_vN.json>]
+사용 (저장소 루트에서): python -m fitting.adapters.blender.analyze_drape <run_dir> [--config <drape_vN.json>]
     run_dir 안의 drape_input.json, garment_draped_co.npy, drape_trace.json, drape_metrics.json을 읽어
     analysis.json을 쓴다.
 """
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import drape_measure  # noqa: E402
-import metrics  # noqa: E402
-import pattern_measure  # noqa: E402
-from drape_config import load_config  # noqa: E402
+from fitting.adapters.blender import drape_measure, metrics
+from fitting.adapters.blender.drape_config import load_config
+from fitting.adapters.garmentcode import pattern_measure
 
 COMPARED_KEYS = ('stable_last10_median_mm', 'stable_ok', 'penetration_area_ratio', 'penetration_ok',
                  'penetration_status', 'penetration_unknown_faces', 'stretch_max', 'stretch_p99',

@@ -1,6 +1,6 @@
 """Blender 봉제·착장 (명세서 6장 "사용자별 착장과 원본 렌더").
 
-export_panels.py가 만든 drape_input.json과 설정 파일(configs/drape_vN.json)을 읽어
+export_panels.py가 만든 drape_input.json과 설정 파일(config/drape/drape_vN.json)을 읽어
   1) 떨어진 패널 + 봉제선 loose edge로 옷 메시를 만들고
   2) 몸에 충돌, 옷에 천(봉제 스프링, 자기 충돌)을 설정한 뒤
   3) 처음 sew_frames 동안은 중력 없이 봉제하고, 이후 중력을 켜 안정화한다.
@@ -10,7 +10,8 @@ export_panels.py가 만든 drape_input.json과 설정 파일(configs/drape_vN.js
 시뮬레이션·재질·충돌 값은 모두 설정 파일에서 읽는다. 이 파일에 수치 상수를 두지 않는다.
 
 사용:
-    blender --background --python blender_drape.py -- <drape_input.json> <out_dir> <config.json> [max_frames]
+    blender --background --python fitting/adapters/blender/blender_drape.py -- \
+        <drape_input.json> <out_dir> <config.json> [max_frames]
 """
 import json
 import math
@@ -22,10 +23,15 @@ import bpy
 import numpy as np
 from mathutils.bvhtree import BVHTree
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import metrics  # noqa: E402
-import weld  # noqa: E402
-from drape_config import load_config, sha256_file  # noqa: E402
+# 이 파일은 `blender --background --python <이 파일>`로 Blender 안의 Python에서 실행된다.
+# Blender의 Python에는 이 저장소가 설치되어 있지 않고 cwd도 정해져 있지 않아 패키지 import가
+# 되지 않으므로, 여기서만 예외로 저장소 루트(fitting/adapters/blender/의 3단계 위)를
+# sys.path에 넣는다.
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from fitting.adapters.blender import metrics, weld  # noqa: E402
+from fitting.adapters.blender.drape_config import load_config, sha256_file  # noqa: E402
 
 
 def parse_args():

@@ -1,13 +1,14 @@
 import json
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-import metrics
-from drape_config import load_config
+np = pytest.importorskip("numpy", reason="garment 선택 의존성 필요: pip install -e .[garment]")
 
-CONFIG = Path(__file__).resolve().parents[1] / 'configs' / 'drape_v0.json'
+from fitting.adapters.blender import metrics  # noqa: E402
+from fitting.adapters.blender.drape_config import load_config  # noqa: E402
+
+CONFIG = Path(__file__).resolve().parents[2] / 'config' / 'drape' / 'drape_v0.json'
 TH, _ = load_config(CONFIG)
 TH = TH['thresholds']
 

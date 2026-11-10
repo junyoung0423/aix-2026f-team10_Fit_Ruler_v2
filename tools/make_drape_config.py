@@ -1,7 +1,7 @@
 """기존 설정에서 값 하나(또는 몇 개)만 바꾼 새 설정 파일을 만든다. 원본 설정은 건드리지 않는다.
 
 사용:
-    python make_config.py <base.json> <out.json> --name drape_c2_e02 --version 0.2.0-e02 \
+    python -m tools.make_drape_config <base.json> <out.json> --name drape_c2_e02 --version 0.2.0-e02 \
         --description "mass 0.3 -> 0.0001" --set cloth.mass=0.0001
 값은 JSON으로 해석한다(숫자, true/false, 문자열은 "\"x\"").
 """

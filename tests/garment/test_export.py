@@ -1,31 +1,47 @@
-"""GarmentCode 패턴 export 시험. GarmentCode가 필요하므로 cwd/PYTHONPATH를 맞춰 하위 프로세스로 돌린다."""
+"""GarmentCode 패턴 export 시험.
+
+GarmentCode가 필요하므로 cwd/PYTHONPATH를 맞춰 하위 프로세스로 돌린다.
+마커 garmentcode: CI에서는 빠진다. 로컬 실행: pytest -m garmentcode
+하위 프로세스는 GarmentCode용 가상환경(Python 3.9)의 python으로 돌린다.
+이 저장소는 Python 3.10 이상이라 pytest와 같은 인터프리터로는 pygarment를 쓸 수 없다.
+경로는 환경변수 FIT_RULER_GC_PYTHON으로 바꾼다.
+"""
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-from drape_config import load_config
+np = pytest.importorskip("numpy", reason="garment 선택 의존성 필요: pip install -e .[garment]")
 
-HERE = Path(__file__).resolve().parents[1]
+from fitting.adapters.blender.drape_config import load_config  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 GC_ROOT = Path(os.environ.get('FIT_RULER_GC_ROOT') or r'C:\dev\GarmentCode')
-SPEC = HERE / 'fixtures' / 'tee_gc_default' / 't-shirt__261103-16-24-09_specification.json'
+GC_PYTHON = Path(os.environ.get('FIT_RULER_GC_PYTHON')
+                 or r'C:\dev\venvs\garmentcode\Scripts\python.exe')
+SPEC = (REPO_ROOT / 'tests' / 'fixtures' / 'garment' / 'tee_gc_default'
+        / 't-shirt__261103-16-24-09_specification.json')
 BODY = GC_ROOT / 'assets' / 'bodies' / 'mean_all.obj'
-CONFIG = HERE / 'configs' / 'drape_v0.json'
+CONFIG = REPO_ROOT / 'config' / 'drape' / 'drape_v0.json'
 
-# 실행은 GarmentCode 루트를 PYTHONPATH에 넣어 import한다(편집 설치 .pth만으로는 import되지 않음)
+# 실행은 GarmentCode 루트를 PYTHONPATH에 넣어 import한다(편집 설치 .pth만으로는 import되지 않음).
+# export_panels는 패키지 모듈이라 저장소 루트도 PYTHONPATH 뒤에 붙인다.
 _HAS_PYGARMENT = (GC_ROOT / 'pygarment' / '__init__.py').is_file()
-pytestmark = pytest.mark.skipif(not (BODY.exists() and _HAS_PYGARMENT),
-                                reason='GarmentCode not installed (FIT_RULER_GC_ROOT, pygarment)')
+pytestmark = [
+    pytest.mark.garmentcode,
+    pytest.mark.skipif(not (BODY.exists() and _HAS_PYGARMENT and GC_PYTHON.exists()),
+                       reason='GarmentCode not installed '
+                              '(FIT_RULER_GC_ROOT, FIT_RULER_GC_PYTHON, pygarment)'),
+]
+GC_ENV = dict(os.environ, PYTHONPATH=os.pathsep.join([str(GC_ROOT), str(REPO_ROOT)]),
+              PYTHONIOENCODING='utf-8')
 
 PROBE = r'''
 import json, sys
-sys.path.insert(0, sys.argv[1])
-from export_panels import export_garment
-box, gv, gf, pov, panels, pairs = export_garment(sys.argv[2], float(sys.argv[3]))
+from fitting.adapters.garmentcode.export_panels import export_garment
+box, gv, gf, pov, panels, pairs = export_garment(sys.argv[1], float(sys.argv[2]))
 counts = []
 for sid, st in enumerate(box.stitches):
     r1, r2 = box._swap_stitch_ranges(st)
@@ -39,9 +55,8 @@ print(json.dumps({'n_verts': len(gv), 'n_faces': len(gf), 'n_panels': len(panels
 @pytest.fixture(scope='module')
 def probe():
     res = load_config(CONFIG)[0]['export']['mesh_resolution_cm']
-    env = dict(os.environ, PYTHONPATH=str(GC_ROOT), PYTHONIOENCODING='utf-8')
-    p = subprocess.run([sys.executable, '-c', PROBE, str(HERE), str(SPEC), str(res)], cwd=str(GC_ROOT),
-                       env=env, capture_output=True, text=True, encoding='utf-8', check=True)
+    p = subprocess.run([str(GC_PYTHON), '-c', PROBE, str(SPEC), str(res)], cwd=str(GC_ROOT),
+                       env=GC_ENV, capture_output=True, text=True, encoding='utf-8', check=True)
     return json.loads(p.stdout.strip().splitlines()[-1])
 
 
@@ -59,9 +74,9 @@ def test_stitch_pairs_equal_both_sides(probe):
 
 
 def test_export_file(tmp_path):
-    env = dict(os.environ, PYTHONPATH=str(GC_ROOT), PYTHONIOENCODING='utf-8')
-    subprocess.run([sys.executable, str(HERE / 'export_panels.py'), str(SPEC), str(BODY), str(tmp_path),
-                    '--config', str(CONFIG)], cwd=str(GC_ROOT), env=env, check=True, capture_output=True)
+    subprocess.run([str(GC_PYTHON), '-m', 'fitting.adapters.garmentcode.export_panels', str(SPEC),
+                    str(BODY), str(tmp_path), '--config', str(CONFIG)],
+                   cwd=str(GC_ROOT), env=GC_ENV, check=True, capture_output=True)
     d = json.loads((tmp_path / 'drape_input.json').read_text(encoding='utf-8'))
     assert d['units'] == 'm' and d['axes'] == {'up': '+Z', 'front': '-Y'}
     assert d['config']['name'] == 'drape_v0' and len(d['config']['sha256']) == 64

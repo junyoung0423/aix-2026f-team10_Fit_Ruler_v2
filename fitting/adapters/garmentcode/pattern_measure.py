@@ -233,7 +233,7 @@ def canonical_pattern(spec):
     GarmentCode는 같은 입력에서도 패널·봉제선 저장 순서가 실행마다 바뀔 수 있어(C3 확인) 파일 sha256과 함께 쓴다."""
     import json as _json
     p = spec['pattern'] if 'pattern' in spec else spec
-    st = sorted((_json.dumps(sorted(s, key=lambda x: (x['panel'], x['edge'])), sort_keys=True) for s in p['stitches']))
+    st = sorted(_json.dumps(sorted(s, key=lambda x: (x['panel'], x['edge'])), sort_keys=True) for s in p['stitches'])
     return {'panels': p['panels'], 'stitches': st, 'panel_order': sorted(p.get('panel_order', []))}
 
 

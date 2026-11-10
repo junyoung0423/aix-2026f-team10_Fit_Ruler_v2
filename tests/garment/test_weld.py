@@ -1,7 +1,8 @@
-import numpy as np
+import pytest
 
-import metrics
-import weld
+np = pytest.importorskip("numpy", reason="garment 선택 의존성 필요: pip install -e .[garment]")
+
+from fitting.adapters.blender import metrics, weld  # noqa: E402
 
 # 두 패널(각 삼각형 2개)을 변 하나로 봉제: 패널 A 정점 0-3, 패널 B 정점 4-7, 봉제 (1,4),(2,7)
 A = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], float)

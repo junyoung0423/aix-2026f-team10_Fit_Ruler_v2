@@ -1,14 +1,15 @@
 """패턴 JSON + 몸 OBJ + 설정 -> export -> Blender 착장 -> 분석을 한 번에 실행한다.
 
-가상환경 garmentcode의 python으로 실행한다:
-    C:\\dev\\venvs\\garmentcode\\Scripts\\python.exe pipelines\\garment\\run_drape.py \\
-        --spec pipelines\\garment\\fixtures\\tee_gc_default\\t-shirt__261103-16-24-09_specification.json \\
+저장소 루트에서 가상환경 garmentcode의 python으로 모듈로 실행한다:
+    C:\\dev\\venvs\\garmentcode\\Scripts\\python.exe -m fitting.adapters.blender.run_drape \\
+        --spec tests\\fixtures\\garment\\tee_gc_default\\t-shirt__261103-16-24-09_specification.json \\
         --body C:\\dev\\GarmentCode\\assets\\bodies\\mean_all.obj \\
-        --config pipelines\\garment\\configs\\drape_v0.json --name tee_base
+        --config config\\drape\\drape_v0.json --name tee_base
 
 출력: <out-root>\\<name>\\ (기본 C:\\dev\\fitruler_c\\runs\\C1). 이미 있으면 덮어쓰지 않고 멈춘다.
 오류 코드(명세서 12장): export 실패 GARMENT_NOT_READY, 착장 검사 실패·시간 초과 DRAPE_INVALID.
 같은 입력으로 자동 반복하지 않는다(명세서 11장).
+Blender 실행 파일은 --blender, 없으면 환경변수 BLENDER_EXE, 그것도 없으면 Blender 5.2 기본 설치 경로.
 """
 import argparse
 import json
@@ -18,12 +19,14 @@ import sys
 import time
 from pathlib import Path
 
+from fitting.adapters.blender.drape_config import load_config, sha256_file
+
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-from drape_config import load_config, sha256_file  # noqa: E402
+REPO_ROOT = HERE.parents[2]  # fitting/adapters/blender/ -> 저장소 루트
 
 DEFAULT_GC_ROOT = Path(os.environ.get('FIT_RULER_GC_ROOT') or r'C:\dev\GarmentCode')
-DEFAULT_BLENDER = Path(r'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe')
+DEFAULT_BLENDER = Path(os.environ.get('BLENDER_EXE')
+                       or r'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe')
 DEFAULT_OUT_ROOT = Path(r'C:\dev\fitruler_c\runs\C1')
 
 
@@ -94,9 +97,12 @@ def main():
         print(json.dumps({k: summary[k] for k in ('name', 'status', 'error_code', 'reason')}, ensure_ascii=False))
         sys.exit(0 if status == 'SUCCEEDED' else 1)
 
-    # 1) export (GarmentCode는 system.json 상대경로 때문에 cwd·PYTHONPATH를 GarmentCode 루트로)
-    rec = run_step('export', [sys.executable, HERE / 'export_panels.py', spec, body, out, '--config', cfg_path],
-                   out / 'export_log.txt', cwd=str(gc_root), extra_env={'PYTHONPATH': str(gc_root)})
+    # 1) export (GarmentCode는 system.json 상대경로 때문에 cwd·PYTHONPATH를 GarmentCode 루트로.
+    #    export_panels는 패키지 모듈이라 저장소 루트도 PYTHONPATH 뒤에 붙인다)
+    rec = run_step('export', [sys.executable, '-m', 'fitting.adapters.garmentcode.export_panels',
+                              spec, body, out, '--config', cfg_path],
+                   out / 'export_log.txt', cwd=str(gc_root),
+                   extra_env={'PYTHONPATH': os.pathsep.join([str(gc_root), str(REPO_ROOT)])})
     summary['steps'].append(rec)
     if rec['returncode'] != 0:
         finish('FAILED', 'GARMENT_NOT_READY', 'export failed (see export_log.txt)')
@@ -118,8 +124,10 @@ def main():
     summary['drape_metrics'] = m
 
     # 3) Blender 없이 지표 재계산 + 패널·봉제선별 요약
-    rec = run_step('analyze', [sys.executable, HERE / 'analyze_drape.py', out, '--config', cfg_path],
-                   out / 'analyze_log.txt')
+    # analyze_drape는 패키지 모듈이라 cwd를 저장소 루트로 두고 -m으로 실행한다(입출력 경로는 절대경로)
+    rec = run_step('analyze', [sys.executable, '-m', 'fitting.adapters.blender.analyze_drape',
+                               out, '--config', cfg_path],
+                   out / 'analyze_log.txt', cwd=str(REPO_ROOT))
     summary['steps'].append(rec)
     if rec['returncode'] == 0:
         a = json.loads((out / 'analysis.json').read_text(encoding='utf-8'))
