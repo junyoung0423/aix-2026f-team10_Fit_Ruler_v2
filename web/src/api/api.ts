@@ -53,6 +53,17 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 작업 API(`POST /api/fittings`, B3)가 아직 없어서 실패했는지.
+ * - 경로가 없으면 계약 형식이 아닌 404(FastAPI 기본 응답 `{"detail": "Not Found"}`)가 온다.
+ * - 작업 서버에 닿지 못하면 NETWORK_ERROR다.
+ * 이 두 경우만 핏 리포트만 보여 주고, 계약 오류(422·404 GARMENT_NOT_FOUND·409)나 500 등은 화면에 오류로 보여 준다.
+ */
+export function isFittingApiMissing(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  return error.code === 'NETWORK_ERROR' || (error.status === 404 && error.code === 'UNEXPECTED_RESPONSE');
+}
+
 /** 화면에 보여 줄 오류 문구. 서버의 safe_message를 그대로 쓴다. */
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;

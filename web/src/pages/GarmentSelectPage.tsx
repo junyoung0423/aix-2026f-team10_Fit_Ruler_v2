@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { ApiError, errorMessage } from '../api/api';
+import { ApiError, errorMessage, isFittingApiMissing } from '../api/api';
 import { api } from '../api/client';
 import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL } from '../api/contract';
 import type { FitRequest, FittingStatus, GarmentListItem, Measurements } from '../api/types';
@@ -60,12 +60,13 @@ export function GarmentSelectPage() {
     try {
       // 1) 핏 리포트는 3D·AI 없이 바로 계산한다 (POST /api/fit, B2)
       const report = await api.fit(fitRequest);
-      // 2) 3D·실사화 작업 (POST /api/fittings, B3). 아직 없는 서버면 리포트만 보여 준다.
+      // 2) 3D·실사화 작업 (POST /api/fittings, B3). 작업 API가 아직 없을 때(경로 없음 404·연결 안 됨)만
+      //    리포트만 보여 준다. 그 밖의 실패(422·409·500 등)는 아래 catch에서 이 화면에 오류로 보여 준다.
       let job: FittingStatus | null = null;
       try {
         job = await api.createFitting({ ...fitRequest, mode: 'full', realize_consent: consent });
-      } catch {
-        job = null;
+      } catch (error) {
+        if (!isFittingApiMissing(error)) throw error;
       }
       const id = job?.job_id ?? report.job_id;
       saveResult(id, { report, garmentId: item.garment.id, garmentName: garmentName(item.garment), jobId: job?.job_id ?? null });

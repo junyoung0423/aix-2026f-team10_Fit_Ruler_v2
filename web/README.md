@@ -38,6 +38,7 @@ CI(`.github/workflows/ci.yml`의 `web` job)가 lint·타입 검사·테스트·�
 
 - **오류:** 모두 `ApiErrorBody {code, safe_message, fields}`다. 화면에는 `safe_message`와 `fields[].message`를 그대로 보여 준다.
 - **결과 화면이 데이터를 받는 곳:** 핏 리포트는 `POST /api/fit`에서, 3D·실사화 진행은 `/api/fittings`에서 받는다. 그래서 B3 전에 실제 서버에 붙여도 핏 리포트는 나온다. 진행 상태 자리에는 "B3가 준비되면 나온다"는 안내가 나온다.
+  - 리포트만 보여 주는 경우는 작업 API가 아직 없을 때(경로 없음 404, 연결 안 됨)뿐이다. `POST /api/fittings`가 422·409·500 등으로 실패하면 티셔츠 선택 화면에 오류를 보여 준다(`isFittingApiMissing`, `src/api/api.ts`).
 
 ## 가짜 API와 실제 서버
 
