@@ -1,0 +1,105 @@
+{
+  "name": "drape_v1",
+  "version": "1.0.0",
+  "status": "draft",
+  "description": "C2 통과 설정(E08과 값 동일). drape_v0 대비: cloth.quality 6->12, self_distance_min 0.003->0.0015, 2단계 용접(80프레임, 용접 전 최대 10 mm 이하, 휴지 형상 = 패턴 길이 이완), 용접 뒤 질량 = 면밀도 0.18 kg/m2 [C 제안]. 봉제선 닫힘 [C 제안] 기준 추가. 초안: 사람 검수 전",
+  "thresholds": {
+    "_note": "명세서 6장 초기 검증값. 검증된 성능이 아니며 완화하지 않는다.",
+    "max_frames": 300,
+    "stable_window_frames": 10,
+    "stable_median_m_per_frame": 0.001,
+    "penetration_depth_m": 0.003,
+    "penetration_area_ratio_max": 0.01,
+    "stretch_ratio_max": 1.5,
+    "seam_gap_max_m": 0.002,
+    "seam_gap_preweld_max_m": 0.01,
+    "_note_c_proposals": "[C 제안] seam_gap_max_m(용접 없이 2.0 mm), seam_gap_preweld_max_m(용접 전 10 mm)는 명세서에 없는 C 제안 기준. 팀 합의 필요."
+  },
+  "time_limits_s": {
+    "_note": "명세서 12장 단계 시간 제한(초기 목표). 착장 10분.",
+    "drape": 600
+  },
+  "export": {
+    "mesh_resolution_cm": 2.0
+  },
+  "schedule": {
+    "_note": "sew_frames까지 중력 0으로 봉제만 하고, gravity_ramp_frames 동안 중력을 1로 올린다. 안정 판정은 sew_frames + min_frames_after_sew 이후부터.",
+    "sew_frames": 80,
+    "gravity_ramp_frames": 5,
+    "min_frames_after_sew": 30
+  },
+  "cloth": {
+    "_note": "봉제 단계(중력 0) 질량은 mass(정점당 kg, 수치 안정용). 용접 뒤 질량은 weld.areal_density_kg_m2. 천 강성은 Blender Cotton 계열이며 면 저지 물성이 아니다.",
+    "preset": "blender_cotton_like_v0",
+    "quality": 12,
+    "mass": 0.3,
+    "air_damping": 1.0,
+    "tension_stiffness": 15.0,
+    "compression_stiffness": 15.0,
+    "shear_stiffness": 15.0,
+    "bending_stiffness": 0.5,
+    "use_sewing_springs": true,
+    "sewing_force_max": 0.0
+  },
+  "cloth_collision": {
+    "collision_quality": 4,
+    "distance_min": 0.003,
+    "use_self_collision": true,
+    "self_distance_min": 0.0015,
+    "self_friction": 5.0
+  },
+  "body_collision": {
+    "thickness_outer": 0.002,
+    "cloth_friction": 5.0
+  },
+  "preview": {
+    "_note": "착장 확인용 정면 PNG 한 장. 명세서 6장 렌더 클립(조명·색 관리 고정, 마스크, 깊이)이 아니다.",
+    "engine": "BLENDER_WORKBENCH",
+    "resolution": [
+      768,
+      1024
+    ],
+    "camera_location_m": [
+      0.0,
+      -4.2,
+      1.05
+    ],
+    "camera_rotation_deg": [
+      90.0,
+      0.0,
+      0.0
+    ],
+    "camera_lens_mm": 50.0,
+    "background_rgb": [
+      0.9,
+      0.9,
+      0.9
+    ],
+    "garment_rgba": [
+      0.12,
+      0.17,
+      0.35,
+      1.0
+    ],
+    "body_rgba": [
+      0.75,
+      0.72,
+      0.68,
+      1.0
+    ]
+  },
+  "parent": {
+    "name": "drape_c2_e08",
+    "version": "0.2.0-e08",
+    "file": "e08_weld_density.json"
+  },
+  "changes": [],
+  "weld": {
+    "enabled": true,
+    "at_frame": 80,
+    "relax_iterations": 10000,
+    "relax_step": 1.0,
+    "areal_density_kg_m2": 0.18,
+    "_note": "용접 전 최대 벌어짐이 seam_gap_preweld_max_m를 넘으면 용접하지 않고 DRAPE_INVALID. 휴지 형상은 원래 패턴 변 길이에 맞춘 3D 이완 형상(rest_shape_key). 지표는 원래 정점으로 되돌려 패턴 길이 대비로 계산."
+  }
+}
