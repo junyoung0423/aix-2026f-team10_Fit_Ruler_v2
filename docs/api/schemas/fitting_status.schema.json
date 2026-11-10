@@ -193,6 +193,25 @@
         },
         "status": {
           "$ref": "#/$defs/StageStatus"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
         }
       },
       "required": [
@@ -293,7 +312,14 @@
           "title": "Frame Artifact Id"
         },
         "quality_status": {
-          "$ref": "#/$defs/QualityStatus",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QualityStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "default": "PENDING"
         },
         "render_artifact_id": {
@@ -307,6 +333,17 @@
           ],
           "default": null,
           "title": "Render Artifact Id"
+        },
+        "skip_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VisualSkipReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "stage": {
           "anyOf": [
@@ -340,6 +377,15 @@
       ],
       "title": "VisualPart",
       "type": "object"
+    },
+    "VisualSkipReason": {
+      "description": "영상 경로(또는 그 일부)를 건너뛴 이유. 실패가 아니라 사용자가 고른 것이다 (계획 A5·B3).",
+      "enum": [
+        "CONSENT_NOT_GIVEN",
+        "REPORT_ONLY"
+      ],
+      "title": "VisualSkipReason",
+      "type": "string"
     }
   },
   "additionalProperties": false,

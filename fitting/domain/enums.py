@@ -112,6 +112,13 @@ class JobStatus(str, Enum):
     CANCELLED = "CANCELLED"
 
 
+class VisualSkipReason(str, Enum):
+    """영상 경로(또는 그 일부)를 건너뛴 이유. 실패가 아니라 사용자가 고른 것이다 (계획 A5·B3)."""
+
+    CONSENT_NOT_GIVEN = "CONSENT_NOT_GIVEN"  # 실사화(외부 전송)에 동의하지 않아 렌더까지만 했다
+    REPORT_ONLY = "REPORT_ONLY"  # 핏 리포트만 요청했다
+
+
 class QualityStatus(str, Enum):
     """실사 영상 자동 검증 결과. PENDING은 명세서 예시, 나머지는 7장의 PASS/FAIL/UNVERIFIABLE."""
 

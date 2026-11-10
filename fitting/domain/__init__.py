@@ -16,6 +16,7 @@ from fitting.domain.enums import (
     Region,
     Stage,
     StageStatus,
+    VisualSkipReason,
 )
 from fitting.domain.garment import (
     FAMILY_BASIC_SHORT_SLEEVE_CREW,
@@ -61,4 +62,5 @@ __all__ = [
     "StageProgress",
     "StageStatus",
     "VisualPart",
+    "VisualSkipReason",
 ]

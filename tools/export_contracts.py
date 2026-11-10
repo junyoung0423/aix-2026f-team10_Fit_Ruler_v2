@@ -87,21 +87,25 @@ class _ExampleReport:
         return self._report.model_copy(update={"job_id": job_id, "created_at": created_at})
 
 
-def _status_cases() -> dict[str, tuple[Mode, Callable[[], dict]]]:
-    """예시 파일 이름 -> (실행 방식, 바꿀 가짜 어댑터)."""
+def _status_cases() -> dict[str, tuple[Mode, bool, Callable[[], dict]]]:
+    """예시 파일 이름 -> (실행 방식, 실사화 동의, 바꿀 가짜 어댑터)."""
     return {
-        "fitting_status_succeeded.json": (Mode.FULL, dict),
-        "fitting_status_report_only.json": (Mode.REPORT_ONLY, dict),
+        "fitting_status_succeeded.json": (Mode.FULL, True, dict),
+        "fitting_status_no_consent.json": (Mode.FULL, False, dict),
+        "fitting_status_report_only.json": (Mode.REPORT_ONLY, True, dict),
         "fitting_status_realize_failed.json": (
             Mode.FULL,
+            True,
             lambda: {"realize": FakeRealizer(fail_with=ErrorCode.REALIZE_TIMEOUT)},
         ),
         "fitting_status_drape_failed.json": (
             Mode.FULL,
+            True,
             lambda: {"drape": FakeDraper(fail_with=ErrorCode.DRAPE_INVALID)},
         ),
         "fitting_status_validation_failed.json": (
             Mode.FULL,
+            True,
             lambda: {"validate": FakeValidator(quality=QualityStatus.FAIL)},
         ),
     }
@@ -125,6 +129,8 @@ def build_running_status(report: FitReport) -> FittingStatus:
             status=StageStatus.SUCCEEDED,
             rules_version=report.rules_version,
             regions=report.regions,
+            summary=report.summary,
+            warnings=report.warnings,
         ),
         visual=VisualPart(
             status=StageStatus.RUNNING,
@@ -142,10 +148,10 @@ def build_statuses(root: Path) -> dict[str, FittingStatus]:
     report = FitReport.model_validate_json(_read(root, "fit_report.json"))
 
     statuses = {"fitting_status_running.json": build_running_status(report)}
-    for name, (mode, overrides) in _status_cases().items():
+    for name, (mode, consent, overrides) in _status_cases().items():
         ports: FittingPorts = fake_ports(fit=_ExampleReport(report), **overrides())
         outcome = run_fitting(
-            request.model_copy(update={"mode": mode}),
+            request.model_copy(update={"mode": mode, "realize_consent": consent}),
             garment,
             ports,
             job_id=EXAMPLE_JOB_ID,

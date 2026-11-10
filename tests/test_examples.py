@@ -32,6 +32,7 @@ def test_examples_are_marked_as_samples():
 def test_status_examples_cover_success_and_failure_cases():
     assert STATUS_EXAMPLES == [
         "fitting_status_drape_failed.json",
+        "fitting_status_no_consent.json",
         "fitting_status_realize_failed.json",
         "fitting_status_report_only.json",
         "fitting_status_running.json",

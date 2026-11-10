@@ -28,6 +28,7 @@ SAMPLE_SCHEMA = {
     "fit_report.json": "fit_report",
     "fitting_status_running.json": "fitting_status",
     "fitting_status_succeeded.json": "fitting_status",
+    "fitting_status_no_consent.json": "fitting_status",
     "fitting_status_report_only.json": "fitting_status",
     "fitting_status_realize_failed.json": "fitting_status",
     "fitting_status_drape_failed.json": "fitting_status",

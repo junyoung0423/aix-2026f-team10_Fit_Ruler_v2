@@ -50,7 +50,11 @@
       }
     ],
     "rules_version": "fit_rules_v0",
-    "status": "SUCCEEDED"
+    "status": "SUCCEEDED",
+    "summary": "가슴 기본 여유 · 어깨 기본 범위 · 허리 넉넉",
+    "warnings": [
+      "DEMO_GARMENT"
+    ]
   },
   "schema_version": "v1",
   "stages": [
@@ -95,8 +99,9 @@
     "drape_preview_artifact_id": null,
     "error_code": null,
     "frame_artifact_id": null,
-    "quality_status": "PENDING",
+    "quality_status": null,
     "render_artifact_id": null,
+    "skip_reason": "REPORT_ONLY",
     "stage": null,
     "status": "SKIPPED",
     "video_artifact_id": null

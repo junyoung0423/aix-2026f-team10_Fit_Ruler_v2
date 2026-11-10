@@ -37,10 +37,13 @@ NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 @pytest.fixture
 def request_for(body):
-    def _make(garment_id: str = "tee_test", mode: Mode = Mode.FULL) -> FittingRequest:
+    def _make(
+        garment_id: str = "tee_test", mode: Mode = Mode.FULL, consent: bool = True
+    ) -> FittingRequest:
         return FittingRequest(
             garment_variant_id=garment_id,
             mode=mode,
+            realize_consent=consent,
             measurements=Measurements(**body.model_dump(exclude={"measurement_protocol_version"})),
             measurement_protocol_version=body.measurement_protocol_version,
         )

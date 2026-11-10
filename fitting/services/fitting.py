@@ -2,6 +2,7 @@
 
 핏 경로(리포트)와 영상 경로(몸 → 착장 → 렌더 → 실사화 → 검증)는 서로 독립이다.
 영상 경로의 어느 단계가 실패해도 이미 만든 핏 리포트와 3D 미리보기는 그대로 돌려준다.
+실사화에 동의하지 않은 요청(`realize_consent=false`)은 렌더까지만 하고 성공으로 끝낸다.
 
 지금은 한 번에 끝까지 실행하는 동기 함수다. 작업 큐·상태 저장·API는 B3에서 이 위에 얹는다.
 """
@@ -24,6 +25,7 @@ from fitting.domain import (
     StageProgress,
     StageStatus,
     VisualPart,
+    VisualSkipReason,
 )
 from fitting.ports import (
     BodyBuilder,
@@ -109,7 +111,7 @@ def run_fitting(
             job_id=job_id,
             status=JobStatus.FAILED,
             report=ReportPart(status=StageStatus.FAILED, error_code=ErrorCode.GARMENT_NOT_READY),
-            visual=VisualPart(status=StageStatus.SKIPPED),
+            visual=VisualPart(status=StageStatus.SKIPPED, quality_status=None),
             stages=_stages(progress),
         )
         return FittingOutcome(status=status, report=None)
@@ -120,13 +122,21 @@ def run_fitting(
     for stage in REPORT_STAGES:
         progress[stage] = StageStatus.SUCCEEDED
     report_part = ReportPart(
-        status=StageStatus.SUCCEEDED, rules_version=report.rules_version, regions=report.regions
+        status=StageStatus.SUCCEEDED,
+        rules_version=report.rules_version,
+        regions=report.regions,
+        summary=report.summary,
+        warnings=report.warnings,
     )
 
     if request.mode is Mode.REPORT_ONLY:
         for stage in VISUAL_STAGES:
             progress[stage] = StageStatus.SKIPPED
-        visual = VisualPart(status=StageStatus.SKIPPED)
+        visual = VisualPart(
+            status=StageStatus.SKIPPED,
+            quality_status=None,
+            skip_reason=VisualSkipReason.REPORT_ONLY,
+        )
     else:
         visual = _run_visual(request, garment, ports, job_id, settings, progress)
 
@@ -191,6 +201,17 @@ def _run_visual(
         )
         render_id = render.output_artifact_ids[0]
         found["render_artifact_id"] = render_id
+        if not request.realize_consent:
+            # 실사화(외부 전송)에 동의하지 않았다. 사용자가 고른 것이라 실패가 아니다.
+            progress[Stage.REALIZE] = StageStatus.SKIPPED
+            progress[Stage.VALIDATE] = StageStatus.SKIPPED
+            return VisualPart(
+                status=StageStatus.SUCCEEDED,
+                stage=Stage.RENDER,
+                quality_status=None,
+                skip_reason=VisualSkipReason.CONSENT_NOT_GIVEN,
+                **found,
+            )
         video = step(Stage.REALIZE, [render_id], lambda r: ports.realize.realize(r, garment))
         video_id = video.output_artifact_ids[0]
         found["video_artifact_id"] = video_id

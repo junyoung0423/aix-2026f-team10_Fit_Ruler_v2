@@ -13,6 +13,7 @@ from fitting.domain.enums import (
     QualityStatus,
     Stage,
     StageStatus,
+    VisualSkipReason,
 )
 from fitting.domain.report import RegionResult
 from fitting.domain.versions import SCHEMA_VERSION
@@ -37,6 +38,8 @@ class ReportPart(BaseModel):
     rules_version: str | None = None
     regions: list[RegionResult] | None = None
     error_code: ErrorCode | None = None
+    summary: str | None = None  # FitReport.summary. 화면의 요약 줄
+    warnings: list[str] = Field(default_factory=list)  # FitReport.warnings. 예: DEMO_GARMENT
 
 
 class VisualPart(BaseModel):
@@ -50,7 +53,9 @@ class VisualPart(BaseModel):
 
     status: StageStatus
     stage: Stage | None = None
-    quality_status: QualityStatus = QualityStatus.PENDING
+    # 검증을 건너뛰면(영상 경로 SKIPPED, 실사화 미동의) null이다. "검증 대기 중"과 구분한다.
+    quality_status: QualityStatus | None = QualityStatus.PENDING
+    skip_reason: VisualSkipReason | None = None  # 사용자가 골라서 건너뛴 경우의 이유
     drape_preview_artifact_id: str | None = None  # 3D 착장 미리보기 (#8)
     render_artifact_id: str | None = None  # 정면 렌더 클립 (#10)
     video_artifact_id: str | None = None  # 실사 영상 (#10)

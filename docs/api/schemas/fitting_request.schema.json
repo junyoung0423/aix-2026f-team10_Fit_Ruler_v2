@@ -76,6 +76,11 @@
     "mode": {
       "$ref": "#/$defs/Mode",
       "default": "full"
+    },
+    "realize_consent": {
+      "default": false,
+      "title": "Realize Consent",
+      "type": "boolean"
     }
   },
   "required": [

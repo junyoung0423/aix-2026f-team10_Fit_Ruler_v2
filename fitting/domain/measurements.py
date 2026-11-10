@@ -66,6 +66,9 @@ class FittingRequest(BaseModel):
 
     garment_variant_id: str = Field(min_length=1)
     mode: Mode = Mode.FULL
+    # 실사화(외부 서비스로 렌더 클립 전송)에 동의했는지. 기본은 동의하지 않음이다.
+    # false면 full이어도 렌더까지만 하고 실사화·검증은 건너뛴다(VisualSkipReason.CONSENT_NOT_GIVEN).
+    realize_consent: bool = Field(default=False, strict=True)
     measurements: Measurements
     measurement_protocol_version: str = _protocol_field()
 

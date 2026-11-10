@@ -1,6 +1,7 @@
 {
   "garment_variant_id": "tee_regular_m_navy_v1",
   "mode": "full",
+  "realize_consent": true,
   "measurements": {
     "height_cm": 175.0,
     "chest_cm": 100.0,
