@@ -16,6 +16,15 @@ models/smpl/basicmodel_f_lbs_10_207_0_v1.1.0.pkl         # 여성(선택)
 
 공식 `.pkl`에는 chumpy 객체가 들어 있지만 chumpy를 설치할 필요는 없다. `fitting/adapters/smpl`이 배열만 꺼내 읽는다. 읽기에 실패하면 chumpy를 뺀 `.npz`로 바꿔서 써도 된다(키 이름은 같다).
 
+## 라이선스에서 지킬 것
+
+SMPL은 비상업적 연구·교육용 라이선스다([라이선스 전문](https://smpl.is.tue.mpg.de/modellicense.html)).
+
+- **각자 받는다**: 라이선스는 1인용이고 파일 공유가 금지돼 있다. 모델을 쓰는 팀원은 각자 가입해 받는다. 다른 PC에서 재현할 때도 마찬가지다.
+- **커밋하지 않는다**: 모델 파일은 저장소나 공유 드라이브에 올리지 않는다.
+- **논문을 인용한다**: 보고서·발표에 Loper et al., "SMPL: A Skinned Multi-Person Linear Model," ACM TOG (SIGGRAPH Asia) 2015를 적는다.
+- **상업적으로 쓰지 않는다**: 상용화하려면 별도 상업 라이선스가 필요하다.
+
 ## 확인
 
 ```bash
