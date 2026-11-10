@@ -41,11 +41,20 @@ class Measurements(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    height_cm: HeightCm
-    chest_cm: ChestCm
-    waist_cm: WaistCm
-    shoulder_cm: ShoulderCm
-    arm_length_cm: ArmLengthCm
+    # 측정 위치(measure_v1)는 명세서 3장 표 원문이다. docs/decisions.md "신체 측정 위치"와 같다.
+    height_cm: HeightCm = Field(description="맨발로 선 상태의 바닥부터 정수리까지 수직 높이")
+    chest_cm: ChestCm = Field(
+        description="가슴이 가장 돌출된 수평 위치의 둘레. 줄자를 당기지 않음"
+    )
+    waist_cm: WaistCm = Field(description="자연 허리 위치의 수평 둘레. 배꼽 둘레와 구분")
+    shoulder_cm: ShoulderCm = Field(
+        description="좌우 어깨끝 기준점 사이의 직선 거리. 몸 표면을 따른 곡선 길이와 구분"
+    )
+    arm_length_cm: ArmLengthCm = Field(
+        description=(
+            "오른쪽 어깨끝에서 팔꿈치를 거쳐 손목 기준점까지. 약하게 굽힌 표준 측정 자세 사용"
+        )
+    )
 
 
 class BodyInput(Measurements):
