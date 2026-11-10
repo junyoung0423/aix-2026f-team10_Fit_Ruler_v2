@@ -1,0 +1,39 @@
+# 코드 오너 = 그 폴더의 PR에 자동으로 리뷰 요청되는 사람.
+#   A 화면과 사용성    @hbin0363
+#   B 서버와 핏 판정   정민 @calix070924-wq
+#   C 의류와 착장 렌더 준영 @junyoung0423
+#   D 몸과 실사화 검증 동호 @dongho930
+# 아래 줄이 위 줄보다 우선한다. 저장소에 쓰기 권한이 있어야 코드 오너로 인식된다.
+
+# 공통 계약: 네 명 모두 쓴다
+/fitting/domain/            @calix070924-wq @hbin0363 @junyoung0423 @dongho930
+/fitting/ports/             @calix070924-wq @hbin0363 @junyoung0423 @dongho930
+
+# A 화면
+/web/                       @hbin0363 @calix070924-wq
+/docs/ux/                   @hbin0363
+
+# B 서버와 핏 판정
+/server/                    @calix070924-wq @hbin0363
+/fitting/fit/               @calix070924-wq @hbin0363
+/fitting/services/          @calix070924-wq @junyoung0423 @dongho930
+/fitting/catalog/           @calix070924-wq @junyoung0423
+/fitting/adapters/fake/     @calix070924-wq
+/config/                    @calix070924-wq
+
+# C 의류와 착장 렌더
+/fitting/adapters/aihub/        @junyoung0423 @calix070924-wq
+/fitting/adapters/garmentcode/  @junyoung0423 @dongho930
+/fitting/adapters/blender/      @junyoung0423 @dongho930
+/tools/                         @junyoung0423 @calix070924-wq
+
+# D 몸과 실사화 검증
+/fitting/body/              @dongho930 @junyoung0423
+/fitting/verify/            @dongho930 @junyoung0423
+/fitting/adapters/smpl/     @dongho930 @junyoung0423
+/fitting/adapters/fal_ltx/  @dongho930 @junyoung0423
+/fitting/adapters/media/    @dongho930 @junyoung0423
+/fitting/adapters/meshcheck/ @dongho930 @junyoung0423
+
+# 저장소 설정
+/.github/                   @calix070924-wq @junyoung0423

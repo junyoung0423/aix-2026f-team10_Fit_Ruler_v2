@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aimax-fitting"
+version = "0.0.0"
+description = "AIMAX 반팔 티셔츠 가상 피팅: 핏 리포트, 3D 착장, 실사화 검증"
+requires-python = ">=3.10"
+# 각 PR이 필요한 의존성을 여기에 추가한다 (예: B1 pydantic, B2 fastapi).
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["fitting*", "server*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Blender·SMPL·fal이 필요한 테스트는 마커를 붙이고 CI에서 뺀다.
+# 로컬에서 돌릴 때: pytest -m blender (또는 smpl, fal)
+addopts = "-ra -m 'not blender and not smpl and not fal'"
+markers = [
+    "blender: Blender가 설치된 PC에서만 실행",
+    "smpl: SMPL 모델 파일이 있는 PC에서만 실행",
+    "fal: fal API를 실제로 호출 (비용 발생)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
