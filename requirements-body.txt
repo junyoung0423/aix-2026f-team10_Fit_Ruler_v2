@@ -1,0 +1,6 @@
+# D2 SMPL 몸·신체 측정에 필요한 패키지 (torch 없이 numpy로 동작)
+# 2026-11-10에 Python 3.13에서 확인한 버전: numpy 2.5.4, scipy 1.18.1, opencv-python-headless 5.0.0.93, pytest 9.2.0
+numpy>=1.26
+scipy>=1.11
+opencv-python-headless>=4.10
+pytest>=8
