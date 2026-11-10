@@ -1,111 +1,205 @@
 /**
- * 임시 API 형식 (A1에서 정함)
- *
- * B의 공통 계약(B1)과 핏 API(B2)가 나오기 전까지 화면 개발에 쓰는 형식이다.
- * 계약이 나오면 이 파일과 http.ts만 맞추면 화면 코드는 그대로 쓸 수 있게 했다.
- *
- * - 단위는 모두 cm.
- * - "단면"은 옷을 펼쳐 놓고 잰 한쪽 폭, "둘레"는 몸을 한 바퀴 잰 길이.
+ * 화면이 쓰는 API 계약. 팀 계약 `docs/api/schemas/*.schema.json`(B1·B2)을 그대로 옮겼다.
+ * 필드 이름과 값을 바꾸지 않는다. 계약이 바뀌면 이 파일과 `docs/api/examples`로 확인하는
+ * 테스트(`src/mocks/*.test.ts`)를 같이 고친다.
  */
 
-/** 사용자가 입력하는 신체 치수 */
-export interface BodyMeasurements {
-  heightCm: number;
-  chestCircumferenceCm: number;
-  waistCircumferenceCm: number;
-  shoulderWidthCm: number;
-  armLengthCm: number;
+// ---------- 열거형 (fitting/domain/enums.py, fitting/domain/api.py)
+
+export type Mode = 'report_only' | 'full';
+export type GarmentStatus = 'DRAFT' | 'PREPARING' | 'READY' | 'FAILED';
+export type Region = 'chest' | 'shoulder' | 'waist' | 'sleeve' | 'body_length';
+export type FitLabel =
+  | 'INSUFFICIENT'
+  | 'SNUG'
+  | 'REGULAR'
+  | 'LOOSE'
+  | 'NARROW'
+  | 'DROPPED'
+  | 'UNKNOWN'
+  | 'NOT_EVALUATED';
+export type ReasonCode =
+  | 'MEASUREMENT_NOT_COMPARABLE'
+  | 'MEASUREMENT_MISSING'
+  | 'NO_DIRECT_BODY_COUNTERPART'
+  | 'BODY_INPUT_NOT_PROVIDED';
+export type ErrorCode =
+  | 'INPUT_INVALID'
+  | 'GARMENT_NOT_READY'
+  | 'GARMENT_NOT_FOUND'
+  | 'BODY_FIT_NOT_CONVERGED'
+  | 'DRAPE_INVALID'
+  | 'RENDER_FAILED'
+  | 'REALIZE_TIMEOUT'
+  | 'EXTERNAL_SUBMIT_UNKNOWN'
+  | 'VALIDATION_FAILED'
+  | 'VALIDATION_UNVERIFIABLE'
+  | 'BUDGET_LIMIT';
+export type Stage = 'FIT_CALCULATE' | 'FIT_REPORT' | 'BODY_FIT' | 'DRAPE' | 'RENDER' | 'REALIZE' | 'VALIDATE';
+export type StageStatus = 'WAITING' | 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED' | 'CANCELLED';
+export type JobStatus = 'ACCEPTED' | 'RUNNING' | 'SUCCEEDED' | 'PARTIAL_SUCCEEDED' | 'FAILED' | 'CANCELLED';
+export type QualityStatus = 'PENDING' | 'PASS' | 'FAIL' | 'UNVERIFIABLE';
+export type VisualSkipReason = 'CONSENT_NOT_GIVEN' | 'REPORT_ONLY';
+export type FieldErrorCode = 'MISSING' | 'UNKNOWN_FIELD' | 'NOT_A_NUMBER' | 'OUT_OF_RANGE' | 'UNSUPPORTED_VALUE' | 'INVALID';
+
+// ---------- 신체 입력·요청 (fitting/domain/measurements.py)
+
+/** 측정 위치는 docs/decisions.md "신체 측정 위치 (measure_v1)" 표를 따른다. 단위 cm. */
+export interface Measurements {
+  height_cm: number;
+  chest_cm: number;
+  waist_cm: number;
+  shoulder_cm: number;
+  arm_length_cm: number;
 }
 
-/** 등록된 티셔츠의 치수 */
+export const MEASUREMENT_PROTOCOL_VERSION = 'measure_v1';
+
+/** POST /api/fit 요청 본문 (B2) */
+export interface FitRequest {
+  garment_variant_id: string;
+  measurements: Measurements;
+  measurement_protocol_version: string;
+}
+
+/** POST /api/fittings 요청 본문 (B3에서 구현) */
+export interface FittingRequest extends FitRequest {
+  mode: Mode;
+  /** 실사화(렌더 클립을 외부 서비스로 전송)에 동의했는지. false면 렌더까지만 한다. */
+  realize_consent: boolean;
+}
+
+// ---------- 의류 (fitting/domain/garment.py, fitting/domain/api.py)
+
 export interface GarmentMeasurements {
-  /** 가슴단면 */
-  chestHalfCm: number;
-  /** 총장 */
-  lengthCm: number;
-  /** 어깨너비 */
-  shoulderWidthCm: number;
-  /** 소매길이 */
-  sleeveLengthCm: number;
-  /** 밑단단면. 데이터에 없을 수 있다. */
-  hemHalfCm?: number;
+  chest_girth_cm: number | null;
+  waist_girth_cm: number | null;
+  shoulder_width_cm: number | null;
+  sleeve_length_cm: number | null;
+  body_length_cm: number | null;
 }
 
-export interface Garment {
+export interface MeasurementMeta {
+  measurement_protocol_version: string;
+  source: string;
+  is_measured: boolean;
+  chest_from_flat_width: boolean;
+  waist_from_flat_width: boolean;
+  waist_position_matched: boolean;
+  measured_by: string | null;
+  measured_on: string | null;
+  notes: string | null;
+}
+
+export interface GarmentVariant {
+  schema_version: string;
   id: string;
-  name: string;
-  colorName: string;
-  colorHex: string;
-  fabric: string;
-  /** 상품의 형태 구분(정핏·오버핏 등). 사용자별 핏 판정과는 다르다. */
-  fitLabel?: string;
+  style: string;
+  size: string;
+  color: string;
+  fabric_preset: string;
+  garment_family: string;
+  status: GarmentStatus;
   measurements: GarmentMeasurements;
+  measurement_meta: MeasurementMeta;
+  asset_version: string;
+  source_ref: string;
 }
 
-export type FitPart = 'chest' | 'shoulder' | 'waist' | 'length';
-export type FitVerdict = 'tight' | 'regular' | 'loose' | 'oversized';
-
-export interface FitPartResult {
-  part: FitPart;
-  verdict: FitVerdict;
-  /** 옷 치수 − 몸 치수(cm). 양수면 여유가 있다. */
-  easeCm: number;
-  sentence: string;
-  /** 입력에 없는 신체 위치를 추정해 판정했는지 */
-  estimated: boolean;
+export interface GarmentListItem {
+  garment: GarmentVariant;
+  /** true면 화면에 "시연용 의류"로 표시한다. */
+  is_demo: boolean;
 }
 
+/** GET /api/garments 응답 (B2). READY 의류만 들어 있다. */
+export interface GarmentList {
+  schema_version: string;
+  garments: GarmentListItem[];
+}
+
+// ---------- 핏 리포트 (fitting/domain/report.py)
+
+export interface RegionResult {
+  region: Region;
+  body_cm: number | null;
+  garment_cm: number | null;
+  /** 반올림하지 않은 여유량(의류 − 신체). 화면에 보일 때만 소수 첫째 자리로 반올림한다. */
+  ease_cm: number | null;
+  label: FitLabel;
+  reason_code: ReasonCode | null;
+  explanation: string;
+  /** true면 body_cm이 입력이 아니라 추정값이다(지금은 총장에만 쓰고 기본은 꺼짐). */
+  is_estimated: boolean;
+}
+
+/** POST /api/fit 응답 (B2) */
 export interface FitReport {
-  garmentId: string;
-  parts: FitPartResult[];
-  /** 어떤 기준표로 판정했는지 (예: temp-2026-11-10) */
-  criteriaVersion: string;
+  schema_version: string;
+  job_id: string;
+  rules_version: string;
+  regions: RegionResult[];
+  summary: string;
+  warnings: string[];
+  created_at: string;
 }
 
-export type StageName = 'body' | 'drape' | 'render' | 'realize' | 'verify';
-export type StageStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
+// ---------- 작업 상태 (fitting/domain/status.py, B3에서 API 구현)
 
-export interface StageState {
-  name: StageName;
+export interface StageProgress {
+  stage: Stage;
   status: StageStatus;
-  /** 실패·건너뜀 이유 같은 짧은 설명 */
-  message?: string;
+  attempt_no: number;
 }
 
-export interface FittingRequest {
-  body: BodyMeasurements;
-  garmentId: string;
-  /** 렌더 클립을 외부 서버(fal)로 보내는 데 동의했는지. false면 실사화를 건너뛴다. */
-  realizeConsent: boolean;
+export interface ReportPart {
+  status: StageStatus;
+  rules_version: string | null;
+  regions: RegionResult[] | null;
+  error_code: ErrorCode | null;
+  summary: string | null;
+  warnings: string[];
 }
 
-export interface Realization {
-  videoUrl: string | null;
-  /** 실사 영상에서 뽑은 대표 프레임 */
-  frameUrl: string | null;
-  /** 대표 프레임과 같은 시점의 렌더 프레임 */
-  renderFrameUrl: string | null;
+export interface VisualPart {
+  status: StageStatus;
+  stage: Stage | null;
+  quality_status: QualityStatus | null;
+  skip_reason: VisualSkipReason | null;
+  drape_preview_artifact_id: string | null;
+  render_artifact_id: string | null;
+  video_artifact_id: string | null;
+  frame_artifact_id: string | null;
+  render_frame_artifact_id: string | null;
+  quality_metrics: Record<string, number> | null;
+  error_code: ErrorCode | null;
 }
 
-export interface Verification {
-  passed: boolean;
-  colorDeltaE: number;
-  silhouetteIoU: number;
+/** GET /api/fittings/{job_id} 응답 */
+export interface FittingStatus {
+  schema_version: string;
+  job_id: string;
+  status: JobStatus;
+  report: ReportPart;
+  visual: VisualPart;
+  stages: StageProgress[];
 }
 
-export interface FittingJob {
-  jobId: string;
-  garmentId: string;
-  /** 요청하자마자 채워진다. 3D·실사화를 기다리지 않는다. */
-  fitReport: FitReport;
-  stages: StageState[];
-  /** 3D 착장 미리보기 */
-  previewImageUrl: string | null;
-  realization: Realization | null;
-  verification: Verification | null;
-  /** 실사화가 안 돼 3D 미리보기를 대체 결과로 보여 주는 경우 true */
-  fallbackPreview: boolean;
+// ---------- 오류 (fitting/domain/api.py)
+
+export interface FieldError {
+  /** 요청 본문 안의 위치. 예: "measurements.chest_cm". 본문 전체 문제면 "" */
+  field: string;
+  code: FieldErrorCode;
+  message: string;
+  min?: number | null;
+  max?: number | null;
 }
 
-/** 입력 칸별 오류 문구. 키는 BodyMeasurements의 필드 이름. */
-export type FieldErrors = Partial<Record<string, string>>;
+/** 모든 API 오류의 본문. 422 INPUT_INVALID, 404 GARMENT_NOT_FOUND, 409 GARMENT_NOT_READY */
+export interface ApiErrorBody {
+  schema_version: string;
+  code: ErrorCode;
+  safe_message: string;
+  fields: FieldError[] | null;
+}

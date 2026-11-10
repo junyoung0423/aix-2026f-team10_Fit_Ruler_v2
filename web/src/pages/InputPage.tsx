@@ -1,48 +1,41 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { BodyMeasurements } from '../api/types';
-import { BODY_LABEL } from '../labels';
-import { useFitting } from '../state/FittingContext';
+import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL, MEASUREMENT_RANGES, type MeasurementField } from '../api/contract';
+import type { Measurements } from '../api/types';
+import { useFitting } from '../state/fittingStore';
 
 // A1 뼈대: 숫자만 받아 다음 화면으로 넘긴다.
 // 범위 검사, 칸별 오류 문구, 재는 법 안내는 A2에서 붙인다.
 
-const FIELDS = Object.keys(BODY_LABEL) as (keyof BodyMeasurements)[];
+/** 팀 예시 docs/api/examples/fit_request.json 의 치수 */
+const SAMPLE: Measurements = { height_cm: 175, chest_cm: 100, waist_cm: 80, shoulder_cm: 44, arm_length_cm: 60 };
 
-const SAMPLE_BODY: BodyMeasurements = {
-  heightCm: 175,
-  chestCircumferenceCm: 96,
-  waistCircumferenceCm: 82,
-  shoulderWidthCm: 45,
-  armLengthCm: 60,
-};
+type Draft = Record<MeasurementField, string>;
 
-type Draft = Record<keyof BodyMeasurements, string>;
-
-const toDraft = (body: BodyMeasurements): Draft => ({
-  heightCm: String(body.heightCm),
-  chestCircumferenceCm: String(body.chestCircumferenceCm),
-  waistCircumferenceCm: String(body.waistCircumferenceCm),
-  shoulderWidthCm: String(body.shoulderWidthCm),
-  armLengthCm: String(body.armLengthCm),
+const toDraft = (m: Measurements): Draft => ({
+  height_cm: String(m.height_cm),
+  chest_cm: String(m.chest_cm),
+  waist_cm: String(m.waist_cm),
+  shoulder_cm: String(m.shoulder_cm),
+  arm_length_cm: String(m.arm_length_cm),
 });
 
-const toBody = (draft: Draft): BodyMeasurements => ({
-  heightCm: Number(draft.heightCm),
-  chestCircumferenceCm: Number(draft.chestCircumferenceCm),
-  waistCircumferenceCm: Number(draft.waistCircumferenceCm),
-  shoulderWidthCm: Number(draft.shoulderWidthCm),
-  armLengthCm: Number(draft.armLengthCm),
+const toMeasurements = (d: Draft): Measurements => ({
+  height_cm: Number(d.height_cm),
+  chest_cm: Number(d.chest_cm),
+  waist_cm: Number(d.waist_cm),
+  shoulder_cm: Number(d.shoulder_cm),
+  arm_length_cm: Number(d.arm_length_cm),
 });
 
 export function InputPage() {
-  const { body, setBody } = useFitting();
+  const { measurements, setMeasurements } = useFitting();
   const navigate = useNavigate();
-  const [draft, setDraft] = useState<Draft>(() => toDraft(body ?? SAMPLE_BODY));
+  const [draft, setDraft] = useState<Draft>(() => toDraft(measurements ?? SAMPLE));
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBody(toBody(draft));
+    setMeasurements(toMeasurements(draft));
     navigate('/garments');
   }
 
@@ -51,9 +44,9 @@ export function InputPage() {
       <h1>내 치수 입력</h1>
       <p className="lead">줄자로 잰 값을 cm로 넣어 주세요.</p>
       <form className="card form" onSubmit={onSubmit}>
-        {FIELDS.map((field) => (
+        {MEASUREMENT_FIELDS.map((field) => (
           <div className="field" key={field}>
-            <label htmlFor={field}>{BODY_LABEL[field]}</label>
+            <label htmlFor={field}>{MEASUREMENT_LABEL[field]}</label>
             <div className="input-unit">
               <input
                 id={field}
@@ -61,7 +54,8 @@ export function InputPage() {
                 type="number"
                 inputMode="decimal"
                 step="0.1"
-                min="1"
+                min={MEASUREMENT_RANGES[field].min}
+                max={MEASUREMENT_RANGES[field].max}
                 required
                 value={draft[field]}
                 onChange={(event) => setDraft((prev) => ({ ...prev, [field]: event.target.value }))}

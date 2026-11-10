@@ -1,123 +1,213 @@
-import type { BodyMeasurements, FitPartResult, FitReport, FitVerdict, Garment } from '../api/types';
+import type { FitLabel, FitReport, GarmentVariant, Measurements, Region, RegionResult } from '../api/types';
+import { displayCm } from '../format';
 
 /**
- * 가짜 API에서 쓰는 임시 핏 계산.
- * 식은 활동지 1-3을 따르고, 경계값은 팀 기준표(#2)가 정해지기 전까지 쓰는 임시값이다.
- * 실제 판정은 B의 핏 API가 한다.
+ * 가짜 API의 핏 계산. B2 핏 계산기(`fitting/fit/engine.py`)와 기준표 `config/fit_rules_v0.yaml`을
+ * 그대로 옮겼다. 실제 판정은 서버(B2)가 하고, 이 코드는 서버 없이 화면을 개발할 때만 쓴다.
+ * 결과가 서버와 같은지는 `fit.test.ts`가 팀 예시 `docs/api/examples/fit_report.json`과 비교해 확인한다.
+ * 기준표가 바뀌면(버전 `fit_rules_v1` 등) 이 파일도 같이 고친다.
  */
-export const TEMP_CRITERIA_VERSION = 'temp-2026-11-10';
+export const MOCK_RULES_VERSION = 'fit_rules_v0';
 
-/** [타이트|정핏, 정핏|여유, 여유|오버핏] 경계(cm). 값이 경계와 같으면 위 구간으로 본다. */
-export type Thresholds = readonly [number, number, number];
-
-export const TEMP_THRESHOLDS = {
-  chest: [4, 12, 20],
-  shoulder: [-1, 2, 5],
-  waist: [4, 14, 22],
-  length: [-4, 3, 8],
-} as const satisfies Record<string, Thresholds>;
-
-/** 키로 기준 총장을 어림하는 임시 비율. 결과에는 추정이라고 표시한다. */
-export const TEMP_LENGTH_RATIO = 0.4;
-
-export function verdictFor(value: number, [toRegular, toLoose, toOversized]: Thresholds): FitVerdict {
-  if (value < toRegular) return 'tight';
-  if (value < toLoose) return 'regular';
-  if (value < toOversized) return 'loose';
-  return 'oversized';
+export interface Band {
+  upper: number | null;
+  upperInclusive: boolean;
+  label: FitLabel;
+  labelKo: string;
 }
 
-const round1 = (n: number) => Math.round(n * 10) / 10;
-const cm = (n: number) => `${round1(Math.abs(n))}cm`;
+interface RegionRule {
+  region: Region;
+  shortKo: string;
+  nounKo: string;
+  bands: readonly Band[];
+  negativeNote?: string;
+  note?: string;
+}
 
-const AROUND: Record<FitVerdict, string> = {
-  tight: '몸에 붙습니다',
-  regular: '알맞게 맞습니다',
-  loose: '여유 있게 맞습니다',
-  oversized: '크게 떨어집니다',
+const STRETCH_NOTE = '신축성에 따라 실제 착용감은 달라질 수 있어 착용 가능 여부는 판단하지 않습니다.';
+
+export const RULES: Record<'chest' | 'shoulder' | 'waist', RegionRule> = {
+  chest: {
+    region: 'chest',
+    shortKo: '가슴',
+    nounKo: '가슴둘레',
+    negativeNote: STRETCH_NOTE,
+    bands: [
+      { upper: 0, upperInclusive: false, label: 'INSUFFICIENT', labelKo: '여유 부족 예상' },
+      { upper: 6, upperInclusive: false, label: 'SNUG', labelKo: '밀착' },
+      { upper: 14, upperInclusive: true, label: 'REGULAR', labelKo: '기본 여유' },
+      { upper: null, upperInclusive: false, label: 'LOOSE', labelKo: '넉넉' },
+    ],
+  },
+  shoulder: {
+    region: 'shoulder',
+    shortKo: '어깨',
+    nounKo: '어깨너비',
+    note: '어깨 여유는 양쪽을 합한 값이며 한쪽 어깨당 값이 아닙니다.',
+    bands: [
+      { upper: -1, upperInclusive: false, label: 'NARROW', labelKo: '좁음 예상' },
+      { upper: 2, upperInclusive: true, label: 'REGULAR', labelKo: '기본 범위' },
+      { upper: null, upperInclusive: false, label: 'DROPPED', labelKo: '어깨선 내려옴 예상' },
+    ],
+  },
+  waist: {
+    region: 'waist',
+    shortKo: '허리',
+    nounKo: '허리둘레',
+    negativeNote: STRETCH_NOTE,
+    bands: [
+      { upper: 0, upperInclusive: false, label: 'INSUFFICIENT', labelKo: '여유 부족 예상' },
+      { upper: 4, upperInclusive: false, label: 'SNUG', labelKo: '밀착' },
+      { upper: 12, upperInclusive: true, label: 'REGULAR', labelKo: '기본 여유' },
+      { upper: null, upperInclusive: false, label: 'LOOSE', labelKo: '넉넉' },
+    ],
+  },
 };
 
-const SHOULDER: Record<FitVerdict, string> = {
-  tight: '어깨가 끼일 수 있습니다',
-  regular: '잘 맞습니다',
-  loose: '조금 내려옵니다',
-  oversized: '많이 내려옵니다',
-};
+/** 서버의 Decimal 계산처럼 이진 소수 오차를 지운다(예: 106.1 - 100.1 → 6). */
+const clean = (value: number) => Math.round(value * 1e6) / 1e6;
 
-const LENGTH: Record<FitVerdict, string> = {
-  tight: '짧은 편입니다',
-  regular: '알맞은 길이입니다',
-  loose: '조금 긴 편입니다',
-  oversized: '길게 내려옵니다',
-};
-
-function aroundSentence(bodyLabel: string, ease: number, verdict: FitVerdict): string {
-  const gap = ease >= 0 ? '넉넉해' : '작아';
-  return `${bodyLabel}보다 ${cm(ease)} ${gap} ${AROUND[verdict]}.`;
+export function classify(rule: RegionRule, ease: number): Band {
+  const band = rule.bands.find((item) =>
+    item.upper === null ? true : item.upperInclusive ? ease <= item.upper : ease < item.upper,
+  );
+  if (!band) throw new Error(`${rule.region}의 마지막 구간은 upper가 null이어야 합니다.`);
+  return band;
 }
 
-function shoulderSentence(diff: number, verdict: FitVerdict): string {
-  if (diff === 0) return `어깨선이 어깨와 같아 ${SHOULDER[verdict]}.`;
-  const gap = diff > 0 ? '넓어' : '좁아';
-  return `어깨선이 어깨보다 ${cm(diff)} ${gap} ${SHOULDER[verdict]}.`;
+function explain(rule: RegionRule, ease: number, band: Band): string {
+  const shown = displayCm(ease);
+  let relation: string;
+  if (ease === 0) relation = '몸과 같아서';
+  else if (shown === '0.0') relation = '몸과 거의 같아서';
+  else if (ease > 0) relation = `몸보다 ${shown} cm 커서`;
+  else relation = `몸보다 ${shown} cm 작아서`;
+  let text = `${rule.nounKo}가 ${relation} 초기 기준상 ${band.labelKo}에 해당합니다.`;
+  if (ease < 0 && rule.negativeNote) text += ` ${rule.negativeNote}`;
+  if (rule.note) text += ` ${rule.note}`;
+  return text;
 }
 
-function lengthSentence(diff: number, ideal: number, verdict: FitVerdict): string {
-  if (diff === 0) return `키로 추정한 기준 총장(${ideal}cm)과 같아 ${LENGTH[verdict]}. 추정값입니다.`;
-  const gap = diff > 0 ? '길어' : '짧아';
-  return `키로 추정한 기준 총장(${ideal}cm)보다 ${cm(diff)} ${gap} ${LENGTH[verdict]}. 추정값입니다.`;
+function compare(rule: RegionRule, bodyCm: number, garmentCm: number): RegionResult {
+  const ease = clean(garmentCm - bodyCm);
+  const band = classify(rule, ease);
+  return {
+    region: rule.region,
+    body_cm: bodyCm,
+    garment_cm: garmentCm,
+    ease_cm: ease,
+    label: band.label,
+    reason_code: null,
+    explanation: explain(rule, ease, band),
+    is_estimated: false,
+  };
 }
 
-export function computeFitReport(body: BodyMeasurements, garment: Garment): FitReport {
-  const g = garment.measurements;
-  const parts: FitPartResult[] = [];
-
-  // 가슴 여유 = 옷 가슴단면 × 2 − 몸 가슴둘레
-  const chestEase = round1(g.chestHalfCm * 2 - body.chestCircumferenceCm);
-  const chestVerdict = verdictFor(chestEase, TEMP_THRESHOLDS.chest);
-  parts.push({
-    part: 'chest',
-    verdict: chestVerdict,
-    easeCm: chestEase,
-    sentence: aroundSentence('가슴둘레', chestEase, chestVerdict),
-    estimated: false,
-  });
-
-  // 어깨 차이 = 옷 어깨너비 − 몸 어깨너비
-  const shoulderDiff = round1(g.shoulderWidthCm - body.shoulderWidthCm);
-  const shoulderVerdict = verdictFor(shoulderDiff, TEMP_THRESHOLDS.shoulder);
-  parts.push({
-    part: 'shoulder',
-    verdict: shoulderVerdict,
-    easeCm: shoulderDiff,
-    sentence: shoulderSentence(shoulderDiff, shoulderVerdict),
-    estimated: false,
-  });
-
-  // 허리 여유 = 옷 밑단단면 × 2 − 몸 허리둘레 (밑단 치수가 없으면 판정하지 않는다)
-  if (g.hemHalfCm !== undefined) {
-    const waistEase = round1(g.hemHalfCm * 2 - body.waistCircumferenceCm);
-    const waistVerdict = verdictFor(waistEase, TEMP_THRESHOLDS.waist);
-    parts.push({
-      part: 'waist',
-      verdict: waistVerdict,
-      easeCm: waistEase,
-      sentence: aroundSentence('허리둘레', waistEase, waistVerdict),
-      estimated: false,
-    });
+function waistResult(body: Measurements, garment: GarmentVariant): RegionResult {
+  const girth = garment.measurements.waist_girth_cm;
+  if (girth === null) {
+    return {
+      region: 'waist',
+      body_cm: body.waist_cm,
+      garment_cm: null,
+      ease_cm: null,
+      label: 'UNKNOWN',
+      reason_code: 'MEASUREMENT_MISSING',
+      explanation: '의류 허리 실측이 없어 허리 판정을 하지 않습니다.',
+      is_estimated: false,
+    };
   }
+  if (!garment.measurement_meta.waist_position_matched) {
+    return {
+      region: 'waist',
+      body_cm: body.waist_cm,
+      garment_cm: null,
+      ease_cm: null,
+      label: 'UNKNOWN',
+      reason_code: 'MEASUREMENT_NOT_COMPARABLE',
+      explanation: '의류 허리 측정 위치가 신체 자연 허리와 대응하는지 확인되지 않아 허리 판정을 하지 않습니다.',
+      is_estimated: false,
+    };
+  }
+  return compare(RULES.waist, body.waist_cm, girth);
+}
 
-  // 총장: 입력에 엉덩이 위치가 없어 키로 기준 총장을 추정한다
-  const idealLength = round1(body.heightCm * TEMP_LENGTH_RATIO);
-  const lengthDiff = round1(g.lengthCm - idealLength);
-  const lengthVerdict = verdictFor(lengthDiff, TEMP_THRESHOLDS.length);
-  parts.push({
-    part: 'length',
-    verdict: lengthVerdict,
-    easeCm: lengthDiff,
-    sentence: lengthSentence(lengthDiff, idealLength, lengthVerdict),
-    estimated: true,
-  });
+function sleeveResult(body: Measurements, garment: GarmentVariant): RegionResult {
+  const sleeve = garment.measurements.sleeve_length_cm;
+  return {
+    region: 'sleeve',
+    body_cm: body.arm_length_cm,
+    garment_cm: sleeve,
+    ease_cm: null,
+    label: 'NOT_EVALUATED',
+    reason_code: sleeve === null ? 'MEASUREMENT_MISSING' : 'NO_DIRECT_BODY_COUNTERPART',
+    explanation:
+      sleeve === null
+        ? '의류 소매 실측이 없어 표시할 수 없습니다.'
+        : `소매 실측 ${sleeve.toFixed(1)} cm입니다. 사람의 전체 팔길이와 직접 비교하지 않아 적정 여부는 판단하지 않습니다.`,
+    is_estimated: false,
+  };
+}
 
-  return { garmentId: garment.id, parts, criteriaVersion: TEMP_CRITERIA_VERSION };
+function bodyLengthResult(garment: GarmentVariant): RegionResult {
+  // 기준표의 총장 추정(body_length_estimate)은 기본 꺼짐이라 옮기지 않았다.
+  const length = garment.measurements.body_length_cm;
+  return {
+    region: 'body_length',
+    body_cm: null,
+    garment_cm: length,
+    ease_cm: null,
+    label: 'NOT_EVALUATED',
+    reason_code: length === null ? 'MEASUREMENT_MISSING' : 'BODY_INPUT_NOT_PROVIDED',
+    explanation:
+      length === null
+        ? '의류 기장 실측이 없어 표시할 수 없습니다.'
+        : `기장 실측 ${length.toFixed(1)} cm입니다. 몸통 길이 입력이 없어 적정 기장은 판단하지 않습니다.`,
+    is_estimated: false,
+  };
+}
+
+/** 서버의 GARMENT_NOT_READY에 해당하는 경우를 막는다. 맞으면 null, 아니면 이유. */
+export function notComputableReason(garment: GarmentVariant, protocol: string): string | null {
+  if (garment.status !== 'READY') return `의류 상태가 ${garment.status}입니다`;
+  if (garment.garment_family !== 'basic_short_sleeve_crew') return '기준표가 적용되지 않는 의류군입니다';
+  if (garment.measurement_meta.measurement_protocol_version !== protocol) return '측정 프로토콜이 다릅니다';
+  if (garment.measurements.chest_girth_cm === null || garment.measurements.shoulder_width_cm === null) {
+    return '필수 의류 실측이 없습니다';
+  }
+  return null;
+}
+
+export function computeFitReport(
+  body: Measurements,
+  garment: GarmentVariant,
+  options: { jobId: string; createdAt: string },
+): FitReport {
+  const chest = compare(RULES.chest, body.chest_cm, garment.measurements.chest_girth_cm ?? 0);
+  const shoulder = compare(RULES.shoulder, body.shoulder_cm, garment.measurements.shoulder_width_cm ?? 0);
+  const waist = waistResult(body, garment);
+  const judged: [RegionRule, RegionResult][] = [
+    [RULES.chest, chest],
+    [RULES.shoulder, shoulder],
+    [RULES.waist, waist],
+  ];
+  const summary = judged
+    .filter(([, result]) => result.label !== 'UNKNOWN')
+    .map(([rule, result]) => `${rule.shortKo} ${rule.bands.find((band) => band.label === result.label)?.labelKo}`)
+    .join(' · ');
+
+  const warnings: string[] = [];
+  if (waist.label === 'UNKNOWN') warnings.push('WAIST_NOT_EVALUATED');
+  if (!garment.measurement_meta.is_measured) warnings.push('DEMO_GARMENT');
+
+  return {
+    schema_version: 'v1',
+    job_id: options.jobId,
+    rules_version: MOCK_RULES_VERSION,
+    regions: [chest, shoulder, waist, sleeveResult(body, garment), bodyLengthResult(garment)],
+    summary,
+    warnings,
+    created_at: options.createdAt,
+  };
 }

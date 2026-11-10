@@ -311,9 +311,16 @@ a:focus-visible {
   white-space: nowrap;
 }
 
-.verdict-tight {
+/* 판정 라벨 (FitLabel) */
+.verdict-insufficient,
+.verdict-narrow {
   background: #fde8e8;
   color: var(--bad);
+}
+
+.verdict-snug {
+  background: #fff3df;
+  color: var(--warn);
 }
 
 .verdict-regular {
@@ -326,9 +333,33 @@ a:focus-visible {
   color: var(--accent);
 }
 
-.verdict-oversized {
+.verdict-dropped {
   background: #f1e9fb;
   color: #6a3fb5;
+}
+
+.verdict-unknown,
+.verdict-not_evaluated {
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.fit-summary {
+  margin: -4px 0 12px;
+  font-weight: 600;
+}
+
+.fit-table th {
+  white-space: nowrap;
+}
+
+.demo-badge {
+  align-self: flex-start;
+  margin: 4px 0 0;
+}
+
+.error p {
+  margin: 0 0 4px;
 }
 
 .badge {
@@ -393,7 +424,9 @@ a:focus-visible {
 }
 
 .stage-skipped .stage-status,
-.stage-pending .stage-status {
+.stage-waiting .stage-status,
+.stage-queued .stage-status,
+.stage-cancelled .stage-status {
   color: var(--muted);
 }
 

@@ -1,48 +1,79 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
-import { errorMessage } from '../api/api';
+import { ApiError, errorMessage } from '../api/api';
 import { api } from '../api/client';
-import type { BodyMeasurements, Garment } from '../api/types';
-import { useFitting } from '../state/FittingContext';
+import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL } from '../api/contract';
+import type { FitRequest, FittingStatus, GarmentListItem, Measurements } from '../api/types';
+import { MEASUREMENT_PROTOCOL_VERSION } from '../api/types';
+import { colorHex, garmentName } from '../labels';
+import { useFitting } from '../state/fittingStore';
 
-const summary = (body: BodyMeasurements) =>
-  `키 ${body.heightCm} · 가슴 ${body.chestCircumferenceCm} · 허리 ${body.waistCircumferenceCm} · ` +
-  `어깨 ${body.shoulderWidthCm} · 팔 ${body.armLengthCm} cm`;
+const summary = (m: Measurements) =>
+  MEASUREMENT_FIELDS.map((field) => `${MEASUREMENT_LABEL[field]} ${m[field]}`).join(' · ') + ' cm';
+
+const sizes = (item: GarmentListItem) => {
+  const m = item.garment.measurements;
+  return [
+    m.chest_girth_cm !== null && `가슴둘레 ${m.chest_girth_cm}`,
+    m.shoulder_width_cm !== null && `어깨 ${m.shoulder_width_cm}`,
+    m.body_length_cm !== null && `총장 ${m.body_length_cm}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+};
 
 export function GarmentSelectPage() {
-  const { body } = useFitting();
+  const { measurements, saveResult } = useFitting();
   const navigate = useNavigate();
-  const [garments, setGarments] = useState<Garment[] | null>(null);
+  const [garments, setGarments] = useState<GarmentListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string[] | null>(null);
 
   useEffect(() => {
     let alive = true;
     api
       .listGarments()
-      .then((list) => alive && setGarments(list))
+      .then((list) => alive && setGarments(list.garments))
       .catch((error: unknown) => alive && setLoadError(errorMessage(error)));
     return () => {
       alive = false;
     };
   }, []);
 
-  if (!body) return <Navigate to="/" replace />;
-  const currentBody = body;
+  if (!measurements) return <Navigate to="/" replace />;
+  const current = measurements;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedId) return;
+    const item = garments?.find((g) => g.garment.id === selectedId);
+    if (!item) return;
     setSubmitting(true);
     setSubmitError(null);
+    const fitRequest: FitRequest = {
+      garment_variant_id: item.garment.id,
+      measurements: current,
+      measurement_protocol_version: MEASUREMENT_PROTOCOL_VERSION,
+    };
     try {
-      const job = await api.createFitting({ body: currentBody, garmentId: selectedId, realizeConsent: consent });
-      navigate(`/fittings/${job.jobId}`);
+      // 1) 핏 리포트는 3D·AI 없이 바로 계산한다 (POST /api/fit, B2)
+      const report = await api.fit(fitRequest);
+      // 2) 3D·실사화 작업 (POST /api/fittings, B3). 아직 없는 서버면 리포트만 보여 준다.
+      let job: FittingStatus | null = null;
+      try {
+        job = await api.createFitting({ ...fitRequest, mode: 'full', realize_consent: consent });
+      } catch {
+        job = null;
+      }
+      const id = job?.job_id ?? report.job_id;
+      saveResult(id, { report, garmentId: item.garment.id, garmentName: garmentName(item.garment), jobId: job?.job_id ?? null });
+      navigate(`/fittings/${encodeURIComponent(id)}`);
     } catch (error) {
-      setSubmitError(errorMessage(error));
+      const lines = [errorMessage(error)];
+      if (error instanceof ApiError) lines.push(...error.fields.map((field) => field.message));
+      setSubmitError(lines);
       setSubmitting(false);
     }
   }
@@ -51,7 +82,7 @@ export function GarmentSelectPage() {
     <section>
       <h1>티셔츠 고르기</h1>
       <p className="lead">
-        내 치수: {summary(currentBody)} <Link to="/">수정</Link>
+        내 치수: {summary(current)} <Link to="/">수정</Link>
       </p>
 
       {loadError && (
@@ -60,13 +91,14 @@ export function GarmentSelectPage() {
         </p>
       )}
       {!garments && !loadError && <p aria-busy="true">티셔츠 목록을 불러오는 중…</p>}
+      {garments && garments.length === 0 && <p>지금 고를 수 있는 티셔츠가 없습니다.</p>}
 
-      {garments && (
+      {garments && garments.length > 0 && (
         <form onSubmit={onSubmit}>
           <fieldset className="garment-grid">
             <legend className="sr-only">티셔츠</legend>
-            {garments.map((garment) => {
-              const m = garment.measurements;
+            {garments.map((item) => {
+              const { garment } = item;
               return (
                 <label key={garment.id} className={`garment-card${selectedId === garment.id ? ' selected' : ''}`}>
                   <input
@@ -76,14 +108,10 @@ export function GarmentSelectPage() {
                     checked={selectedId === garment.id}
                     onChange={() => setSelectedId(garment.id)}
                   />
-                  <span className="swatch" style={{ background: garment.colorHex }} aria-hidden="true" />
-                  <span className="garment-name">{garment.name}</span>
-                  <span className="garment-meta">
-                    {[garment.fitLabel, garment.colorName, garment.fabric].filter(Boolean).join(' · ')}
-                  </span>
-                  <span className="garment-size">
-                    가슴단면 {m.chestHalfCm} · 총장 {m.lengthCm} · 어깨 {m.shoulderWidthCm} cm
-                  </span>
+                  <span className="swatch" style={{ background: colorHex(garment.color) }} aria-hidden="true" />
+                  <span className="garment-name">{garmentName(garment)}</span>
+                  <span className="garment-size">{sizes(item)} cm</span>
+                  {item.is_demo && <span className="badge demo-badge">시연용 의류</span>}
                 </label>
               );
             })}
@@ -100,9 +128,11 @@ export function GarmentSelectPage() {
           </label>
 
           {submitError && (
-            <p className="error" role="alert">
-              {submitError}
-            </p>
+            <div className="error" role="alert">
+              {submitError.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
           )}
           <div className="actions">
             <button type="submit" className="primary" disabled={!selectedId || submitting}>

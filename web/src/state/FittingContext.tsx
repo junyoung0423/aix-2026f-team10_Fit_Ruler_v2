@@ -1,52 +1,50 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import type { BodyMeasurements } from '../api/types';
+import { useMemo, useState, type ReactNode } from 'react';
+import type { Measurements } from '../api/types';
+import { FittingContext, type FittingState, type StoredResult } from './fittingStore';
 
-const STORAGE_KEY = 'fit-ruler.body';
+const BODY_KEY = 'fit-ruler.measurements';
+const RESULTS_KEY = 'fit-ruler.results';
 
-interface FittingState {
-  body: BodyMeasurements | null;
-  setBody: (body: BodyMeasurements) => void;
-}
-
-const FittingContext = createContext<FittingState | null>(null);
-
-function loadBody(): BodyMeasurements | null {
+function load<T>(key: string, fallback: T): T {
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as BodyMeasurements) : null;
+    const raw = window.sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
-    return null;
+    return fallback;
   }
 }
 
-function saveBody(body: BodyMeasurements): void {
+function save(key: string, value: unknown): void {
   try {
-    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(body));
+    window.sessionStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // 저장소를 쓸 수 없으면 새로고침 때 입력값이 사라질 뿐이다.
+    // 저장소를 쓸 수 없으면 새로고침 때 값이 사라질 뿐이다.
   }
 }
 
-/** 화면 사이에 신체 치수를 넘긴다. 새로고침해도 남도록 sessionStorage에도 둔다. */
+/** 화면 사이에 신체 치수와 결과를 넘긴다. 새로고침해도 남도록 sessionStorage에도 둔다. */
 export function FittingProvider({ children }: { children: ReactNode }) {
-  const [body, setBodyState] = useState<BodyMeasurements | null>(loadBody);
+  const [measurements, setMeasurementsState] = useState<Measurements | null>(() => load(BODY_KEY, null));
+  const [results, setResults] = useState<Record<string, StoredResult>>(() => load(RESULTS_KEY, {}));
 
   const value = useMemo<FittingState>(
     () => ({
-      body,
-      setBody: (next) => {
-        setBodyState(next);
-        saveBody(next);
+      measurements,
+      setMeasurements: (next) => {
+        setMeasurementsState(next);
+        save(BODY_KEY, next);
+      },
+      results,
+      saveResult: (id, result) => {
+        setResults((prev) => {
+          const next = { ...prev, [id]: result };
+          save(RESULTS_KEY, next);
+          return next;
+        });
       },
     }),
-    [body],
+    [measurements, results],
   );
 
   return <FittingContext.Provider value={value}>{children}</FittingContext.Provider>;
-}
-
-export function useFitting(): FittingState {
-  const context = useContext(FittingContext);
-  if (!context) throw new Error('useFitting은 FittingProvider 안에서만 쓸 수 있습니다.');
-  return context;
 }
