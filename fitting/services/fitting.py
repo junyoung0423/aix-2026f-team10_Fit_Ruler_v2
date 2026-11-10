@@ -28,6 +28,7 @@ from fitting.domain import (
     VisualPart,
     VisualSkipReason,
 )
+from fitting.fit import FitEngineError
 from fitting.ports import (
     BODY_OUTPUTS,
     DRAPE_OUTPUTS,
@@ -123,9 +124,25 @@ def run_fitting(
         )
         return FittingOutcome(status=status, report=None)
 
-    report = ports.fit.calculate(
-        request.to_body_input(), garment, job_id=job_id, created_at=created_at
-    )
+    try:
+        report = ports.fit.calculate(
+            request.to_body_input(), garment, job_id=job_id, created_at=created_at
+        )
+    except FitEngineError as error:
+        # 의류군·프로토콜 불일치, 필수 실측 누락 등 계산할 수 없는 조합 (#2). 리포트가 없으므로
+        # 영상 경로도 시작하지 않는다. 내부 사유(error.reason)는 상태에 넣지 않는다.
+        progress[Stage.FIT_CALCULATE] = StageStatus.FAILED
+        for stage in progress:
+            if progress[stage] is StageStatus.WAITING:
+                progress[stage] = StageStatus.SKIPPED
+        status = FittingStatus(
+            job_id=job_id,
+            status=JobStatus.FAILED,
+            report=ReportPart(status=StageStatus.FAILED, error_code=error.code),
+            visual=VisualPart(status=StageStatus.SKIPPED),
+            stages=_stages(progress),
+        )
+        return FittingOutcome(status=status, report=None)
     for stage in REPORT_STAGES:
         progress[stage] = StageStatus.SUCCEEDED
     report_part = ReportPart(

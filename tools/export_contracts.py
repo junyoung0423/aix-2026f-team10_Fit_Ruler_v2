@@ -3,10 +3,10 @@
     python -m tools.export_contracts          # docs/api/schemas, docs/api/examples를 다시 만든다
     python -m tools.export_contracts --check  # 저장된 파일이 최신인지만 확인한다 (CI 테스트도 확인)
 
-손으로 쓰는 예시는 `fitting_request.json`, `fit_request.json`, `garment.json`,
-`fit_report.json`이다.
-`fit_report.json`은 이전 저장소의 핏 엔진(정민) 출력이고, #2 핏 계산기가 들어오면 그 결과로 바꾼다.
-작업 상태 예시(`fitting_status_*.json`)는 가짜 어댑터로 피팅 흐름을 실제로 돌려서 만든다.
+손으로 쓰는 예시는 `fitting_request.json`, `fit_request.json`, `garment.json` 셋이다.
+`fit_report.json`은 #2 핏 계산기(`RuleFitCalculator`, 기본 기준표)로 위 요청·의류를 계산해 만든다.
+작업 상태 예시(`fitting_status_*.json`)는 핏 경로에 같은 계산기를, 영상 경로에 가짜 어댑터를 넣어
+피팅 흐름을 실제로 돌려서 만든다.
 핏 API 예시(`garment_list.json`, `api_error_*.json`)는 서버와 같은 코드(`server.errors`)로 만든다.
 모든 예시는 시연용이며 실제 사용자 결과와 섞지 않는다.
 """
@@ -43,7 +43,7 @@ from fitting.domain import (
     StageStatus,
     VisualPart,
 )
-from fitting.fit import FitEngineError, compute_report
+from fitting.fit import FitEngineError, RuleFitCalculator, compute_report
 from fitting.ports import PortError, PortRequest, PortResult
 from fitting.services.fitting import FittingPorts, run_fitting
 from server.errors import garment_not_found_error, garment_not_ready_error, input_invalid_error
@@ -70,7 +70,6 @@ HAND_WRITTEN_EXAMPLES = {
     "fitting_request.json": "fitting_request",
     "fit_request.json": "fit_request",
     "garment.json": "garment_variant",
-    "fit_report.json": "fit_report",
 }
 
 
@@ -90,14 +89,13 @@ def _read(root: Path, name: str) -> str:
     return (api_dir(root) / "examples" / name).read_text(encoding="utf-8")
 
 
-class _ExampleReport:
-    """예시 리포트(`fit_report.json`)를 그대로 돌려주는 핏 계산기."""
-
-    def __init__(self, report: FitReport) -> None:
-        self._report = report
-
-    def calculate(self, body, garment, *, job_id, created_at) -> FitReport:
-        return self._report.model_copy(update={"job_id": job_id, "created_at": created_at})
+def build_report(root: Path) -> FitReport:
+    """예시 요청·의류를 실제 핏 계산기로 계산한 리포트 (`fit_report.json`)."""
+    request = FittingRequest.model_validate_json(_read(root, "fitting_request.json"))
+    garment = GarmentVariant.model_validate_json(_read(root, "garment.json"))
+    return RuleFitCalculator().calculate(
+        request.to_body_input(), garment, job_id=EXAMPLE_JOB_ID, created_at=EXAMPLE_CREATED_AT
+    )
 
 
 def _status_cases() -> dict[str, tuple[Mode, bool, Callable[[], dict]]]:
@@ -158,11 +156,11 @@ def build_running_status(report: FitReport) -> FittingStatus:
 def build_statuses(root: Path) -> dict[str, FittingStatus]:
     request = FittingRequest.model_validate_json(_read(root, "fitting_request.json"))
     garment = GarmentVariant.model_validate_json(_read(root, "garment.json"))
-    report = FitReport.model_validate_json(_read(root, "fit_report.json"))
+    report = build_report(root)
 
     statuses = {"fitting_status_running.json": build_running_status(report)}
     for name, (mode, consent, overrides) in _status_cases().items():
-        ports: FittingPorts = fake_ports(fit=_ExampleReport(report), **overrides())
+        ports: FittingPorts = fake_ports(fit=RuleFitCalculator(), **overrides())
         outcome = run_fitting(
             request.model_copy(update={"mode": mode, "realize_consent": consent}),
             garment,
@@ -213,6 +211,9 @@ def build_artifacts(root: Path) -> dict[Path, str]:
     for name, model in SCHEMA_MODELS.items():
         path = api_dir(root) / "schemas" / f"{name}.schema.json"
         files[path] = _dump(model.model_json_schema())
+    files[api_dir(root) / "examples" / "fit_report.json"] = _dump(
+        build_report(root).model_dump(mode="json")
+    )
     for name, status in build_statuses(root).items():
         files[api_dir(root) / "examples" / name] = _dump(status.model_dump(mode="json"))
     for name, model in build_api_examples(root).items():
