@@ -91,3 +91,27 @@ class FittingRequest(BaseModel):
             **self.measurements.model_dump(),
             measurement_protocol_version=self.measurement_protocol_version,
         )
+
+
+class FitRequest(BaseModel):
+    """POST /api/fit 요청 본문 (#2). `FittingRequest`에서 `mode`를 뺀 모양이다.
+
+    핏 리포트만 즉시 계산한다(3D·AI 없음). 다섯 신체 치수의 범위는 `Measurements`와 같다.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    garment_variant_id: str = Field(min_length=1)
+    measurements: Measurements
+    measurement_protocol_version: str = _protocol_field()
+
+    @field_validator("measurement_protocol_version")
+    @classmethod
+    def _protocol_supported(cls, value: str) -> str:
+        return _check_protocol(value)
+
+    def to_body_input(self) -> BodyInput:
+        return BodyInput(
+            **self.measurements.model_dump(),
+            measurement_protocol_version=self.measurement_protocol_version,
+        )

@@ -1,0 +1,75 @@
+{
+  "$defs": {
+    "Measurements": {
+      "additionalProperties": false,
+      "description": "사용자가 입력하는 다섯 신체 치수. 단위는 cm이다.",
+      "properties": {
+        "arm_length_cm": {
+          "maximum": 85.0,
+          "minimum": 40.0,
+          "title": "Arm Length Cm",
+          "type": "number"
+        },
+        "chest_cm": {
+          "maximum": 160.0,
+          "minimum": 60.0,
+          "title": "Chest Cm",
+          "type": "number"
+        },
+        "height_cm": {
+          "maximum": 210.0,
+          "minimum": 140.0,
+          "title": "Height Cm",
+          "type": "number"
+        },
+        "shoulder_cm": {
+          "maximum": 60.0,
+          "minimum": 28.0,
+          "title": "Shoulder Cm",
+          "type": "number"
+        },
+        "waist_cm": {
+          "maximum": 160.0,
+          "minimum": 50.0,
+          "title": "Waist Cm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "height_cm",
+        "chest_cm",
+        "waist_cm",
+        "shoulder_cm",
+        "arm_length_cm"
+      ],
+      "title": "Measurements",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "POST /api/fit 요청 본문 (#2). `FittingRequest`에서 `mode`를 뺀 모양이다.\n\n핏 리포트만 즉시 계산한다(3D·AI 없음). 다섯 신체 치수의 범위는 `Measurements`와 같다.",
+  "properties": {
+    "garment_variant_id": {
+      "minLength": 1,
+      "title": "Garment Variant Id",
+      "type": "string"
+    },
+    "measurement_protocol_version": {
+      "enum": [
+        "measure_v1"
+      ],
+      "title": "Measurement Protocol Version",
+      "type": "string"
+    },
+    "measurements": {
+      "$ref": "#/$defs/Measurements"
+    }
+  },
+  "required": [
+    "garment_variant_id",
+    "measurements",
+    "measurement_protocol_version"
+  ],
+  "title": "FitRequest",
+  "type": "object"
+}

@@ -1,0 +1,6 @@
+{
+  "code": "GARMENT_NOT_FOUND",
+  "fields": null,
+  "safe_message": "선택한 의류를 찾을 수 없어요. 목록에서 다시 선택해 주세요.",
+  "schema_version": "v1"
+}

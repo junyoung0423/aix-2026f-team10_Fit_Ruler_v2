@@ -1,0 +1,30 @@
+{
+  "schema_version": "v1",
+  "id": "tee_regular_m_navy_v1",
+  "style": "regular",
+  "size": "M",
+  "color": "navy",
+  "fabric_preset": "cotton_jersey_v0",
+  "garment_family": "basic_short_sleeve_crew",
+  "status": "READY",
+  "measurements": {
+    "chest_girth_cm": 108.0,
+    "waist_girth_cm": 96.0,
+    "shoulder_width_cm": 46.0,
+    "sleeve_length_cm": 22.0,
+    "body_length_cm": 70.0
+  },
+  "measurement_meta": {
+    "measurement_protocol_version": "measure_v1",
+    "source": "명세서 4장 리포트 예시 값을 옮긴 시연용 샘플. 실제 의류를 실측한 값이 아니다.",
+    "is_measured": false,
+    "chest_from_flat_width": false,
+    "waist_from_flat_width": false,
+    "waist_position_matched": true,
+    "measured_by": null,
+    "measured_on": null,
+    "notes": "SAMPLE ONLY: 개발용 고정 샘플이며 실제 SKU와 대조되지 않았다."
+  },
+  "asset_version": "sample_v1",
+  "source_ref": "SAMPLE_NOT_A_REAL_GARMENT"
+}

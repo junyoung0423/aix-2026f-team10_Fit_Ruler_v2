@@ -11,10 +11,13 @@ requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.6,<3",
     "PyYAML>=6.0.1,<7",  # B2: 핏 기준표 config/*.yaml
+    "fastapi>=0.115,<1",  # B2: 핏 API (server/)
+    "uvicorn>=0.30,<1",  # B2: 핏 API 실행
 ]
 
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.27,<1",  # B2: FastAPI TestClient
     "jsonschema>=4.20",
     "pytest>=8",
     "ruff>=0.5",

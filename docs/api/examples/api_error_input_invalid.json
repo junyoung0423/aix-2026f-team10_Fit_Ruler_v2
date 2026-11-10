@@ -1,0 +1,21 @@
+{
+  "code": "INPUT_INVALID",
+  "fields": [
+    {
+      "code": "NOT_A_NUMBER",
+      "field": "measurements.height_cm",
+      "max": null,
+      "message": "키 값은 숫자로 입력해 주세요.",
+      "min": null
+    },
+    {
+      "code": "OUT_OF_RANGE",
+      "field": "measurements.chest_cm",
+      "max": 160.0,
+      "message": "가슴둘레 값은 60~160 cm 사이로 입력해 주세요.",
+      "min": 60.0
+    }
+  ],
+  "safe_message": "입력한 값을 확인해 주세요.",
+  "schema_version": "v1"
+}

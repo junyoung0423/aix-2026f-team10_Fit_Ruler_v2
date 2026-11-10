@@ -5,6 +5,7 @@
 CONTRIBUTING.md의 계약 변경 규칙을 따른다.
 """
 
+from fitting.domain.api import ApiError, FieldError, FieldErrorCode, GarmentList, GarmentListItem
 from fitting.domain.enums import (
     ErrorCode,
     FitLabel,
@@ -28,6 +29,7 @@ from fitting.domain.garment import (
 from fitting.domain.measurements import (
     SUPPORTED_PROTOCOL_VERSIONS,
     BodyInput,
+    FitRequest,
     FittingRequest,
     Measurements,
 )
@@ -40,12 +42,18 @@ __all__ = [
     "MAX_GARMENT_CM",
     "SCHEMA_VERSION",
     "SUPPORTED_PROTOCOL_VERSIONS",
+    "ApiError",
     "BodyInput",
     "ErrorCode",
+    "FieldError",
+    "FieldErrorCode",
     "FitLabel",
     "FitReport",
+    "FitRequest",
     "FittingRequest",
     "FittingStatus",
+    "GarmentList",
+    "GarmentListItem",
     "GarmentMeasurements",
     "GarmentStatus",
     "GarmentVariant",

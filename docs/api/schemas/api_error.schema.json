@@ -1,0 +1,120 @@
+{
+  "$defs": {
+    "ErrorCode": {
+      "description": "오류 코드 (명세서 12장).",
+      "enum": [
+        "INPUT_INVALID",
+        "GARMENT_NOT_READY",
+        "GARMENT_NOT_FOUND",
+        "BODY_FIT_NOT_CONVERGED",
+        "DRAPE_INVALID",
+        "RENDER_FAILED",
+        "REALIZE_TIMEOUT",
+        "EXTERNAL_SUBMIT_UNKNOWN",
+        "VALIDATION_FAILED",
+        "VALIDATION_UNVERIFIABLE",
+        "BUDGET_LIMIT"
+      ],
+      "title": "ErrorCode",
+      "type": "string"
+    },
+    "FieldError": {
+      "additionalProperties": false,
+      "description": "[제안] 틀린 입력 필드 하나.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/FieldErrorCode"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        }
+      },
+      "required": [
+        "field",
+        "code",
+        "message"
+      ],
+      "title": "FieldError",
+      "type": "object"
+    },
+    "FieldErrorCode": {
+      "description": "[제안] 입력 필드 하나가 틀린 이유. 화면이 필드별 안내 문구를 고르는 데 쓴다.",
+      "enum": [
+        "MISSING",
+        "UNKNOWN_FIELD",
+        "NOT_A_NUMBER",
+        "OUT_OF_RANGE",
+        "UNSUPPORTED_VALUE",
+        "INVALID"
+      ],
+      "title": "FieldErrorCode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "API 오류 응답. HTTP 상태와 함께 돌려준다.\n\n| 상황 | HTTP | code |\n|---|---|---|\n| 입력 범위·형식 오류 | 422 | INPUT_INVALID (`fields`에 필드별 이유) |\n| 없는 의류 ID | 404 | GARMENT_NOT_FOUND |\n| 준비 안 됨·의류군·프로토콜 불일치·필수 실측 누락 | 409 | GARMENT_NOT_READY |",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ErrorCode"
+    },
+    "fields": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/FieldError"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fields"
+    },
+    "safe_message": {
+      "title": "Safe Message",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "safe_message"
+  ],
+  "title": "ApiError",
+  "type": "object"
+}
