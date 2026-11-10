@@ -1,0 +1,52 @@
+# 핏 판정 기준표 fit_rules_v0 (#2, 명세서 4장)
+#
+# 이전 저장소 핏 엔진(정민)의 rules.py에 코드로 있던 값을 그대로 옮겼다.
+# 구간 값은 기본 반팔 티셔츠용 초기 검증값이다. 신축성과 착용 취향을 반영한 정답이 아니며,
+# 실제 착용 대조 후 조정한다. 값이나 문구를 바꾸면 version을 올린다(이전 리포트를 재현하기 위해).
+#
+# 읽는 법
+# - 여유량 = 의류 실측 - 신체 치수 (cm, 반올림하지 않은 값으로 판정한다).
+# - bands는 아래에서 위로 오름차순이다. 여유량이 upper보다 작으면(upper_inclusive가 true면 이하이면)
+#   그 구간이다. 마지막 구간은 upper가 null이고 나머지 모든 값을 받는다.
+# - label은 fitting.domain.FitLabel 이름 중 판정용(INSUFFICIENT·SNUG·REGULAR·LOOSE·NARROW·DROPPED)만 쓴다.
+# - 잘못된 기준표(마지막 upper가 있음, 오름차순 아님, 모르는 라벨·키 등)는 읽을 때 거절한다.
+
+version: fit_rules_v0
+
+# 이 기준표를 적용할 의류군 (fitting.domain.FAMILY_BASIC_SHORT_SLEEVE_CREW)
+applicable_families:
+  - basic_short_sleeve_crew
+
+regions:
+  # 가슴 여유: 0 미만 / 0 이상 6 미만 / 6 이상 14 이하 / 14 초과 (cm)
+  chest:
+    short_ko: 가슴
+    noun_ko: 가슴둘레
+    negative_note: &stretch_note 신축성에 따라 실제 착용감은 달라질 수 있어 착용 가능 여부는 판단하지 않습니다.
+    bands:
+      - {upper: 0, upper_inclusive: false, label: INSUFFICIENT, label_ko: 여유 부족 예상}
+      - {upper: 6, upper_inclusive: false, label: SNUG, label_ko: 밀착}
+      - {upper: 14, upper_inclusive: true, label: REGULAR, label_ko: 기본 여유}
+      - {upper: null, label: LOOSE, label_ko: 넉넉}
+
+  # 어깨 여유: -1 미만 / -1 이상 2 이하 / 2 초과 (cm). 양쪽 합계이며 한쪽 어깨당 값이 아니다.
+  shoulder:
+    short_ko: 어깨
+    noun_ko: 어깨너비
+    note: 어깨 여유는 양쪽을 합한 값이며 한쪽 어깨당 값이 아닙니다.
+    bands:
+      - {upper: -1, upper_inclusive: false, label: NARROW, label_ko: 좁음 예상}
+      - {upper: 2, upper_inclusive: true, label: REGULAR, label_ko: 기본 범위}
+      - {upper: null, label: DROPPED, label_ko: 어깨선 내려옴 예상}
+
+  # 허리 여유: 0 미만 / 0 이상 4 미만 / 4 이상 12 이하 / 12 초과 (cm)
+  # 위치 대응이 확인된 의류(measurement_meta.waist_position_matched)만 적용한다.
+  waist:
+    short_ko: 허리
+    noun_ko: 허리둘레
+    negative_note: *stretch_note
+    bands:
+      - {upper: 0, upper_inclusive: false, label: INSUFFICIENT, label_ko: 여유 부족 예상}
+      - {upper: 4, upper_inclusive: false, label: SNUG, label_ko: 밀착}
+      - {upper: 12, upper_inclusive: true, label: REGULAR, label_ko: 기본 여유}
+      - {upper: null, label: LOOSE, label_ko: 넉넉}

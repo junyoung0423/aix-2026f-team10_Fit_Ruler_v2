@@ -20,7 +20,8 @@ from fitting.domain.enums import (
 from fitting.domain.garment import GarmentVariant
 from fitting.domain.measurements import BodyInput
 from fitting.domain.report import FitReport, RegionResult
-from fitting.fit.rules import FIT_RULES_V0, FitRules, RegionRule
+from fitting.fit.loader import default_fit_rules
+from fitting.fit.rules import FitRules, RegionRule
 from fitting.ports.dto import PortError
 
 _GARMENT_NOT_READY_MESSAGE = "선택한 의류를 아직 사용할 수 없어요. 다른 의류를 선택해 주세요."
@@ -189,15 +190,16 @@ def compute_report(
     *,
     job_id: str,
     created_at: datetime | None = None,
-    rules: FitRules = FIT_RULES_V0,
+    rules: FitRules | None = None,
 ) -> FitReport:
-    """신체 입력과 의류 실측으로 핏 리포트를 만든다.
+    """신체 입력과 의류 실측으로 핏 리포트를 만든다. `rules`가 없으면 기본 기준표를 쓴다.
 
     같은 입력과 같은 규칙 버전이면 `created_at`을 제외한 모든 값이 같다.
 
     Raises:
         FitEngineError: 의류가 READY가 아니거나 필수 실측·프로토콜이 맞지 않아 계산할 수 없다.
     """
+    rules = rules or default_fit_rules()
     _check_computable(body, garment, rules)
 
     chest_cm = garment.measurements.chest_girth_cm
@@ -256,8 +258,8 @@ class RuleFitCalculator:
     던지고, 피팅 흐름(`run_fitting`)과 핏 API가 이를 GARMENT_NOT_READY로 바꾼다.
     """
 
-    def __init__(self, rules: FitRules = FIT_RULES_V0) -> None:
-        self.rules = rules
+    def __init__(self, rules: FitRules | None = None) -> None:
+        self.rules = rules or default_fit_rules()
 
     def calculate(
         self,

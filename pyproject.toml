@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 # 각 PR이 필요한 의존성을 여기에 추가한다 (예: B1 pydantic, B2 fastapi).
 dependencies = [
     "pydantic>=2.6,<3",
+    "PyYAML>=6.0.1,<7",  # B2: 핏 기준표 config/*.yaml
 ]
 
 [project.optional-dependencies]
