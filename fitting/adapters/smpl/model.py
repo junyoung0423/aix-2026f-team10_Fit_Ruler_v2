@@ -73,6 +73,13 @@ class _SafeUnpickler(pickle.Unpickler):
             if name == "_reconstructor":
                 return super().find_class("copyreg", name)
             raise pickle.UnpicklingError(f"허용하지 않는 이름: {module}.{name}")
+        if module.startswith("scipy.sparse"):
+            # 공식 pkl은 scipy.sparse.csc 같은 옛 경로를 가리킨다. 이 경로는 SciPy 2.0에서 없어지므로
+            # 같은 이름의 클래스를 scipy.sparse에서 바로 가져온다.
+            import scipy.sparse
+
+            if hasattr(scipy.sparse, name):
+                return getattr(scipy.sparse, name)
         if module.startswith(_ALLOWED_PREFIXES):
             return super().find_class(module, name)
         raise pickle.UnpicklingError(f"허용하지 않는 클래스: {module}.{name}")
