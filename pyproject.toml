@@ -8,16 +8,19 @@ version = "0.0.0"
 description = "AIMAX 반팔 티셔츠 가상 피팅: 핏 리포트, 3D 착장, 실사화 검증"
 requires-python = ">=3.10"
 # 각 PR이 필요한 의존성을 여기에 추가한다 (예: B1 pydantic, B2 fastapi).
-dependencies = []
+dependencies = [
+    "pydantic>=2.6,<3",
+]
 
 [project.optional-dependencies]
 dev = [
+    "jsonschema>=4.20",
     "pytest>=8",
     "ruff>=0.5",
 ]
 
 [tool.setuptools.packages.find]
-include = ["fitting*", "server*"]
+include = ["fitting*", "server*", "tools*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

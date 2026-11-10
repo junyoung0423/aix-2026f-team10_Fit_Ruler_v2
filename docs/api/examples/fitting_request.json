@@ -1,0 +1,12 @@
+{
+  "garment_variant_id": "tee_regular_m_navy_v1",
+  "mode": "full",
+  "measurements": {
+    "height_cm": 175.0,
+    "chest_cm": 100.0,
+    "waist_cm": 80.0,
+    "shoulder_cm": 44.0,
+    "arm_length_cm": 60.0
+  },
+  "measurement_protocol_version": "measure_v1"
+}

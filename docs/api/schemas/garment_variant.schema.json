@@ -1,0 +1,272 @@
+{
+  "$defs": {
+    "GarmentMeasurements": {
+      "additionalProperties": false,
+      "description": "의류 실측 (명세서 3장). 단면과 둘레, 소매와 팔길이를 서로 대체하지 않는다.",
+      "properties": {
+        "body_length_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body Length Cm"
+        },
+        "chest_girth_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chest Girth Cm"
+        },
+        "shoulder_width_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shoulder Width Cm"
+        },
+        "sleeve_length_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sleeve Length Cm"
+        },
+        "waist_girth_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Waist Girth Cm"
+        }
+      },
+      "title": "GarmentMeasurements",
+      "type": "object"
+    },
+    "GarmentStatus": {
+      "description": "의류 준비 상태 (명세서 2장 S04). READY만 일반 목록에 표시한다.",
+      "enum": [
+        "DRAFT",
+        "PREPARING",
+        "READY",
+        "FAILED"
+      ],
+      "title": "GarmentStatus",
+      "type": "string"
+    },
+    "MeasurementMeta": {
+      "additionalProperties": false,
+      "description": "의류 실측의 측정 위치·방법·출처 기록 (명세서 3장 measurement_meta).",
+      "properties": {
+        "chest_from_flat_width": {
+          "default": false,
+          "title": "Chest From Flat Width",
+          "type": "boolean"
+        },
+        "is_measured": {
+          "title": "Is Measured",
+          "type": "boolean"
+        },
+        "measured_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Measured By"
+        },
+        "measured_on": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Measured On"
+        },
+        "measurement_protocol_version": {
+          "minLength": 1,
+          "title": "Measurement Protocol Version",
+          "type": "string"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "waist_from_flat_width": {
+          "default": false,
+          "title": "Waist From Flat Width",
+          "type": "boolean"
+        },
+        "waist_position_matched": {
+          "default": false,
+          "title": "Waist Position Matched",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "measurement_protocol_version",
+        "source",
+        "is_measured"
+      ],
+      "title": "MeasurementMeta",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "핏형·사이즈·색상이 하나로 확정된 선택 단위(SKU) (명세서 1장, 9장).",
+  "if": {
+    "properties": {
+      "status": {
+        "const": "READY"
+      }
+    },
+    "required": [
+      "status"
+    ]
+  },
+  "properties": {
+    "asset_version": {
+      "minLength": 1,
+      "title": "Asset Version",
+      "type": "string"
+    },
+    "color": {
+      "minLength": 1,
+      "title": "Color",
+      "type": "string"
+    },
+    "fabric_preset": {
+      "minLength": 1,
+      "title": "Fabric Preset",
+      "type": "string"
+    },
+    "garment_family": {
+      "default": "basic_short_sleeve_crew",
+      "title": "Garment Family",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "measurement_meta": {
+      "$ref": "#/$defs/MeasurementMeta"
+    },
+    "measurements": {
+      "$ref": "#/$defs/GarmentMeasurements"
+    },
+    "schema_version": {
+      "default": "v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "size": {
+      "minLength": 1,
+      "title": "Size",
+      "type": "string"
+    },
+    "source_ref": {
+      "minLength": 1,
+      "title": "Source Ref",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/GarmentStatus"
+    },
+    "style": {
+      "minLength": 1,
+      "title": "Style",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "style",
+    "size",
+    "color",
+    "fabric_preset",
+    "status",
+    "measurements",
+    "measurement_meta",
+    "asset_version",
+    "source_ref"
+  ],
+  "then": {
+    "properties": {
+      "measurements": {
+        "properties": {
+          "chest_girth_cm": {
+            "type": "number"
+          },
+          "shoulder_width_cm": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "chest_girth_cm",
+          "shoulder_width_cm"
+        ]
+      }
+    }
+  },
+  "title": "GarmentVariant",
+  "type": "object"
+}

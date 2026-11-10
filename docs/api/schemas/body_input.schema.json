@@ -1,0 +1,53 @@
+{
+  "additionalProperties": false,
+  "description": "작업 스냅샷에 고정하는 신체 입력 (명세서 9장). 다섯 치수와 측정 프로토콜 버전.",
+  "properties": {
+    "arm_length_cm": {
+      "maximum": 85.0,
+      "minimum": 40.0,
+      "title": "Arm Length Cm",
+      "type": "number"
+    },
+    "chest_cm": {
+      "maximum": 160.0,
+      "minimum": 60.0,
+      "title": "Chest Cm",
+      "type": "number"
+    },
+    "height_cm": {
+      "maximum": 210.0,
+      "minimum": 140.0,
+      "title": "Height Cm",
+      "type": "number"
+    },
+    "measurement_protocol_version": {
+      "enum": [
+        "measure_v1"
+      ],
+      "title": "Measurement Protocol Version",
+      "type": "string"
+    },
+    "shoulder_cm": {
+      "maximum": 60.0,
+      "minimum": 28.0,
+      "title": "Shoulder Cm",
+      "type": "number"
+    },
+    "waist_cm": {
+      "maximum": 160.0,
+      "minimum": 50.0,
+      "title": "Waist Cm",
+      "type": "number"
+    }
+  },
+  "required": [
+    "height_cm",
+    "chest_cm",
+    "waist_cm",
+    "shoulder_cm",
+    "arm_length_cm",
+    "measurement_protocol_version"
+  ],
+  "title": "BodyInput",
+  "type": "object"
+}

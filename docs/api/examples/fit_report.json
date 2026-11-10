@@ -1,0 +1,57 @@
+{
+  "created_at": "2026-01-01T00:00:00Z",
+  "job_id": "fit_sample_001",
+  "regions": [
+    {
+      "body_cm": 100.0,
+      "ease_cm": 8.0,
+      "explanation": "가슴둘레가 몸보다 8.0 cm 커서 초기 기준상 기본 여유에 해당합니다.",
+      "garment_cm": 108.0,
+      "label": "REGULAR",
+      "reason_code": null,
+      "region": "chest"
+    },
+    {
+      "body_cm": 44.0,
+      "ease_cm": 2.0,
+      "explanation": "어깨너비가 몸보다 2.0 cm 커서 초기 기준상 기본 범위에 해당합니다. 어깨 여유는 양쪽을 합한 값이며 한쪽 어깨당 값이 아닙니다.",
+      "garment_cm": 46.0,
+      "label": "REGULAR",
+      "reason_code": null,
+      "region": "shoulder"
+    },
+    {
+      "body_cm": 80.0,
+      "ease_cm": 16.0,
+      "explanation": "허리둘레가 몸보다 16.0 cm 커서 초기 기준상 넉넉에 해당합니다.",
+      "garment_cm": 96.0,
+      "label": "LOOSE",
+      "reason_code": null,
+      "region": "waist"
+    },
+    {
+      "body_cm": 60.0,
+      "ease_cm": null,
+      "explanation": "소매 실측 22.0 cm입니다. 사람의 전체 팔길이와 직접 비교하지 않아 적정 여부는 판단하지 않습니다.",
+      "garment_cm": 22.0,
+      "label": "NOT_EVALUATED",
+      "reason_code": "NO_DIRECT_BODY_COUNTERPART",
+      "region": "sleeve"
+    },
+    {
+      "body_cm": null,
+      "ease_cm": null,
+      "explanation": "기장 실측 70.0 cm입니다. 몸통 길이 입력이 없어 적정 기장은 판단하지 않습니다.",
+      "garment_cm": 70.0,
+      "label": "NOT_EVALUATED",
+      "reason_code": "BODY_INPUT_NOT_PROVIDED",
+      "region": "body_length"
+    }
+  ],
+  "rules_version": "fit_rules_v0",
+  "schema_version": "v1",
+  "summary": "가슴 기본 여유 · 어깨 기본 범위 · 허리 넉넉",
+  "warnings": [
+    "DEMO_GARMENT"
+  ]
+}

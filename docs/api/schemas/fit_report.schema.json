@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "FitLabel": {
+      "description": "부위별 판정. 가슴·허리는 네 단계, 어깨는 세 단계 (명세서 4장).\n\nREGULAR, UNKNOWN은 명세서 예시에 나온 이름이고 나머지 이름은 [제안]이다.",
+      "enum": [
+        "INSUFFICIENT",
+        "SNUG",
+        "REGULAR",
+        "LOOSE",
+        "NARROW",
+        "DROPPED",
+        "UNKNOWN",
+        "NOT_EVALUATED"
+      ],
+      "title": "FitLabel",
+      "type": "string"
+    },
+    "ReasonCode": {
+      "description": "판정하지 않은 이유. MEASUREMENT_NOT_COMPARABLE만 명세서에 이름이 있다.",
+      "enum": [
+        "MEASUREMENT_NOT_COMPARABLE",
+        "MEASUREMENT_MISSING",
+        "NO_DIRECT_BODY_COUNTERPART",
+        "BODY_INPUT_NOT_PROVIDED"
+      ],
+      "title": "ReasonCode",
+      "type": "string"
+    },
+    "Region": {
+      "description": "핏 리포트의 부위. 리포트에는 아래 순서로 모두 포함한다 (명세서 11장).",
+      "enum": [
+        "chest",
+        "shoulder",
+        "waist",
+        "sleeve",
+        "body_length"
+      ],
+      "title": "Region",
+      "type": "string"
+    },
+    "RegionResult": {
+      "additionalProperties": false,
+      "description": "한 부위의 비교 결과.\n\n비교하지 않은 부위는 ease_cm을 null로 두고 reason_code에 이유를 넣는다.\nbody_cm, garment_cm은 입력 원래 값이고, ease_cm은 반올림하지 않은 차이다.\n화면에 보일 때만 소수점 한 자리로 반올림한다.",
+      "properties": {
+        "body_cm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Body Cm"
+        },
+        "ease_cm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ease Cm"
+        },
+        "explanation": {
+          "title": "Explanation",
+          "type": "string"
+        },
+        "garment_cm": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Garment Cm"
+        },
+        "label": {
+          "$ref": "#/$defs/FitLabel"
+        },
+        "reason_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReasonCode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "region": {
+          "$ref": "#/$defs/Region"
+        }
+      },
+      "required": [
+        "region",
+        "body_cm",
+        "garment_cm",
+        "ease_cm",
+        "label",
+        "explanation"
+      ],
+      "title": "RegionResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "완료한 수치 기반 핏 리포트. 규칙 버전을 함께 저장해 나중에 재현할 수 있게 한다.",
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "job_id": {
+      "title": "Job Id",
+      "type": "string"
+    },
+    "regions": {
+      "items": {
+        "$ref": "#/$defs/RegionResult"
+      },
+      "title": "Regions",
+      "type": "array"
+    },
+    "rules_version": {
+      "title": "Rules Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "job_id",
+    "rules_version",
+    "regions",
+    "summary",
+    "warnings",
+    "created_at"
+  ],
+  "title": "FitReport",
+  "type": "object"
+}
