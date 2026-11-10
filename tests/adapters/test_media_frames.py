@@ -64,6 +64,21 @@ def test_sharpest_frame_is_chosen_inside_middle_range(tmp_path: Path) -> None:
     assert saved.shape == (SIZE[1], SIZE[0], 3)
 
 
+def test_korean_path_with_space(tmp_path: Path) -> None:
+    """저장소가 '바탕 화면' 같은 한글·공백 경로에 있어도 영상 읽기와 프레임 저장이 된다."""
+    folder = tmp_path / "바탕 화면" / "결과"
+    folder.mkdir(parents=True)
+    clip = write_clip(folder / "클립.mp4", [flat(90)] * 10)
+
+    assert read_video_info(clip).frame_count == 10
+    result = save_representative_frame(clip, folder / "대표 프레임.png")
+    assert result.path.exists() and result.path.stat().st_size > 0
+    decoded = cv2.imdecode(
+        np.frombuffer(result.path.read_bytes(), np.uint8), cv2.IMREAD_COLOR
+    )
+    assert decoded.shape == (SIZE[1], SIZE[0], 3)
+
+
 def test_middle_method(tmp_path: Path) -> None:
     clip = write_clip(tmp_path / "clip.mp4", [flat(80)] * 11)
     result = save_representative_frame(clip, tmp_path / "frame.png", method="middle")

@@ -114,8 +114,11 @@ def save_representative_frame(
 
     index, score, frame = best
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    if not cv2.imwrite(str(out_path), frame):
+    # cv2.imwrite는 Windows에서 한글이 든 경로(예: 바탕 화면)에 실패하므로 인코딩 후 직접 쓴다.
+    ok, encoded = cv2.imencode(out_path.suffix or ".png", frame)
+    if not ok:
         raise OSError(f"프레임을 저장하지 못했습니다: {out_path}")
+    out_path.write_bytes(encoded.tobytes())
     return RepresentativeFrame(
         index=index,
         time_s=round(index / info.fps, 3) if info.fps > 0 else 0.0,
