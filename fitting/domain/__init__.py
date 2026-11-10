@@ -1,7 +1,7 @@
 """팀 전체가 공유하는 데이터 계약 (#1).
 
 이 패키지의 모델이 JSON 스키마(`docs/api/schemas/`)와 API 응답 예시(`docs/api/examples/`)의
-원본이다. 모델을 바꾸면 `python -m fitting.domain.export`로 스키마와 예시를 다시 만들고,
+원본이다. 모델을 바꾸면 `python -m tools.export_contracts`로 스키마와 예시를 다시 만들고,
 CONTRIBUTING.md의 계약 변경 규칙을 따른다.
 """
 
