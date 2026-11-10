@@ -174,6 +174,7 @@ python -m venv .venv
 
 - GarmentCode 경로: `--gc-root` > 환경변수 `FIT_RULER_GC_ROOT` > `C:\dev\GarmentCode`.
 - Blender 경로: `--blender` > 환경변수 `BLENDER_EXE` > `C:\Program Files\Blender Foundation\Blender 5.2\blender.exe`.
+- 출력 루트: `--out-root` > 환경변수 `FIT_RULER_RUNS_DIR`. 둘 다 없으면 실행하지 않고 멈춥니다(기본 경로 없음).
 - `run_drape`는 export를 GarmentCode 루트에서 실행하고(`system.json`이 상대경로라서) `PYTHONPATH`에 GarmentCode 루트와
   저장소 루트를 넣습니다. 그래서 `PYTHONPATH`는 따로 맞추지 않아도 됩니다. 편집 설치(.pth)만으로는 `import pygarment`가 되지 않습니다.
 - GPU는 필요 없습니다. GarmentCode 자체 시뮬레이터(NVIDIA warp)는 쓰지 않습니다.
@@ -200,7 +201,7 @@ python -m venv .venv
 ```
 
 - 결과: `<runs>\quick\try1\drape_metrics.json`(`drape_ok`, `failed_checks`)과 `front.png`.
-- 옵션: `--out-root`(기본 `C:\dev\fitruler_c\runs\C1`), `--max-frames N`(짧은 시험용, 설정의 300 이하만), `--gc-root`, `--blender`.
+- 옵션: `--out-root`(없으면 환경변수 `FIT_RULER_RUNS_DIR`, 둘 다 없으면 오류), `--max-frames N`(짧은 시험용, 설정의 300 이하만), `--gc-root`, `--blender`.
   출력 폴더가 이미 있으면 덮어쓰지 않고 멈춥니다.
 
 단계별로 따로 돌릴 때:

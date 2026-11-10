@@ -6,7 +6,8 @@
         --body C:\\dev\\GarmentCode\\assets\\bodies\\mean_all.obj \\
         --config config\\drape\\drape_v0.json --name tee_base
 
-출력: <out-root>\\<name>\\ (기본 C:\\dev\\fitruler_c\\runs\\C1). 이미 있으면 덮어쓰지 않고 멈춘다.
+출력: <out-root>\\<name>\\. <out-root>는 --out-root, 없으면 환경변수 FIT_RULER_RUNS_DIR이고,
+둘 다 없으면 실행하지 않고 멈춘다. 출력 폴더가 이미 있으면 덮어쓰지 않고 멈춘다.
 오류 코드(명세서 12장): export 실패 GARMENT_NOT_READY, 착장 검사 실패·시간 초과 DRAPE_INVALID.
 같은 입력으로 자동 반복하지 않는다(명세서 11장).
 Blender 실행 파일은 --blender, 없으면 환경변수 BLENDER_EXE, 그것도 없으면 Blender 5.2 기본 설치 경로.
@@ -27,7 +28,15 @@ REPO_ROOT = HERE.parents[2]  # fitting/adapters/blender/ -> 저장소 루트
 DEFAULT_GC_ROOT = Path(os.environ.get('FIT_RULER_GC_ROOT') or r'C:\dev\GarmentCode')
 DEFAULT_BLENDER = Path(os.environ.get('BLENDER_EXE')
                        or r'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe')
-DEFAULT_OUT_ROOT = Path(r'C:\dev\fitruler_c\runs\C1')
+RUNS_DIR_ENV = 'FIT_RULER_RUNS_DIR'
+
+
+def resolve_out_root(out_root_arg, environ=None):
+    """출력 루트: --out-root > 환경변수 FIT_RULER_RUNS_DIR. 둘 다 없으면 None(호출한 쪽이 멈춘다)."""
+    if out_root_arg:
+        return Path(out_root_arg)
+    env_value = (os.environ if environ is None else environ).get(RUNS_DIR_ENV)
+    return Path(env_value) if env_value else None
 
 
 def git_head(path):
@@ -62,7 +71,7 @@ def main():
     ap.add_argument('--body', required=True, help='body OBJ (GarmentCode m, Y up)')
     ap.add_argument('--config', required=True)
     ap.add_argument('--name', required=True)
-    ap.add_argument('--out-root', default=str(DEFAULT_OUT_ROOT))
+    ap.add_argument('--out-root', help=f'없으면 환경변수 {RUNS_DIR_ENV}')
     ap.add_argument('--max-frames', type=int, help='짧은 시험용. thresholds.max_frames 이하만 허용')
     ap.add_argument('--gc-root', default=str(DEFAULT_GC_ROOT))
     ap.add_argument('--blender', default=str(DEFAULT_BLENDER))
@@ -70,7 +79,11 @@ def main():
 
     spec, body, cfg_path = (Path(p).resolve() for p in (args.spec, args.body, args.config))
     gc_root, blender = Path(args.gc_root).resolve(), Path(args.blender)
-    out = (Path(args.out_root) / args.name).resolve()
+    out_root = resolve_out_root(args.out_root)
+    if out_root is None:
+        sys.exit(f'output root not set: pass --out-root or set {RUNS_DIR_ENV} '
+                 f'(--out-root나 {RUNS_DIR_ENV}를 지정하라)')
+    out = (out_root / args.name).resolve()
     if out.exists() and any(out.iterdir()):
         sys.exit(f'output exists, not overwriting: {out}')
     out.mkdir(parents=True, exist_ok=True)
