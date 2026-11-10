@@ -10,6 +10,9 @@
     # 실제 1회 호출 (FAL_KEY가 환경변수나 .env에 있어야 한다)
     python -m tools.spike_fal_ltx --input path/to/render.mp4 --yes
 
+    # 생성은 끝났는데 내려받기에서 멈춘 기록 폴더를 다시 생성하지 않고 마무리한다
+    python -m tools.spike_fal_ltx --resume artifacts/spikes/fal_ltx/<시각>
+
 결과는 artifacts/spikes/fal_ltx/<시각>/ 에 남는다(커밋 금지).
 """
 
@@ -21,6 +24,8 @@ import math
 import os
 import shutil
 import sys
+import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -39,6 +44,7 @@ from fitting.adapters.fal_ltx import (
     output_size,
     run_render_to_real,
 )
+from fitting.adapters.fal_ltx.render_to_real import download
 from fitting.adapters.media.frames import read_video_info, save_representative_frame
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -163,6 +169,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="임시 마네킹 클립(3초)을 만들어 쓴다",
     )
+    source.add_argument(
+        "--resume",
+        type=Path,
+        help="생성 후 내려받기에서 멈춘 기록 폴더를 마무리한다 (다시 생성하지 않음, 비용 없음)",
+    )
     parser.add_argument("--resolution", choices=["480p", "720p"], default="720p")
     parser.add_argument(
         "--intensity", choices=["light", "strong", "strong-v2"], default="light"
@@ -188,8 +199,83 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def finish_record(
+    out_dir: Path,
+    plan: dict[str, Any],
+    result: dict[str, Any],
+    output_path: Path,
+) -> dict[str, Any]:
+    """내려받은 결과 영상을 재고, 실사 대표 프레임과 record.json을 남긴다."""
+    output_info = read_video_info(output_path)
+    actual = estimate_cost(
+        output_info.width, output_info.height, output_info.frame_count
+    )
+    real_frame = save_representative_frame(output_path, out_dir / "frame_real.png")
+    record = {
+        **plan,
+        "result": result,
+        "output": output_info.to_dict(),
+        "cost_from_output": {"megapixels": actual.megapixels, "usd": actual.usd},
+        "real_frame": real_frame.to_dict(),
+    }
+    write_json(out_dir / "record.json", record)
+
+    durations = result["durations"]
+    print(f"완료: request_id={result['request_id']}")
+    print(
+        f"출력: {output_info.width}×{output_info.height}, {output_info.fps:g}fps, {output_info.frame_count}프레임"
+    )
+    print(
+        f"시간: 업로드 {durations['upload_s']}초 · 대기 {durations['queue_s']}초 · 생성 {durations['processing_s']}초 · 전체 {durations['total_s']}초"
+    )
+    print(
+        f"출력 기준 비용: {actual.megapixels}MP → 약 ${actual.usd:.4f} (fal 대시보드 청구액과 비교해 기록)"
+    )
+    print(f"실사 대표 프레임: {real_frame.index}번 → {real_frame.path.name}")
+    return record
+
+
+def resume(out_dir: Path, downloader: Callable[[str, Path], None] = download) -> int:
+    """response.json의 결과 주소에서 영상만 다시 내려받아 기록을 마무리한다."""
+    try:
+        plan = json.loads((out_dir / "plan.json").read_text(encoding="utf-8"))
+        response = json.loads((out_dir / "response.json").read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        print(f"이어서 할 기록이 없습니다: {error.filename}", file=sys.stderr)
+        return 2
+    error_path = out_dir / "error.json"
+    first = (
+        json.loads(error_path.read_text(encoding="utf-8"))
+        if error_path.exists()
+        else {}
+    )
+    durations = dict(first.get("durations") or {})
+
+    output_path = out_dir / "output.mp4"
+    started = time.monotonic()
+    downloader(response["video"]["url"], output_path)
+    durations["download_s"] = round(time.monotonic() - started, 2)
+    if error_path.exists():
+        error_path.replace(out_dir / "error_first_attempt.json")
+
+    result = {
+        "endpoint": ENDPOINT,
+        "request_id": first.get("request_id"),
+        "output_url": response["video"]["url"],
+        "output_path": output_path.as_posix(),
+        "seed": response.get("seed"),
+        "prompt_used": response.get("prompt"),
+        "durations": durations,
+        "resumed_after": first.get("stage"),
+    }
+    finish_record(out_dir, plan, result, output_path)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.resume:
+        return resume(args.resume)
     out_dir = args.out_dir or DEFAULT_OUT / datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -244,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         f"설정: intensity={settings.intensity}, {settings.resolution}, {settings.num_frames}프레임 @ {settings.frames_per_second:g}fps, 오디오 끔, seed={settings.seed}"
     )
     print(
-        f"예상 출력: {estimate.width}×{estimate.height}, {estimate.megapixels}MP → 약 ${estimate.usd:.4f} (단가 {PRICE_CHECKED_ON} 기준)"
+        f"예상 출력(상한): {estimate.width}×{estimate.height}, {estimate.megapixels}MP → 약 ${estimate.usd:.4f} (단가 {PRICE_CHECKED_ON} 기준)"
     )
     print(
         f"렌더 대표 프레임: {render_frame.index}번 ({render_frame.time_s}초) → {render_frame.path.name}"
@@ -283,34 +369,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"실패: {error}\n실패 기록: {out_dir / 'error.json'}", file=sys.stderr)
         return 1
 
-    output_info = read_video_info(result.output_path)
-    actual = estimate_cost(
-        output_info.width, output_info.height, output_info.frame_count
-    )
-    real_frame = save_representative_frame(
-        result.output_path, out_dir / "frame_real.png"
-    )
-    record = {
-        **plan,
-        "result": result.to_dict(),
-        "output": output_info.to_dict(),
-        "cost_from_output": {"megapixels": actual.megapixels, "usd": actual.usd},
-        "real_frame": real_frame.to_dict(),
-    }
-    write_json(out_dir / "record.json", record)
-
-    durations = result.timeline.durations()
-    print(f"완료: request_id={result.request_id}")
-    print(
-        f"출력: {output_info.width}×{output_info.height}, {output_info.fps:g}fps, {output_info.frame_count}프레임"
-    )
-    print(
-        f"시간: 업로드 {durations['upload_s']}초 · 대기 {durations['queue_s']}초 · 생성 {durations['processing_s']}초 · 전체 {durations['total_s']}초"
-    )
-    print(
-        f"출력 기준 비용: {actual.megapixels}MP → 약 ${actual.usd:.4f} (fal 대시보드 청구액과 비교해 기록)"
-    )
-    print(f"실사 대표 프레임: {real_frame.index}번 → {real_frame.path.name}")
+    finish_record(out_dir, plan, result.to_dict(), result.output_path)
     return 0
 
 

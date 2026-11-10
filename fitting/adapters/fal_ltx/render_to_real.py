@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import math
 import time
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,7 +59,11 @@ def frames_for_clip(
 def output_size(
     width: int, height: int, resolution: Resolution, detail_refine: bool = False
 ) -> tuple[int, int]:
-    """예상 출력 크기. 짧은 변을 해상도에 맞추고 비율은 유지한다. 세부 보정을 켜면 가로세로가 2배."""
+    """예상 출력 크기(상한). 짧은 변을 해상도에 맞추고 비율은 유지한다. 세부 보정을 켜면 가로세로가 2배.
+
+    2026-11-10 실제 호출에서는 입력보다 크게 키우지 않았다(540×720 입력, 720p 요청 → 576×768 출력).
+    그래서 이 값은 비용 상한 계산에 쓴다.
+    """
     short = SHORT_SIDE[resolution]
     scale = short / min(width, height)
     w, h = round(width * scale), round(height * scale)
@@ -153,9 +156,20 @@ class FalClient(Protocol):
 Downloader = Callable[[str, Path], None]
 
 
-def download(url: str, path: Path) -> None:
+def download(url: str, path: Path, timeout_s: float = 120.0) -> None:
+    """결과 영상을 내려받는다.
+
+    fal_client와 같은 httpx(certifi 인증서 묶음)를 쓴다. 표준 urllib는 Windows에서
+    인증서 확인에 실패하는 경우가 있었다(2026-11-10 실제 호출에서 확인).
+    """
+    import httpx
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    urllib.request.urlretrieve(url, path)
+    with httpx.stream("GET", url, follow_redirects=True, timeout=timeout_s) as response:
+        response.raise_for_status()
+        with path.open("wb") as file:
+            for chunk in response.iter_bytes():
+                file.write(chunk)
 
 
 @dataclass
