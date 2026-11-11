@@ -130,6 +130,12 @@ python -m tools.smpl_body --model models/smpl/basicmodel_neutral_lbs_10_207_0_v1
 | 어깨너비 | 38.3 | 40.3 | 36.2 |
 | 팔길이 | 54.1 (53.0) | 56.5 (55.6) | 52.2 (50.9) |
 
+| 중성 | 남성 | 여성 |
+|---|---|---|
+| ![중성](smpl-body/1-debug-front-neutral.png) | ![남성](smpl-body/2-debug-front-male.png) | ![여성](smpl-body/3-debug-front-female.png) |
+
+파란 선은 가슴·허리 측정 높이이고, 초록 점과 선은 어깨 끝점과 어깨너비다.
+
 - **측정 위치**: 중성 모델의 `debug_front.png`로 눈으로 확인했다.
   - 가슴선은 겨드랑이 바로 아래에 있다.
   - 허리선은 배꼽보다 위, 몸통이 가장 잘록한 곳에 있다(spine1보다 약 6.7cm 위).
