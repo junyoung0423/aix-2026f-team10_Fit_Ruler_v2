@@ -1,0 +1,18 @@
+# 서버(`uvicorn server.app:app`)와 `python -m tools.run_fitting_once`의 기본 어댑터 설정.
+#
+# 영상 단계 5개(몸·착장·렌더·실사화·검증)를 각각 가짜 또는 실제 어댑터로 고른다.
+# 값은 `fake` 또는 "파이썬.모듈.경로:팩토리이름" 둘 중 하나다. 팩토리 약속은 docs/adapters.md.
+#
+# 실제 어댑터가 main에 머지되면, 그 담당자가 자기 줄 하나만 바꾼다. server/는 고치지 않는다.
+# 예: drape: "fitting.adapters.blender.draper:make_draper"
+#
+# 핏 계산기는 설정 대상이 아니다. 항상 실제 RuleFitCalculator를 쓴다.
+# 다른 설정으로 돌리려면 환경변수 FIT_ADAPTERS(또는 --adapters)에 config/adapters/ 안의 이름이나
+# 파일 경로를 준다.
+version: adapters_v0
+ports:
+  body: fake        # D3 SMPL 몸 생성 (D)
+  drape: fake       # C4 Blender 착장 (C)
+  render: fake      # C5 정면 렌더 클립 (C)
+  realize: fake     # D4 fal/LTX 실사화 (D)
+  validate: fake    # D5·D6 대표 프레임·색·실루엣 검증 (D)

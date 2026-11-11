@@ -70,3 +70,13 @@ def make_garment():
         )
 
     return _make
+
+
+@pytest.fixture(autouse=True)
+def _fake_adapters(monkeypatch):
+    """서버·실행 스크립트 테스트가 `default.yaml`이나 개발자 환경에 기대지 않게 한다.
+
+    실제 어댑터가 머지돼 default가 바뀌거나 셸에 `FIT_ADAPTERS`가 있어도 기존 테스트는 전부 가짜로
+    돈다. 어댑터 선택을 시험하는 테스트(`test_wiring.py` 등)는 이 값을 직접 바꾼다.
+    """
+    monkeypatch.setenv("FIT_ADAPTERS", "fake")
