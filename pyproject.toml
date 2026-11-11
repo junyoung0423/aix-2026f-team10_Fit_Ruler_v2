@@ -39,6 +39,13 @@ realize = [
     "opencv-python-headless>=4.10,<6",
     "numpy>=1.26,<3",
 ]
+# D2: SMPL 몸 읽기(fitting/adapters/smpl, torch·chumpy 없이 numpy)와 신체 측정(fitting/body),
+# 확인 그림(tools.smpl_body). SMPL 모델 파일은 각자 받는다(docs/spikes/smpl-body-measure.md).
+body = [
+    "numpy>=1.26,<3",
+    "scipy>=1.11,<2",
+    "opencv-python-headless>=4.10,<6",
+]
 
 [tool.setuptools.packages.find]
 include = ["fitting*", "server*", "tools*"]

@@ -45,17 +45,15 @@ def save_debug_image(
     width_px = int((hi[0] - lo[0]) * scale) + 2 * margin + 260
 
     def to_px(x: float, y: float) -> tuple[int, int]:
-        return int(margin + (x - lo[0]) * scale), int(
-            height_px - margin - (y - lo[1]) * scale
-        )
+        return int(margin + (x - lo[0]) * scale), int(height_px - margin - (y - lo[1]) * scale)
 
     image = np.full((height_px, width_px, 3), 255, dtype=np.uint8)
     for x, y in xy:
         cv2.circle(image, to_px(x, y), 1, (170, 170, 170), -1)
 
     accent, text = (223, 111, 47), (40, 40, 40)
-    for level, label in ((debug.chest_level_m, f"chest {result.chest_circumference_cm} cm"),
-                         (debug.waist_level_m, f"waist {result.waist_circumference_cm} cm")):  # fmt: skip
+    for level, label in ((debug.chest_level_m, f"chest {result.chest_cm} cm"),
+                         (debug.waist_level_m, f"waist {result.waist_cm} cm")):  # fmt: skip
         left, right = to_px(lo[0], level), to_px(hi[0], level)
         cv2.line(image, left, right, accent, 2)
         cv2.putText(
@@ -75,7 +73,7 @@ def save_debug_image(
         cv2.circle(image, point, 6, (60, 160, 60), -1)
     lines = [
         f"height {result.height_cm} cm",
-        f"shoulder {result.shoulder_width_cm} cm",
+        f"shoulder {result.shoulder_cm} cm",
         f"arm {result.arm_length_cm} cm",
     ]
     for i, line in enumerate(lines):
@@ -90,7 +88,8 @@ def save_debug_image(
             cv2.LINE_AA,
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    # cv2.imwrite는 Windows에서 한글이 든 경로(예: 바탕 화면)에 조용히 실패하므로 인코딩 후 직접 쓴다.
+    # cv2.imwrite는 Windows에서 한글이 든 경로(예: 바탕 화면)에 조용히 실패하므로
+    # 인코딩 후 직접 쓴다.
     ok, encoded = cv2.imencode(".png", image)
     if not ok:
         raise OSError(f"확인 그림을 만들지 못했습니다: {path}")
@@ -99,12 +98,8 @@ def save_debug_image(
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="SMPL 몸을 A자세로 내보내고 신체 치수를 잰다"
-    )
-    parser.add_argument(
-        "--model", type=Path, required=True, help="SMPL 모델 파일(.pkl 또는 .npz)"
-    )
+    parser = argparse.ArgumentParser(description="SMPL 몸을 A자세로 내보내고 신체 치수를 잰다")
+    parser.add_argument("--model", type=Path, required=True, help="SMPL 모델 파일(.pkl 또는 .npz)")
     parser.add_argument(
         "--betas", type=float, nargs="*", default=[], help="체형 계수(없으면 평균 체형)"
     )
@@ -128,7 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if not args.model.exists():
         print(
-            f"모델 파일이 없습니다: {args.model}\nmodels/README.md를 보고 SMPL 모델을 받아 두세요.",
+            f"모델 파일이 없습니다: {args.model}\n"
+            "docs/spikes/smpl-body-measure.md 4절을 보고 SMPL 모델을 받아 두세요.",
             file=sys.stderr,
         )
         return 2
@@ -150,11 +146,12 @@ def main(argv: list[str] | None = None) -> int:
         out_dir / "body_apose.obj",
         out.vertices,
         model.faces,
-        comment=f"SMPL {args.model.name}, A-pose {args.arm_angle:g} deg, betas={args.betas or 'mean'}, unit=m",
+        comment=(
+            f"SMPL {args.model.name}, A-pose {args.arm_angle:g} deg, "
+            f"betas={args.betas or 'mean'}, unit=m"
+        ),
     )
-    debug_path = save_debug_image(
-        out.vertices, result, debug, out_dir / "debug_front.png"
-    )
+    debug_path = save_debug_image(out.vertices, result, debug, out_dir / "debug_front.png")
     record = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "model_file": args.model.name,
@@ -162,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         "arm_angle_deg": args.arm_angle,
         "acromion_vertices": list(args.acromion_vertices),
         "vertices": int(out.vertices.shape[0]),
+        # 키는 계약의 Measurements 필드 이름, 측정 위치는 measure_v1
+        "measurement_protocol_version": "measure_v1",
         "measurements_cm": result.to_dict(),
         "levels_m": {
             "chest": round(debug.chest_level_m, 4),
@@ -176,11 +175,9 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    print(
-        f"모델: {args.model.name} · A자세 {args.arm_angle:g}도 · betas {args.betas or '평균'}"
-    )
-    for label, value in (("키", result.height_cm), ("가슴둘레", result.chest_circumference_cm),
-                         ("허리둘레", result.waist_circumference_cm), ("어깨너비", result.shoulder_width_cm),
+    print(f"모델: {args.model.name} · A자세 {args.arm_angle:g}도 · betas {args.betas or '평균'}")
+    for label, value in (("키", result.height_cm), ("가슴둘레", result.chest_cm),
+                         ("허리둘레", result.waist_cm), ("어깨너비", result.shoulder_cm),
                          ("팔길이", result.arm_length_cm)):  # fmt: skip
         print(f"  {label:<5} {value:6.1f} cm")
     print(f"OBJ: {obj_path}\n확인 그림: {debug_path}")

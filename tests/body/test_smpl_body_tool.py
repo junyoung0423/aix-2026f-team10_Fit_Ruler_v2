@@ -3,15 +3,18 @@
 import json
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-from fitting.body.measure import measure_body
-from tools import smpl_body
+np = pytest.importorskip("numpy")  # 선택 의존성 body가 없으면 건너뛴다
+pytest.importorskip("cv2")
 
-from .synthetic import make_body
+from fitting.body.measure import measure_body  # noqa: E402
+from tools import smpl_body  # noqa: E402
 
-SMPL_PARENTS = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19, 20, 21]  # fmt: skip
+from .synthetic import make_body  # noqa: E402
+
+# SMPL 24관절의 부모 관절 번호
+SMPL_PARENTS = [-1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 12, 13, 14, 16, 17, 18, 19, 20, 21]
 
 
 def synthetic_model_npz(path: Path) -> Path:
@@ -24,9 +27,7 @@ def synthetic_model_npz(path: Path) -> Path:
     weights = np.vstack([body.weights, np.eye(24)])
     j_regressor = np.zeros((24, n + 24))
     j_regressor[np.arange(24), n + np.arange(24)] = 1.0
-    kintree = np.array(
-        [[2**32 - 1 if p < 0 else p for p in SMPL_PARENTS], list(range(24))]
-    )
+    kintree = np.array([[2**32 - 1 if p < 0 else p for p in SMPL_PARENTS], list(range(24))])
     np.savez(
         path,
         v_template=vertices,

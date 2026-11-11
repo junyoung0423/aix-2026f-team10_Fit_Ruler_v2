@@ -6,19 +6,18 @@ SMPL_MODEL_PATH=models/smpl/basicmodel_neutral_lbs_10_207_0_v1.1.0.pkl python -m
 import os
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-from fitting.adapters.smpl import JOINT, SmplModel, a_pose
-from fitting.body.measure import measure_body
+np = pytest.importorskip("numpy")  # 선택 의존성 body가 없으면 건너뛴다
+
+from fitting.adapters.smpl import JOINT, SmplModel, a_pose  # noqa: E402
+from fitting.body.measure import measure_body  # noqa: E402
 
 MODEL_PATH = os.environ.get("SMPL_MODEL_PATH")
 
 pytestmark = [
     pytest.mark.smpl,
-    pytest.mark.skipif(
-        not MODEL_PATH, reason="SMPL_MODEL_PATH가 없어 실제 모델 확인을 건너뜀"
-    ),
+    pytest.mark.skipif(not MODEL_PATH, reason="SMPL_MODEL_PATH가 없어 실제 모델 확인을 건너뜀"),
 ]
 
 
@@ -38,11 +37,7 @@ def test_model_shapes(model: SmplModel) -> None:
 def test_axes_and_a_pose(model: SmplModel) -> None:
     out = model.forward(body_pose=a_pose(45))
     # x가 몸의 왼쪽: 왼쪽 관절은 +x
-    assert (
-        out.joints[JOINT["left_shoulder"], 0]
-        > 0
-        > out.joints[JOINT["right_shoulder"], 0]
-    )
+    assert out.joints[JOINT["left_shoulder"], 0] > 0 > out.joints[JOINT["right_shoulder"], 0]
     # A자세: 손목이 어깨보다 아래, 그리고 바깥
     for side in ("left", "right"):
         shoulder, wrist = (
@@ -58,11 +53,11 @@ def test_average_body_measurements_are_plausible(model: SmplModel) -> None:
     result, debug = measure_body(out.vertices, model.faces, out.joints, model.weights)
     # 넓게 잡은 성인 범위. 실제 값은 docs/spikes/smpl-body-measure.md에 기록한다.
     assert 150 <= result.height_cm <= 195
-    assert 75 <= result.chest_circumference_cm <= 120
-    assert 60 <= result.waist_circumference_cm <= 110
-    assert 30 <= result.shoulder_width_cm <= 50
+    assert 75 <= result.chest_cm <= 120
+    assert 60 <= result.waist_cm <= 110
+    assert 30 <= result.shoulder_cm <= 50
     assert 45 <= result.arm_length_cm <= 75
-    assert result.chest_circumference_cm > result.waist_circumference_cm * 0.9
+    assert result.chest_cm > result.waist_cm * 0.9
     assert debug.waist_level_m < debug.chest_level_m
 
 

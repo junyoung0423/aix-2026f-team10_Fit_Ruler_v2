@@ -1,60 +1,79 @@
 """몸 메시에서 신체 치수 5개를 잰다 (numpy만 사용, 외부 SDK·어댑터를 import하지 않는다).
 
 입력은 SMPL 24관절 순서를 따르는 메시·관절·스키닝 가중치이고, 좌표는 y가 위, 단위는 미터다.
-측정 위치는 입력 화면의 '재는 법'(A2)에 맞춘 임시 정의이며, 팀 공통 기준(#1)이 정해지면 고친다.
+측정 위치는 팀 계약의 measure_v1(docs/decisions.md "신체 측정 위치", `Measurements` 필드 설명)을
+메시에 옮긴 것이다. 결과 키는 `Measurements`의 필드 이름과 같다.
 
-| 치수 | 정의 |
-|---|---|
-| 키 | 메시의 가장 높은 점과 가장 낮은 점의 높이 차 |
-| 가슴둘레 | spine3 관절 높이부터 어깨 관절 4cm 아래까지 수평으로 잘라, 몸통 단면의 볼록 둘레가 가장 큰 값 (겨드랑이 아래 가장 두꺼운 곳) |
-| 허리둘레 | spine1 관절 높이(배꼽 높이 근사)에서 몸통 단면의 볼록 둘레 |
-| 어깨너비 | 좌우 어깨 끝점 사이 직선거리. 어깨 끝점은 SMPL 정점 3011(왼쪽)·6470(오른쪽) |
-| 팔길이 | 왼쪽 어깨 끝점 → 팔꿈치 관절 → 손목 관절 거리의 합 |
+- height_cm (맨발 바닥부터 정수리까지 수직 높이): 메시의 가장 높은 점과 가장 낮은 점의 높이 차
+- chest_cm (가슴이 가장 돌출된 수평 위치의 둘레): spine3 관절 높이부터 어깨 관절 4cm 아래까지
+  수평으로 잘라, 몸통 단면 볼록 둘레가 가장 큰 값
+- waist_cm (자연 허리 위치의 수평 둘레, 배꼽 둘레와 구분): spine1~spine3 관절 높이를 수평으로
+  잘라, 몸통 단면 볼록 둘레가 가장 작은 값(가장 잘록한 곳)
+- shoulder_cm (좌우 어깨끝 기준점 사이의 직선 거리): 어깨 끝점 사이 직선거리.
+  어깨 끝점은 SMPL 정점 3011(왼쪽)·6470(오른쪽)
+- arm_length_cm (오른쪽 어깨끝 → 팔꿈치 → 손목 기준점): 오른쪽 어깨 끝점 → 오른쪽 팔꿈치 관절
+  → 오른쪽 손목 관절 거리의 합
 
 둘레는 줄자가 오목한 곳을 건너뛰므로 단면의 볼록 껍질 둘레로 잰다.
 팔 정점(스키닝 가중치가 팔 관절에 가장 큰 정점)은 몸통 단면에서 뺀다.
-어깨 끝점 정점은 실제 SMPL 모델에서 확인했다: 어깨 관절 바로 위 약 5cm, 좌우가 거울 대칭(6mm 이내),
-가중치가 쇄골 관절에 가장 커서 팔 자세가 바뀌어도 거의 움직이지 않는다. 다른 메시를 쓰면 정점 번호를 넘긴다.
+어깨 끝점 정점은 실제 SMPL 모델에서 확인했다: 어깨 관절 바로 위 약 5cm, 좌우가 거울 대칭
+(6mm 이내), 가중치가 쇄골 관절에 가장 커서 팔 자세가 바뀌어도 거의 움직이지 않는다.
+다른 메시를 쓰면 정점 번호를 넘긴다.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
-# SMPL 24관절 번호 (fitting/adapters/smpl와 같은 순서; 로직이 어댑터를 import하지 않도록 여기 따로 적는다)
+from fitting.domain import Measurements
+
+# SMPL 24관절 번호. fitting/adapters/smpl와 같은 순서이며, 로직이 어댑터를 import하지 않도록
+# 여기 따로 적는다.
 PELVIS, SPINE1, SPINE3 = 0, 3, 9
 LEFT_SHOULDER, RIGHT_SHOULDER = 16, 17
 LEFT_ELBOW, RIGHT_ELBOW = 18, 19
 LEFT_WRIST, RIGHT_WRIST = 20, 21
 ARM_JOINTS = frozenset({16, 17, 18, 19, 20, 21, 22, 23})
 
-CHEST_TOP_MARGIN_M = (
-    0.04  # 어깨 관절 높이에서 이만큼 아래까지만 가슴 후보로 본다(겨드랑이 아래)
-)
+# 어깨 관절 높이에서 이만큼 아래까지만 가슴 후보로 본다(겨드랑이 아래)
+CHEST_TOP_MARGIN_M = 0.04
 CHEST_SCAN_STEPS = 15
+# 자연 허리는 spine1~spine3 관절 높이 사이에서 가장 잘록한 곳으로 찾는다
+WAIST_SCAN_STEPS = 15
 
-# (왼쪽, 오른쪽) 어깨 끝점 정점 번호. SMPL 정점 6890개 기준이며 2026-11-10에 실제 모델로 위치를 확인했다.
+# (왼쪽, 오른쪽) 어깨 끝점 정점 번호. SMPL 정점 6890개 기준이며 2026-11-10에 실제 모델로 확인했다.
 SMPL_ACROMION_VERTICES = (3011, 6470)
 
 
 @dataclass(frozen=True)
 class BodyMeasurementsCm:
+    """다시 잰 신체 치수(cm). 필드 이름은 `fitting.domain.Measurements`와 같다."""
+
     height_cm: float
-    chest_circumference_cm: float
-    waist_circumference_cm: float
-    shoulder_width_cm: float
+    chest_cm: float
+    waist_cm: float
+    shoulder_cm: float
     arm_length_cm: float
 
     def to_dict(self) -> dict[str, float]:
-        return {
-            "heightCm": self.height_cm,
-            "chestCircumferenceCm": self.chest_circumference_cm,
-            "waistCircumferenceCm": self.waist_circumference_cm,
-            "shoulderWidthCm": self.shoulder_width_cm,
-            "armLengthCm": self.arm_length_cm,
-        }
+        """`Measurements`와 같은 키의 dict."""
+        return asdict(self)
+
+    def fitted_metrics(self, target: Measurements | None = None) -> dict[str, float]:
+        """`BodyBuilder` 포트의 지표 키(`fitted_*_cm`, `max_abs_error_cm`)로 옮긴다.
+
+        키는 B1 계약(`fitting/ports/interfaces.py`의 `BodyBuilder`)과 같다. D3 어댑터가
+        `PortResult.metrics`에 그대로 쓴다. 입력 치수(`target`)를 주면 최대 절대 오차를 더한다.
+        """
+        values = self.to_dict()
+        metrics = {f"fitted_{name}": value for name, value in values.items()}
+        if target is not None:
+            metrics["max_abs_error_cm"] = round(
+                max(abs(value - getattr(target, name)) for name, value in values.items()), 1
+            )
+        return metrics
 
 
 @dataclass(frozen=True)
@@ -108,14 +127,10 @@ def hull_contains(hull: np.ndarray, point: np.ndarray) -> bool:
         return False
     edges = np.roll(hull, -1, axis=0) - hull
     to_point = point - hull
-    return bool(
-        np.all(edges[:, 0] * to_point[:, 1] - edges[:, 1] * to_point[:, 0] >= -1e-12)
-    )
+    return bool(np.all(edges[:, 0] * to_point[:, 1] - edges[:, 1] * to_point[:, 0] >= -1e-12))
 
 
-def slice_loops(
-    vertices: np.ndarray, faces: np.ndarray, level: float
-) -> list[np.ndarray]:
+def slice_loops(vertices: np.ndarray, faces: np.ndarray, level: float) -> list[np.ndarray]:
     """높이 level의 수평면으로 메시를 잘라, 이어진 단면 조각마다 (K, 2) x·z 점들을 돌려준다."""
     y = vertices[:, 1] - level
     # 꼭짓점이 평면에 딱 걸리면 위쪽으로 아주 조금 민다(교차 판정을 단순하게 하려고)
@@ -197,31 +212,30 @@ def measure_body(
 
     center = joints[SPINE3][[0, 2]]
     shoulder_y = float((joints[LEFT_SHOULDER][1] + joints[RIGHT_SHOULDER][1]) / 2)
-    chest_levels = np.linspace(
-        joints[SPINE3][1], shoulder_y - CHEST_TOP_MARGIN_M, CHEST_SCAN_STEPS
-    )
+    chest_levels = np.linspace(joints[SPINE3][1], shoulder_y - CHEST_TOP_MARGIN_M, CHEST_SCAN_STEPS)
     chest_candidates = []
     for level in chest_levels:
         loop = torso_section(vertices, body_faces, float(level), center)
         chest_candidates.append((convex_perimeter(loop), float(level), loop))
     chest, chest_level, chest_loop = max(chest_candidates, key=lambda item: item[0])
 
-    waist_level = float(joints[SPINE1][1])
-    waist_loop = torso_section(
-        vertices, body_faces, waist_level, joints[SPINE1][[0, 2]]
-    )
-    waist = convex_perimeter(waist_loop)
+    # 자연 허리: spine1~spine3 높이에서 몸통 단면 둘레가 가장 작은 곳(배꼽 높이에 고정하지 않는다)
+    waist_candidates = []
+    for t in np.linspace(0.0, 1.0, WAIST_SCAN_STEPS):
+        point = joints[SPINE1] + t * (joints[SPINE3] - joints[SPINE1])
+        loop = torso_section(vertices, body_faces, float(point[1]), point[[0, 2]])
+        waist_candidates.append((convex_perimeter(loop), float(point[1]), loop))
+    waist, waist_level, waist_loop = min(waist_candidates, key=lambda item: item[0])
 
     left, right = vertices[acromion_vertices[0]], vertices[acromion_vertices[1]]
     if not left[0] > right[0]:
-        raise ValueError(
-            "어깨 끝점 정점 번호를 확인하세요(왼쪽 정점이 +x 쪽에 있어야 합니다)."
-        )
+        raise ValueError("어깨 끝점 정점 번호를 확인하세요(왼쪽 정점이 +x 쪽에 있어야 합니다).")
     shoulder_width = float(np.linalg.norm(left - right))
 
+    # measure_v1: 오른팔 기준
     arm = float(
-        np.linalg.norm(left - joints[LEFT_ELBOW])
-        + np.linalg.norm(joints[LEFT_ELBOW] - joints[LEFT_WRIST])
+        np.linalg.norm(right - joints[RIGHT_ELBOW])
+        + np.linalg.norm(joints[RIGHT_ELBOW] - joints[RIGHT_WRIST])
     )
 
     def cm(meters: float) -> float:
@@ -229,9 +243,9 @@ def measure_body(
 
     measurements = BodyMeasurementsCm(
         height_cm=cm(height),
-        chest_circumference_cm=cm(chest),
-        waist_circumference_cm=cm(waist),
-        shoulder_width_cm=cm(shoulder_width),
+        chest_cm=cm(chest),
+        waist_cm=cm(waist),
+        shoulder_cm=cm(shoulder_width),
         arm_length_cm=cm(arm),
     )
     debug = MeasureDebug(

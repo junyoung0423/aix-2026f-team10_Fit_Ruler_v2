@@ -1,8 +1,8 @@
 """SMPL 모델 불러오기와 자세 적용(linear blend skinning), numpy만 쓴다.
 
 - 모델 파일은 SMPL 공식 사이트에서 각자 받는다. 재배포가 금지돼 있어 저장소에 넣지 않는다(models/).
-- 공식 .pkl에는 chumpy 객체가 섞여 있어, chumpy를 설치하지 않고 배열만 꺼내는 제한된 언피클러를 쓴다.
-  numpy·scipy.sparse 외의 클래스는 불러오지 않는다(임의 코드 실행 방지).
+- 공식 .pkl에는 chumpy 객체가 섞여 있어, chumpy를 설치하지 않고 배열만 꺼내는 제한된
+  언피클러를 쓴다. numpy·scipy.sparse 외의 클래스는 불러오지 않는다(임의 코드 실행 방지).
 - 좌표: y가 위, z가 앞(몸이 보는 방향), x가 몸의 왼쪽. 단위는 미터.
 """
 
@@ -74,8 +74,8 @@ class _SafeUnpickler(pickle.Unpickler):
                 return super().find_class("copyreg", name)
             raise pickle.UnpicklingError(f"허용하지 않는 이름: {module}.{name}")
         if module.startswith("scipy.sparse"):
-            # 공식 pkl은 scipy.sparse.csc 같은 옛 경로를 가리킨다. 이 경로는 SciPy 2.0에서 없어지므로
-            # 같은 이름의 클래스를 scipy.sparse에서 바로 가져온다.
+            # 공식 pkl은 scipy.sparse.csc 같은 옛 경로를 가리킨다. 이 경로는 SciPy 2.0에서
+            # 없어지므로 같은 이름의 클래스를 scipy.sparse에서 바로 가져온다.
             import scipy.sparse
 
             if hasattr(scipy.sparse, name):
@@ -90,9 +90,7 @@ def _to_array(value: Any, dtype: type = np.float64) -> np.ndarray:
         state = value.state
         if isinstance(state, dict) and "x" in state:
             return np.asarray(state["x"], dtype=dtype)
-        raise ValueError(
-            "chumpy 객체에서 배열을 찾지 못했습니다. 정리된(.npz) 모델 파일을 쓰세요."
-        )
+        raise ValueError("chumpy 객체에서 배열을 찾지 못했습니다. 정리된(.npz) 모델 파일을 쓰세요.")
     if hasattr(value, "toarray"):  # scipy.sparse
         return np.asarray(value.toarray(), dtype=dtype)
     return np.asarray(value, dtype=dtype)
@@ -167,11 +165,7 @@ class SmplModel:
     ) -> SmplOutput:
         """체형(betas)과 자세(관절별 축-각)를 적용한 메시와 관절 위치."""
         num_joints = self.parents.shape[0]
-        betas = (
-            np.zeros(self.num_betas)
-            if betas is None
-            else np.asarray(betas, dtype=np.float64)
-        )
+        betas = np.zeros(self.num_betas) if betas is None else np.asarray(betas, dtype=np.float64)
         if betas.shape[0] > self.num_betas:
             raise ValueError(f"betas는 {self.num_betas}개까지입니다.")
         body_pose = (
@@ -180,9 +174,7 @@ class SmplModel:
             else np.asarray(body_pose).reshape(-1, 3)
         )
         global_orient = (
-            np.zeros(3)
-            if global_orient is None
-            else np.asarray(global_orient).reshape(3)
+            np.zeros(3) if global_orient is None else np.asarray(global_orient).reshape(3)
         )
 
         # 1) 체형
@@ -207,15 +199,11 @@ class SmplModel:
 
         # 4) 쉬는 자세의 관절 위치를 빼서 정점에 적용할 변환으로 바꾼다
         skinning = transforms.copy()
-        skinning[:, :3, 3] -= np.einsum(
-            "jab,jb->ja", transforms[:, :3, :3], rest_joints
-        )
+        skinning[:, :3, 3] -= np.einsum("jab,jb->ja", transforms[:, :3, :3], rest_joints)
 
         # 5) 정점마다 관절 변환을 가중 평균해 적용(linear blend skinning)
         blended = np.einsum("nj,jab->nab", self.weights, skinning)
-        vertices = (
-            np.einsum("nab,nb->na", blended[:, :3, :3], v_posed) + blended[:, :3, 3]
-        )
+        vertices = np.einsum("nab,nb->na", blended[:, :3, :3], v_posed) + blended[:, :3, 3]
         return SmplOutput(vertices=vertices, joints=posed_joints)
 
 
@@ -231,9 +219,7 @@ def a_pose(angle_deg: float = 45.0) -> np.ndarray:
     return pose
 
 
-def write_obj(
-    path: Path, vertices: np.ndarray, faces: np.ndarray, comment: str = ""
-) -> Path:
+def write_obj(path: Path, vertices: np.ndarray, faces: np.ndarray, comment: str = "") -> Path:
     """OBJ로 저장한다. 단위는 미터 그대로(SMPL·Blender 기본)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

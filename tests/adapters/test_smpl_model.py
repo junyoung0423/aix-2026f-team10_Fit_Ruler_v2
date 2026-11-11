@@ -5,11 +5,12 @@ import sys
 import types
 from pathlib import Path
 
-import numpy as np
 import pytest
-import scipy.sparse
 
-from fitting.adapters.smpl import (
+np = pytest.importorskip("numpy")  # 선택 의존성 body가 없으면 건너뛴다
+scipy_sparse = pytest.importorskip("scipy.sparse")
+
+from fitting.adapters.smpl import (  # noqa: E402 (numpy가 있을 때만 불러온다)
     JOINT,
     SmplModel,
     a_pose,
@@ -30,7 +31,7 @@ def tiny_model_data(num_joints: int = 3) -> dict:
         "v_template": v_template,
         "shapedirs": shapedirs,
         "posedirs": np.zeros((3, 3, (num_joints - 1) * 9)),
-        "J_regressor": scipy.sparse.csc_matrix(j_regressor),
+        "J_regressor": scipy_sparse.csc_matrix(j_regressor),
         "kintree_table": np.array([[4294967295, 0, 1], [0, 1, 2]]),
         "weights": weights,
         "f": np.array([[0, 1, 2]]),
@@ -102,9 +103,7 @@ def fake_chumpy():
     del sys.modules["chumpy"], sys.modules["chumpy.ch"]
 
 
-def test_load_pkl_with_chumpy_objects_without_chumpy(
-    tmp_path: Path, fake_chumpy
-) -> None:
+def test_load_pkl_with_chumpy_objects_without_chumpy(tmp_path: Path, fake_chumpy) -> None:
     data = tiny_model_data()
     data["shapedirs"] = fake_chumpy(data["shapedirs"])
     path = tmp_path / "model.pkl"

@@ -65,17 +65,22 @@ LEFT_ACROMION = np.array([0.21, 1.46, 0.0])
 RIGHT_ACROMION = np.array([-0.21, 1.46, 0.0])
 
 
-def make_body() -> SyntheticBody:
+# belly_radius를 주면 아랫몸통을 나눈다: 0.90~BELLY_TOP은 배(belly_radius), BELLY_TOP~1.15는 허리
+BELLY_TOP = 1.08
+
+
+def make_body(belly_radius: float | None = None) -> SyntheticBody:
     parts: list[tuple[np.ndarray, np.ndarray, int]] = []  # (정점, 면, 가중치 관절)
     up = np.array([0.0, 1.0, 0.0])
     parts.append((*tube([0.08, 0.0, 0.0], up, 0.9, 0.06), 1))  # 왼다리
     parts.append((*tube([-0.08, 0.0, 0.0], up, 0.9, 0.06), 2))  # 오른다리
-    parts.append(
-        (*tube([0.0, 0.9, 0.0], up, 0.25, WAIST_RADIUS), 3)
-    )  # 아랫몸통 0.90~1.15
-    parts.append(
-        (*tube([0.0, 1.15, 0.0], up, 0.30, CHEST_RADIUS), 9)
-    )  # 윗몸통 1.15~1.45
+    if belly_radius is None:
+        parts.append((*tube([0.0, 0.9, 0.0], up, 0.25, WAIST_RADIUS), 3))  # 아랫몸통 0.90~1.15
+    else:
+        # 배꼽 높이(spine1 1.05)가 배에 걸리고, 가장 잘록한 곳은 그 위(1.08~1.15)에 있다
+        parts.append((*tube([0.0, 0.9, 0.0], up, BELLY_TOP - 0.9, belly_radius), 3))
+        parts.append((*tube([0.0, BELLY_TOP, 0.0], up, 1.15 - BELLY_TOP, WAIST_RADIUS), 6))
+    parts.append((*tube([0.0, 1.15, 0.0], up, 0.30, CHEST_RADIUS), 9))  # 윗몸통 1.15~1.45
     parts.append((*tube([0.0, 1.5, 0.0], up, 0.2, 0.09), 15))  # 머리 1.50~1.70
 
     left_dir = np.array([np.cos(ARM_ANGLE), -np.sin(ARM_ANGLE), 0.0])
@@ -83,15 +88,11 @@ def make_body() -> SyntheticBody:
     left_shoulder = np.array([0.2, 1.42, 0.0])
     right_shoulder = np.array([-0.2, 1.42, 0.0])
     parts.append((*tube(left_shoulder, left_dir, UPPER_ARM, ARM_RADIUS), 16))
-    parts.append(
-        (*tube(left_shoulder + UPPER_ARM * left_dir, left_dir, FOREARM, ARM_RADIUS), 18)
-    )
+    parts.append((*tube(left_shoulder + UPPER_ARM * left_dir, left_dir, FOREARM, ARM_RADIUS), 18))
     parts.append((*tube(right_shoulder, right_dir, UPPER_ARM, ARM_RADIUS), 17))
     parts.append(
         (
-            *tube(
-                right_shoulder + UPPER_ARM * right_dir, right_dir, FOREARM, ARM_RADIUS
-            ),
+            *tube(right_shoulder + UPPER_ARM * right_dir, right_dir, FOREARM, ARM_RADIUS),
             19,
         )
     )

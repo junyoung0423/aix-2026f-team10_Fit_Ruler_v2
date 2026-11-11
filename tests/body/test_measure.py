@@ -1,7 +1,8 @@
-import numpy as np
 import pytest
 
-from fitting.body.measure import (
+np = pytest.importorskip("numpy")  # 선택 의존성 body가 없으면 건너뛴다
+
+from fitting.body.measure import (  # noqa: E402 (numpy가 있을 때만 불러온다)
     convex_hull,
     convex_perimeter,
     measure_body,
@@ -9,8 +10,11 @@ from fitting.body.measure import (
     torso_faces,
     torso_section,
 )
+from fitting.domain import Measurements  # noqa: E402
+from fitting.ports import BodyBuilder  # noqa: E402
 
-from .synthetic import (
+from .synthetic import (  # noqa: E402
+    BELLY_TOP,
     CHEST_RADIUS,
     FOREARM,
     LEFT_ACROMION,
@@ -77,9 +81,7 @@ def test_swapped_acromion_vertices_are_rejected() -> None:
     body = make_body()
     left, right = body.acromion_vertices
     with pytest.raises(ValueError, match="어깨 끝점"):
-        measure_body(
-            body.vertices, body.faces, body.joints, body.weights, (right, left)
-        )
+        measure_body(body.vertices, body.faces, body.joints, body.weights, (right, left))
 
 
 def test_measure_synthetic_body() -> None:
@@ -87,29 +89,55 @@ def test_measure_synthetic_body() -> None:
     result, debug = measure(body)
 
     assert result.height_cm == pytest.approx(170.0, abs=0.05)
-    assert result.chest_circumference_cm == pytest.approx(
-        ngon_perimeter(CHEST_RADIUS) * 100, abs=0.05
-    )
-    assert result.waist_circumference_cm == pytest.approx(
-        ngon_perimeter(WAIST_RADIUS) * 100, abs=0.05
-    )
+    assert result.chest_cm == pytest.approx(ngon_perimeter(CHEST_RADIUS) * 100, abs=0.05)
+    assert result.waist_cm == pytest.approx(ngon_perimeter(WAIST_RADIUS) * 100, abs=0.05)
 
     assert debug.left_shoulder_point == pytest.approx(LEFT_ACROMION)
     assert debug.right_shoulder_point == pytest.approx(RIGHT_ACROMION)
-    assert result.shoulder_width_cm == pytest.approx(42.0, abs=0.05)
+    assert result.shoulder_cm == pytest.approx(42.0, abs=0.05)
 
-    expected_arm = np.linalg.norm(LEFT_ACROMION - body.joints[18]) + FOREARM
+    expected_arm = np.linalg.norm(RIGHT_ACROMION - body.joints[19]) + FOREARM
     assert result.arm_length_cm == pytest.approx(expected_arm * 100, abs=0.05)
-    assert (
-        result.arm_length_cm > (UPPER_ARM + FOREARM) * 100
-    )  # 관절 사이보다 어깨 끝만큼 길다
+    assert result.arm_length_cm > (UPPER_ARM + FOREARM) * 100  # 관절 사이보다 어깨 끝만큼 길다
 
     assert body.joints[9][1] <= debug.chest_level_m <= 1.42 - 0.04
-    assert debug.waist_level_m == pytest.approx(1.05)
-    assert set(result.to_dict()) == {
-        "heightCm",
-        "chestCircumferenceCm",
-        "waistCircumferenceCm",
-        "shoulderWidthCm",
-        "armLengthCm",
-    }
+    assert body.joints[3][1] <= debug.waist_level_m < 1.15  # 아랫몸통(허리) 안
+    # 결과 키는 계약의 Measurements 필드 이름과 같다
+    assert set(result.to_dict()) == set(Measurements.model_fields)
+
+
+def test_waist_is_the_narrowest_level_not_the_navel_height() -> None:
+    """measure_v1: 허리는 자연 허리(가장 잘록한 곳). spine1(배꼽 높이 근사)에 고정하지 않는다."""
+    body = make_body(belly_radius=0.15)  # spine1(1.05) 높이는 배(반지름 0.15)에 걸린다
+    result, debug = measure(body)
+    assert result.waist_cm == pytest.approx(ngon_perimeter(WAIST_RADIUS) * 100, abs=0.05)
+    assert BELLY_TOP <= debug.waist_level_m < 1.15
+
+
+def test_arm_length_uses_the_right_arm() -> None:
+    """measure_v1: 팔길이는 오른쪽 어깨끝 → 팔꿈치 → 손목."""
+    body = make_body()
+    right_dir = (body.joints[21] - body.joints[19]) / FOREARM
+    body.joints[21] = body.joints[19] + 0.20 * right_dir  # 오른쪽 아래팔만 짧게
+    result, _ = measure(body)
+    expected = np.linalg.norm(RIGHT_ACROMION - body.joints[19]) + 0.20
+    assert result.arm_length_cm == pytest.approx(expected * 100, abs=0.05)
+
+
+def test_fitted_metrics_use_the_body_builder_contract_keys() -> None:
+    result, _ = measure(make_body())
+    target = Measurements(
+        height_cm=172.0,
+        chest_cm=result.chest_cm,
+        waist_cm=result.waist_cm,
+        shoulder_cm=result.shoulder_cm,
+        arm_length_cm=result.arm_length_cm,
+    )
+    metrics = result.fitted_metrics(target)
+    assert metrics["fitted_height_cm"] == result.height_cm
+    assert metrics["max_abs_error_cm"] == pytest.approx(2.0, abs=0.05)
+    # 키 이름이 B1 계약(BodyBuilder 포트 설명)과 같다
+    doc = BodyBuilder.__doc__ or ""
+    for key in metrics:
+        assert f"`{key}`" in doc
+    assert "max_abs_error_cm" not in result.fitted_metrics()

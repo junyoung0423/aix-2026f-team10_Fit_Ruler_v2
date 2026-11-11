@@ -26,7 +26,7 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: 설치
-        run: pip install -e ".[dev,garment,realize]"
+        run: pip install -e ".[dev,garment,realize,body]"
 
       - name: 린트
         run: ruff check .
