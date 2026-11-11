@@ -1,0 +1,279 @@
+{
+  "$defs": {
+    "DimensionComparison": {
+      "additionalProperties": false,
+      "description": "비교한 치수 하나.",
+      "properties": {
+        "diff_cm": {
+          "title": "Diff Cm",
+          "type": "number"
+        },
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "garment_cm": {
+          "title": "Garment Cm",
+          "type": "number"
+        },
+        "sample_cm": {
+          "title": "Sample Cm",
+          "type": "number"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "number"
+        }
+      },
+      "required": [
+        "dimension",
+        "garment_cm",
+        "sample_cm",
+        "diff_cm",
+        "weight"
+      ],
+      "title": "DimensionComparison",
+      "type": "object"
+    },
+    "ExcludeReason": {
+      "description": "견본을 후보에서 뺀 이유.",
+      "enum": [
+        "SAMPLE_REQUIRED_MISSING"
+      ],
+      "title": "ExcludeReason",
+      "type": "string"
+    },
+    "ExcludedSample": {
+      "additionalProperties": false,
+      "description": "비교 치수가 하나라도 없어 후보에서 뺀 견본.",
+      "properties": {
+        "missing": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing",
+          "type": "array"
+        },
+        "reason": {
+          "$ref": "#/$defs/ExcludeReason"
+        },
+        "sample_id": {
+          "title": "Sample Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sample_id",
+        "reason",
+        "missing"
+      ],
+      "title": "ExcludedSample",
+      "type": "object"
+    },
+    "GarmentMeasurements": {
+      "additionalProperties": false,
+      "description": "의류 실측 (명세서 3장). 단면과 둘레, 소매와 팔길이를 서로 대체하지 않는다.",
+      "properties": {
+        "body_length_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Body Length Cm"
+        },
+        "chest_girth_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Chest Girth Cm"
+        },
+        "shoulder_width_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shoulder Width Cm"
+        },
+        "sleeve_length_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sleeve Length Cm"
+        },
+        "waist_girth_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 300.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Waist Girth Cm"
+        }
+      },
+      "title": "GarmentMeasurements",
+      "type": "object"
+    },
+    "RankedSample": {
+      "additionalProperties": false,
+      "description": "순위가 매겨진 후보 한 개.",
+      "properties": {
+        "compared": {
+          "items": {
+            "$ref": "#/$defs/DimensionComparison"
+          },
+          "title": "Compared",
+          "type": "array"
+        },
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "sample_id": {
+          "title": "Sample Id",
+          "type": "string"
+        },
+        "score_cm": {
+          "title": "Score Cm",
+          "type": "number"
+        },
+        "skipped": {
+          "items": {
+            "$ref": "#/$defs/SkippedDimension"
+          },
+          "title": "Skipped",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rank",
+        "sample_id",
+        "score_cm",
+        "compared",
+        "skipped"
+      ],
+      "title": "RankedSample",
+      "type": "object"
+    },
+    "SkipReason": {
+      "description": "선택 치수를 비교하지 않은 이유. 견본은 치수가 모두 있어야 후보라서 의류 쪽 이유뿐이다.",
+      "enum": [
+        "GARMENT_VALUE_MISSING"
+      ],
+      "title": "SkipReason",
+      "type": "string"
+    },
+    "SkippedDimension": {
+      "additionalProperties": false,
+      "description": "의류에 값이 없어 비교하지 않은 선택 치수. 점수는 이 치수를 뺀 가중치로 나눈다.",
+      "properties": {
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/SkipReason"
+        }
+      },
+      "required": [
+        "dimension",
+        "reason"
+      ],
+      "title": "SkippedDimension",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "검색 결과. `ranking[0]`이 선택 견본이다.",
+  "properties": {
+    "exact_match": {
+      "title": "Exact Match",
+      "type": "boolean"
+    },
+    "excluded": {
+      "items": {
+        "$ref": "#/$defs/ExcludedSample"
+      },
+      "title": "Excluded",
+      "type": "array"
+    },
+    "ranking": {
+      "items": {
+        "$ref": "#/$defs/RankedSample"
+      },
+      "title": "Ranking",
+      "type": "array"
+    },
+    "rules_version": {
+      "title": "Rules Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "score_cm": {
+      "title": "Score Cm",
+      "type": "number"
+    },
+    "selected_measurements": {
+      "$ref": "#/$defs/GarmentMeasurements"
+    },
+    "selected_sample_id": {
+      "title": "Selected Sample Id",
+      "type": "string"
+    },
+    "tie_broken": {
+      "title": "Tie Broken",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "rules_version",
+    "selected_sample_id",
+    "selected_measurements",
+    "score_cm",
+    "exact_match",
+    "tie_broken",
+    "ranking",
+    "excluded"
+  ],
+  "title": "SampleSearchResult",
+  "type": "object"
+}

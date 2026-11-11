@@ -1,0 +1,105 @@
+{
+  "note": "합성 값. C3 견본집이 나오면 바꾼다. GarmentCode로 만든 견본이 아니다. 팀 문서 '1주차 기준 [제안]' 3절의 10개 계획(가슴 5단계 × 기장 2가지, 어깨는 모두 같음)을 흉내 냈다. 견본 검색(#5) 테스트·명령어 확인용이다. 단위 cm, 가슴은 둘레, 허리는 비교하지 않아 모두 null이다.",
+  "samples": [
+    {
+      "sample_id": "tee_gc_slim_01",
+      "measurements": {
+        "chest_girth_cm": 104.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_slim_02",
+      "measurements": {
+        "chest_girth_cm": 104.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_regular_03",
+      "measurements": {
+        "chest_girth_cm": 108.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_regular_04",
+      "measurements": {
+        "chest_girth_cm": 108.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_regular_05",
+      "measurements": {
+        "chest_girth_cm": 112.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_regular_06",
+      "measurements": {
+        "chest_girth_cm": 112.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_relaxed_07",
+      "measurements": {
+        "chest_girth_cm": 118.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_relaxed_08",
+      "measurements": {
+        "chest_girth_cm": 118.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_oversized_09",
+      "measurements": {
+        "chest_girth_cm": 126.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 70.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_oversized_10",
+      "measurements": {
+        "chest_girth_cm": 126.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.5,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 76.0
+      }
+    }
+  ]
+}

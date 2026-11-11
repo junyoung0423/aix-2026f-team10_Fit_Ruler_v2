@@ -1,0 +1,6 @@
+{
+  "code": "JOB_NOT_FOUND",
+  "fields": null,
+  "safe_message": "작업을 찾을 수 없어요. 서버가 다시 시작됐거나 오래된 작업일 수 있어요.",
+  "schema_version": "v1"
+}

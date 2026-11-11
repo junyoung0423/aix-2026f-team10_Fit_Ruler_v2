@@ -15,11 +15,18 @@ from fastapi.responses import JSONResponse
 
 from fitting.domain import ApiError, ErrorCode, FieldError, FieldErrorCode, Measurements
 from fitting.fit import FitEngineError
+from fitting.services.jobs import IdempotencyConflict
 
 logger = logging.getLogger(__name__)
 
 INPUT_INVALID_MESSAGE = "입력한 값을 확인해 주세요."
 GARMENT_NOT_FOUND_MESSAGE = "선택한 의류를 찾을 수 없어요. 목록에서 다시 선택해 주세요."
+JOB_NOT_FOUND_MESSAGE = "작업을 찾을 수 없어요. 서버가 다시 시작됐거나 오래된 작업일 수 있어요."
+ARTIFACT_NOT_FOUND_MESSAGE = "요청한 파일을 찾을 수 없어요."
+IDEMPOTENCY_CONFLICT_MESSAGE = "같은 Idempotency-Key로 다른 내용의 요청을 보낼 수 없어요."
+
+# 작업 요청의 Idempotency-Key 헤더 이름. 오류의 fields[].field에 이 이름을 쓴다.
+IDEMPOTENCY_HEADER = "Idempotency-Key"
 
 # 계산할 수 없는 의류(FitEngineError) → HTTP 상태. [제안] 명세서에 상태 코드가 없어서
 # "요청 형식은 맞지만 지금 의류 상태로는 처리할 수 없음"이라는 뜻으로 409를 쓴다.
@@ -45,6 +52,18 @@ class GarmentNotFound(Exception):
     def __init__(self, garment_id: str) -> None:
         super().__init__(garment_id)
         self.garment_id = garment_id
+
+
+class JobNotFound(Exception):
+    def __init__(self, job_id: str) -> None:
+        super().__init__(job_id)
+        self.job_id = job_id
+
+
+class ArtifactNotFound(Exception):
+    def __init__(self, artifact_id: str) -> None:
+        super().__init__(artifact_id)
+        self.artifact_id = artifact_id
 
 
 def _error_response(status: int, error: ApiError) -> JSONResponse:
@@ -126,6 +145,31 @@ def garment_not_found_error() -> ApiError:
     return ApiError(code=ErrorCode.GARMENT_NOT_FOUND, safe_message=GARMENT_NOT_FOUND_MESSAGE)
 
 
+def job_not_found_error() -> ApiError:
+    """404 JOB_NOT_FOUND 응답 본문."""
+    return ApiError(code=ErrorCode.JOB_NOT_FOUND, safe_message=JOB_NOT_FOUND_MESSAGE)
+
+
+def artifact_not_found_error() -> ApiError:
+    """404 ARTIFACT_NOT_FOUND 응답 본문. 없는 ID와 형식이 틀린 ID를 구분하지 않는다."""
+    return ApiError(code=ErrorCode.ARTIFACT_NOT_FOUND, safe_message=ARTIFACT_NOT_FOUND_MESSAGE)
+
+
+def idempotency_conflict_error() -> ApiError:
+    """422 INPUT_INVALID 응답 본문. 같은 키에 다른 요청 본문이 왔다."""
+    return ApiError(
+        code=ErrorCode.INPUT_INVALID,
+        safe_message=INPUT_INVALID_MESSAGE,
+        fields=[
+            FieldError(
+                field=IDEMPOTENCY_HEADER,
+                code=FieldErrorCode.INVALID,
+                message=IDEMPOTENCY_CONFLICT_MESSAGE,
+            )
+        ],
+    )
+
+
 def garment_not_ready_error(exc: FitEngineError) -> ApiError:
     """계산기 오류 → 409 응답 본문. 코드와 화면 문구만 쓰고 내부 사유는 넣지 않는다."""
     port_error = exc.to_port_error()
@@ -140,6 +184,19 @@ async def _on_garment_not_found(request: Request, exc: GarmentNotFound) -> JSONR
     return _error_response(404, garment_not_found_error())
 
 
+async def _on_job_not_found(request: Request, exc: JobNotFound) -> JSONResponse:
+    return _error_response(404, job_not_found_error())
+
+
+async def _on_artifact_not_found(request: Request, exc: ArtifactNotFound) -> JSONResponse:
+    return _error_response(404, artifact_not_found_error())
+
+
+async def _on_idempotency_conflict(request: Request, exc: IdempotencyConflict) -> JSONResponse:
+    logger.info("Idempotency-Key 충돌: %s", exc.key)  # 키 값은 로그에만
+    return _error_response(422, idempotency_conflict_error())
+
+
 async def _on_fit_engine_error(request: Request, exc: FitEngineError) -> JSONResponse:
     logger.info("핏 계산 불가 %s: %s", exc.code.value, exc.reason)  # 내부 사유는 로그에만
     return _error_response(GARMENT_NOT_READY_STATUS, garment_not_ready_error(exc))
@@ -148,4 +205,7 @@ async def _on_fit_engine_error(request: Request, exc: FitEngineError) -> JSONRes
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _on_validation_error)
     app.add_exception_handler(GarmentNotFound, _on_garment_not_found)
+    app.add_exception_handler(JobNotFound, _on_job_not_found)
+    app.add_exception_handler(ArtifactNotFound, _on_artifact_not_found)
+    app.add_exception_handler(IdempotencyConflict, _on_idempotency_conflict)
     app.add_exception_handler(FitEngineError, _on_fit_engine_error)

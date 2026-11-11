@@ -1,0 +1,378 @@
+{
+  "exact_match": false,
+  "excluded": [],
+  "ranking": [
+    {
+      "compared": [
+        {
+          "diff_cm": 0.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 108.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": 2.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 72.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 1,
+      "sample_id": "tee_gc_regular_04",
+      "score_cm": 3.85,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": 0.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 108.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": -4.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 66.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 2,
+      "sample_id": "tee_gc_regular_03",
+      "score_cm": 4.25,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": 4.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 112.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": 2.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 72.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 3,
+      "sample_id": "tee_gc_regular_06",
+      "score_cm": 5.45,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": -4.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 104.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": 2.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 72.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 4,
+      "sample_id": "tee_gc_slim_02",
+      "score_cm": 5.45,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": 4.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 112.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": -4.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 66.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 5,
+      "sample_id": "tee_gc_regular_05",
+      "score_cm": 5.85,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": -4.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 104.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": -4.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 66.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 6,
+      "sample_id": "tee_gc_slim_01",
+      "score_cm": 5.85,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": 10.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 118.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": 2.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 72.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 7,
+      "sample_id": "tee_gc_relaxed_08",
+      "score_cm": 7.85,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": 10.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 118.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": -4.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 66.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 8,
+      "sample_id": "tee_gc_relaxed_07",
+      "score_cm": 8.25,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": 18.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 126.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 70.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 9,
+      "sample_id": "tee_gc_oversized_09",
+      "score_cm": 10.65,
+      "skipped": []
+    },
+    {
+      "compared": [
+        {
+          "diff_cm": 18.0,
+          "dimension": "chest_girth_cm",
+          "garment_cm": 108.0,
+          "sample_cm": 126.0,
+          "weight": 0.4
+        },
+        {
+          "diff_cm": -11.5,
+          "dimension": "shoulder_width_cm",
+          "garment_cm": 46.0,
+          "sample_cm": 34.5,
+          "weight": 0.3
+        },
+        {
+          "diff_cm": 6.0,
+          "dimension": "body_length_cm",
+          "garment_cm": 70.0,
+          "sample_cm": 76.0,
+          "weight": 0.2
+        },
+        {
+          "diff_cm": 0.0,
+          "dimension": "sleeve_length_cm",
+          "garment_cm": 22.0,
+          "sample_cm": 22.0,
+          "weight": 0.1
+        }
+      ],
+      "rank": 10,
+      "sample_id": "tee_gc_oversized_10",
+      "score_cm": 11.85,
+      "skipped": []
+    }
+  ],
+  "rules_version": "sample_search_v0",
+  "schema_version": "v1",
+  "score_cm": 3.85,
+  "selected_measurements": {
+    "body_length_cm": 72.0,
+    "chest_girth_cm": 108.0,
+    "shoulder_width_cm": 34.5,
+    "sleeve_length_cm": 22.0,
+    "waist_girth_cm": null
+  },
+  "selected_sample_id": "tee_gc_regular_04",
+  "tie_broken": false
+}

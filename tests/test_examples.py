@@ -4,7 +4,15 @@ import json
 
 import pytest
 
-from fitting.domain import FitReport, FittingRequest, FittingStatus, GarmentVariant
+from fitting.catalog.search import SampleSearchResult
+from fitting.domain import (
+    ApiError,
+    ErrorCode,
+    FitReport,
+    FittingRequest,
+    FittingStatus,
+    GarmentVariant,
+)
 from tools.export_contracts import SCHEMA_MODELS, build_artifacts, main
 
 from .conftest import EXAMPLES, REPO_ROOT
@@ -70,3 +78,44 @@ def test_schema_file_is_valid_json_schema_document(name):
     schema = json.loads(path.read_text(encoding="utf-8"))
     assert schema["title"] == SCHEMA_MODELS[name].__name__
     assert schema["type"] == "object"
+
+
+def test_search_example_is_reference_case_1():
+    """견본 검색 예시는 예시 의류로 실제 검색을 돌린 결과다 (기준 사례 1)."""
+    result = SampleSearchResult.model_validate_json(_read("sample_search_result.json"))
+
+    assert result.selected_sample_id == "tee_gc_regular_04"
+    assert result.score_cm == 3.85
+    assert result.exact_match is False
+    assert [item.sample_id for item in result.ranking][:2] == [
+        "tee_gc_regular_04",
+        "tee_gc_regular_03",
+    ]
+
+
+def test_job_not_found_example_is_an_api_error():
+    error = ApiError.model_validate_json(_read("api_error_job_not_found.json"))
+
+    assert error.code is ErrorCode.JOB_NOT_FOUND
+    assert error.fields is None
+
+
+def test_error_codes_only_grew_by_the_two_job_api_codes():
+    """계약 변경은 값 추가뿐이다: 기존 코드는 그대로고 JOB_NOT_FOUND·ARTIFACT_NOT_FOUND가 늘었다."""
+    assert {code.value for code in ErrorCode} == {
+        "INPUT_INVALID",
+        "GARMENT_NOT_READY",
+        "GARMENT_NOT_FOUND",
+        "JOB_NOT_FOUND",
+        "ARTIFACT_NOT_FOUND",
+        "BODY_FIT_NOT_CONVERGED",
+        "DRAPE_INVALID",
+        "RENDER_FAILED",
+        "REALIZE_TIMEOUT",
+        "EXTERNAL_SUBMIT_UNKNOWN",
+        "VALIDATION_FAILED",
+        "VALIDATION_UNVERIFIABLE",
+        "BUDGET_LIMIT",
+    }
+    schema = json.loads((REPO_ROOT / "docs/api/schemas/api_error.schema.json").read_text("utf-8"))
+    assert {"JOB_NOT_FOUND", "ARTIFACT_NOT_FOUND"} <= set(schema["$defs"]["ErrorCode"]["enum"])
