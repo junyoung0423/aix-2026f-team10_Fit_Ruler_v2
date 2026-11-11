@@ -4,9 +4,12 @@
 영상 경로의 어느 단계가 실패해도 이미 만든 핏 리포트와 3D 미리보기는 그대로 돌려준다.
 실사화에 동의하지 않은 요청(`realize_consent=false`)은 렌더까지만 하고 성공으로 끝낸다.
 
-지금은 한 번에 끝까지 실행하는 동기 함수다. 작업 큐·상태 저장·API는 B3에서 이 위에 얹는다.
+끝까지 한 번에 실행하는 동기 함수다. 작업 큐와 상태 저장은 `fitting.services.jobs`가, API는
+`server/`가 이 위에 얹는다. 실행 중인 상태를 밖에서 보려면 `on_progress`를 넘긴다.
 """
 
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -49,6 +52,11 @@ from fitting.ports import (
     require_output_artifacts,
 )
 
+logger = logging.getLogger(__name__)
+
+# 상태가 바뀔 때마다 현재 상태를 받는 함수. 예외를 던져도 피팅은 계속된다.
+ProgressCallback = Callable[[FittingStatus], None]
+
 REPORT_STAGES = (Stage.FIT_CALCULATE, Stage.FIT_REPORT)
 VISUAL_STAGES = (Stage.BODY_FIT, Stage.DRAPE, Stage.RENDER, Stage.REALIZE, Stage.VALIDATE)
 
@@ -61,6 +69,63 @@ INVALID_RESULT_CODE = {
     Stage.REALIZE: ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
     Stage.VALIDATE: ErrorCode.VALIDATION_UNVERIFIABLE,
 }
+
+
+def report_part_of(report: FitReport) -> ReportPart:
+    """핏 리포트 → 작업 상태의 핏 경로 부분."""
+    return ReportPart(
+        status=StageStatus.SUCCEEDED,
+        rules_version=report.rules_version,
+        regions=report.regions,
+        summary=report.summary,
+        warnings=report.warnings,
+    )
+
+
+def pending_progress(*, realize_consent: bool) -> dict[Stage, StageStatus]:
+    """핏 리포트가 끝나고 영상 경로가 시작하기 전의 단계 상태.
+
+    실사화에 동의하지 않았으면 처음부터 REALIZE·VALIDATE가 SKIPPED다.
+    """
+    progress = {stage: StageStatus.SUCCEEDED for stage in REPORT_STAGES}
+    progress.update({stage: StageStatus.WAITING for stage in VISUAL_STAGES})
+    if not realize_consent:
+        progress[Stage.REALIZE] = StageStatus.SKIPPED
+        progress[Stage.VALIDATE] = StageStatus.SKIPPED
+    return progress
+
+
+def in_flight_status(
+    job_id: str,
+    report: ReportPart,
+    progress: dict[Stage, StageStatus],
+    *,
+    realize_consent: bool,
+    stage: Stage | None = None,
+    artifacts: dict[str, Any] | None = None,
+    queued: bool = False,
+) -> FittingStatus:
+    """영상 경로가 끝나기 전의 상태 (명세서 11장 진행 중 예시와 같은 모양).
+
+    - 실행 중: 작업 `RUNNING`, `visual.status` `RUNNING`, `visual.stage`는 지금 단계(시작 전이면
+      null), `quality_status` `PENDING`, 그때까지 나온 산출물 ID.
+    - 대기 중(`queued=True`): 작업 `ACCEPTED`, `visual.status` `QUEUED`. 순서를 기다리는 작업이다.
+    - 실사화에 동의하지 않았으면 처음부터 `skip_reason`이 `CONSENT_NOT_GIVEN`, `quality_status`가
+      null이다. 검증을 하지 않으니 판정이 없기 때문이다.
+    """
+    return FittingStatus(
+        job_id=job_id,
+        status=JobStatus.ACCEPTED if queued else JobStatus.RUNNING,
+        report=report,
+        visual=VisualPart(
+            status=StageStatus.QUEUED if queued else StageStatus.RUNNING,
+            stage=stage,
+            quality_status=QualityStatus.PENDING if realize_consent else None,
+            skip_reason=None if realize_consent else VisualSkipReason.CONSENT_NOT_GIVEN,
+            **(artifacts or {}),
+        ),
+        stages=_stages(progress),
+    )
 
 
 @dataclass(frozen=True)
@@ -102,8 +167,19 @@ def run_fitting(
     job_id: str,
     created_at: datetime,
     settings: RunSettings | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> FittingOutcome:
-    """피팅 한 번을 실행하고 최종 상태를 돌려준다."""
+    """피팅 한 번을 실행하고 최종 상태를 돌려준다.
+
+    `on_progress`를 넘기면 상태가 바뀔 때마다 그 시점의 상태로 호출한다(`None`이면 호출하지 않고,
+    그 밖의 동작은 같다).
+
+    - 핏 리포트가 만들어진 직후 1번(영상 경로를 하는 요청만), 영상 경로의 각 단계가 RUNNING이 될
+      때와 성공으로 끝날 때. 진행 중 상태의 모양은 `in_flight_status`다.
+    - 마지막 호출은 항상 반환하는 최종 상태와 같다. 실패(건너뜀 포함)와 마지막 단계의 끝은 이 최종
+      상태로 알린다. 리포트를 만들 수 없는 경우(의류 미준비, 계산 불가)도 최종 상태 1번이다.
+    - `on_progress`가 예외를 던져도 로그만 남기고 피팅은 계속한다.
+    """
     if request.garment_variant_id != garment.id:
         raise ValueError(
             f"요청한 의류({request.garment_variant_id})와 넘긴 의류({garment.id})가 다릅니다"
@@ -111,6 +187,10 @@ def run_fitting(
     settings = settings or RunSettings()
     progress: dict[Stage, StageStatus] = {s: StageStatus.WAITING for s in REPORT_STAGES}
     progress.update({s: StageStatus.WAITING for s in VISUAL_STAGES})
+
+    def finish(status: FittingStatus, report: FitReport | None) -> FittingOutcome:
+        _notify(on_progress, status)
+        return FittingOutcome(status=status, report=report)
 
     if garment.status is not GarmentStatus.READY:
         for stage in progress:
@@ -122,7 +202,7 @@ def run_fitting(
             visual=VisualPart(status=StageStatus.SKIPPED, quality_status=None),
             stages=_stages(progress),
         )
-        return FittingOutcome(status=status, report=None)
+        return finish(status, None)
 
     try:
         report = ports.fit.calculate(
@@ -144,16 +224,9 @@ def run_fitting(
             visual=VisualPart(status=StageStatus.SKIPPED, quality_status=None),
             stages=_stages(progress),
         )
-        return FittingOutcome(status=status, report=None)
-    for stage in REPORT_STAGES:
-        progress[stage] = StageStatus.SUCCEEDED
-    report_part = ReportPart(
-        status=StageStatus.SUCCEEDED,
-        rules_version=report.rules_version,
-        regions=report.regions,
-        summary=report.summary,
-        warnings=report.warnings,
-    )
+        return finish(status, None)
+    progress = pending_progress(realize_consent=request.realize_consent)
+    report_part = report_part_of(report)
 
     if request.mode is Mode.REPORT_ONLY:
         for stage in VISUAL_STAGES:
@@ -164,7 +237,22 @@ def run_fitting(
             skip_reason=VisualSkipReason.REPORT_ONLY,
         )
     else:
-        visual = _run_visual(request, garment, ports, job_id, settings, progress)
+
+        def announce(stage: Stage | None, artifacts: dict[str, Any]) -> None:
+            if on_progress is None:
+                return
+            running = in_flight_status(
+                job_id,
+                report_part,
+                progress,
+                realize_consent=request.realize_consent,
+                stage=stage,
+                artifacts=artifacts,
+            )
+            _notify(on_progress, running)
+
+        announce(None, {})
+        visual = _run_visual(request, garment, ports, job_id, settings, progress, announce)
 
     job_status = JobStatus.SUCCEEDED
     if visual.status is StageStatus.FAILED:
@@ -176,7 +264,18 @@ def run_fitting(
         visual=visual,
         stages=_stages(progress),
     )
-    return FittingOutcome(status=status, report=report)
+    return finish(status, report)
+
+
+def _notify(on_progress: ProgressCallback | None, status: FittingStatus) -> None:
+    if on_progress is None:
+        return
+    try:
+        on_progress(status)
+    except Exception:  # 상태를 받는 쪽의 문제로 피팅을 멈추지 않는다
+        logger.exception(
+            "진행 상태를 전달하지 못했습니다 (job_id=%s). 피팅은 계속합니다", status.job_id
+        )
 
 
 def _run_visual(
@@ -186,6 +285,7 @@ def _run_visual(
     job_id: str,
     settings: RunSettings,
     progress: dict[Stage, StageStatus],
+    announce: Callable[[Stage | None, dict[str, Any]], None],
 ) -> VisualPart:
     found: dict[str, Any] = {
         "drape_preview_artifact_id": None,
@@ -200,6 +300,7 @@ def _run_visual(
 
     def step(stage: Stage, inputs: list[str], call) -> PortResult:
         progress[stage] = StageStatus.RUNNING
+        announce(stage, found)
         port_request = PortRequest(
             job_id=job_id,
             attempt_id=f"{job_id}_{stage.value.lower()}_1",
@@ -222,17 +323,20 @@ def _run_visual(
             Stage.BODY_FIT, [], lambda r: ports.body.build_body(r, request.to_body_input())
         )
         body_mesh = output_artifact(body.output_artifact_ids, BODY_OUTPUTS, "body_mesh")
+        announce(Stage.BODY_FIT, found)
         drape = step(Stage.DRAPE, [body_mesh], lambda r: ports.drape.drape(r, garment))
         drape_ids = drape.output_artifact_ids
         found["drape_preview_artifact_id"] = output_artifact(
             drape_ids, DRAPE_OUTPUTS, "drape_preview"
         )
         drape_result = output_artifact(drape_ids, DRAPE_OUTPUTS, "drape_result")
+        announce(Stage.DRAPE, found)
         render = step(Stage.RENDER, [drape_result], lambda r: ports.render.render(r, garment))
         render_id = output_artifact(render.output_artifact_ids, RENDER_OUTPUTS, "render_clip")
         found["render_artifact_id"] = render_id
         if not request.realize_consent:
             # 실사화(외부 전송)에 동의하지 않았다. 사용자가 고른 것이라 실패가 아니다.
+            # 렌더가 마지막 단계라서 끝 알림 없이 최종 상태로 알린다.
             progress[Stage.REALIZE] = StageStatus.SKIPPED
             progress[Stage.VALIDATE] = StageStatus.SKIPPED
             return VisualPart(
@@ -242,9 +346,11 @@ def _run_visual(
                 skip_reason=VisualSkipReason.CONSENT_NOT_GIVEN,
                 **found,
             )
+        announce(Stage.RENDER, found)
         video = step(Stage.REALIZE, [render_id], lambda r: ports.realize.realize(r, garment))
         video_id = output_artifact(video.output_artifact_ids, REALIZE_OUTPUTS, "video")
         found["video_artifact_id"] = video_id
+        announce(Stage.REALIZE, found)
         checked = step(
             Stage.VALIDATE, [render_id, video_id], lambda r: ports.validate.validate(r, garment)
         )
