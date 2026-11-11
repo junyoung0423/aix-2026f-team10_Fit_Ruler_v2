@@ -46,7 +46,14 @@ export const MOCK_GARMENTS: readonly GarmentVariant[] = [
     style: 'regular',
     size: 'M',
     color: 'navy',
+    color_hex: '#24324f',
     fabric_preset: 'cotton_jersey_v0',
+    fabric: {
+      fibers: ['cotton'],
+      composition: { cotton: 100.0 },
+      stretch: 'contain little',
+      description_en: 'plain navy cotton jersey',
+    },
     garment_family: 'basic_short_sleeve_crew',
     status: 'READY',
     measurements: {

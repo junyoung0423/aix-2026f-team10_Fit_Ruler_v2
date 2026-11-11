@@ -50,6 +50,29 @@ class MeasurementMeta(BaseModel):
     notes: str | None = None
 
 
+# 화면 색 견본 값: `#rrggbb` (소문자 16진수 6자리)
+HEX_COLOR_PATTERN = r"^#[0-9a-f]{6}$"
+
+# 섬유 비율(%): 0 초과 100 이하
+FiberPercent = Annotated[float, Field(strict=True, allow_inf_nan=False, gt=0, le=100)]
+
+
+class FabricInfo(BaseModel):
+    """원단 정보 (#3). 출처 값을 옮겨 두는 곳이고, 천 물성 매핑은 C4(#8)에서 한다."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # 섬유 키(영어 소문자·밑줄, 예: cotton, polyester). 출처에 적힌 순서다.
+    fibers: list[str] = Field(default_factory=list)
+    # 섬유 키 -> 비율(%). 출처에 비율이 없으면(AI Hub 71501) null이다.
+    composition: dict[str, FiberPercent] | None = None
+    # 신축성. 출처 값을 그대로 둔다 (AI Hub 71501: none at all, none, contain little, contain,
+    # contain a lot).
+    stretch: str | None = None
+    # 실사화(D5) 프롬프트용 영어 한 줄. 예: "plain navy cotton jersey"
+    description_en: str | None = None
+
+
 # JSON 스키마용 규칙: status가 READY이면 가슴·어깨 실측이 null이 아닌 숫자여야 한다.
 # 모델의 `_ready_requires_chest_and_shoulder`와 같은 규칙이며, 스키마만 보는 쪽(화면 등)도
 # 같은 판정을 하게 한다.
@@ -82,8 +105,11 @@ class GarmentVariant(BaseModel):
     id: str = Field(min_length=1)
     style: str = Field(min_length=1)  # 핏형. 예: regular(기본핏), relaxed(여유핏)
     size: str = Field(min_length=1)  # 예: S, M, L
-    color: str = Field(min_length=1)
+    color: str = Field(min_length=1)  # 영어 소문자 키. 예: navy, black, white
+    # 화면 색 견본용 `#rrggbb`. 출처에 없으면 색 키의 대표값을 쓴다 (#3)
+    color_hex: str | None = Field(default=None, pattern=HEX_COLOR_PATTERN)
     fabric_preset: str = Field(min_length=1)
+    fabric: FabricInfo | None = None  # 원단 정보 (#3)
     garment_family: str = FAMILY_BASIC_SHORT_SLEEVE_CREW
     status: GarmentStatus
     measurements: GarmentMeasurements
