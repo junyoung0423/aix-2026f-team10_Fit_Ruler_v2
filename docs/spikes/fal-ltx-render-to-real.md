@@ -1,6 +1,6 @@
 # 스파이크: fal / LTX-2.3 render-to-real (D1)
 
-작성 2026-11-10 · 관련 이슈 #10 #11 · 상태: **실제 1회 호출 완료**(임시 클립)
+작성 2026-11-10 (2026-11-11 팀 저장소로 옮김) · 관련 이슈 #10 #11 · 상태: **실제 1회 호출 완료**(임시 클립)
 
 렌더 클립 하나를 실사 영상으로 바꾸는 호출이 실제로 되는지 확인한다. 호출·저장·대표 프레임 추출까지 해 보고, 실제 설정·요청·오류·1회 비용과 시간을 남겨 D4(fal 어댑터)와 D5(파이프라인)의 기준으로 쓴다.
 
@@ -59,10 +59,10 @@ Keep the garment color and shape exactly as in the render.
 
 ## 4. 실행 방법
 
+저장소 `.venv`(Python 3.10 이상)에 선택 의존성 `realize`(fal-client, httpx, OpenCV, numpy)를 함께 설치한다.
+
 ```bash
-python -m venv .venv
-source .venv/Scripts/activate        # PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements-fal-spike.txt
+pip install -e ".[dev,realize]"
 ```
 
 ```bash
@@ -92,7 +92,9 @@ python -m pytest tests/adapters                           # 가짜 클라이언�
 | `response.json` | fal 응답 |
 | `output.mp4` | 실사 영상 |
 | `frame_real.png` | 실사 영상의 대표 프레임 |
-| `record.json` | 위 내용 + request_id, 단계별 시간, 출력 크기, 출력 기준 비용 |
+| `record.json` | 위 내용 + request_id, 단계별 시간, 출력 크기, 출력 기준 비용, `port_metrics`(아래) |
+
+`port_metrics`는 B1 계약의 `Realizer` 포트(`fitting/ports/interfaces.py`) 지표 키로 옮긴 값이다: `external_request_id`, `cost_usd`(출력 기준), `queue_s`, `processing_s`. D4 어댑터가 `PortResult.metrics`에 그대로 쓴다.
 | `error.json` | 실패했을 때만 생김: 실패 단계, 오류 종류, 상태 코드, 응답 본문. `--resume`으로 마무리하면 `error_first_attempt.json`으로 이름이 바뀐다 |
 
 ## 5. 대표 프레임 추출
@@ -134,7 +136,7 @@ python -m pytest tests/adapters                           # 가짜 클라이언�
 
 - **기본 설정**: 오디오 끔, 프레임 수 8k + 1, 해상도별 길이 상한 검사, 예상 비용 상한, 대기 시간 상한(`client_timeout`)
 - **기록 형식**: `request.json` / `response.json` / `error.json`의 형식. D4 어댑터의 '요청·오류·비용 기록'에 그대로 쓴다.
-- **어댑터 구조**: 정식 어댑터는 B의 포트(`fitting/ports/`)가 나오면 D4에서 그 모양에 맞춘다. 재시도 1회와 가짜 어댑터 테스트도 D4에서 붙인다.
+- **어댑터 구조**: 정식 어댑터는 D4에서 B1의 `Realizer` 포트(`fitting/ports/interfaces.py`)에 맞춘다. 산출물은 `REALIZE_OUTPUTS`(`video`), 지표는 위 `port_metrics`의 키다. 생성은 됐는데 결과를 못 받으면 `EXTERNAL_SUBMIT_UNKNOWN`으로 실패하고 `PortError.external_request_id`에 요청 ID를 남긴다(이 스파이크의 `--resume`이 같은 상황을 다시 생성하지 않고 마무리한 예다). 재시도 1회와 가짜 어댑터 테스트도 D4에서 붙인다.
 - **외부 전송**: 렌더 클립이 fal 서버로 전송된다. A5의 동의 문구("신체가 반영된 렌더 클립이 fal 서버에서 처리됨")와 맞춘다.
 - **이용 조건**: LTX-2.3 모델 라이선스와 fal 이용 약관은 최종 점검표 항목으로 따로 확인한다.
 
