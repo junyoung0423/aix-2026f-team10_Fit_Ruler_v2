@@ -4,6 +4,17 @@
       "garment": {
         "asset_version": "sample_v1",
         "color": "navy",
+        "color_hex": "#24324f",
+        "fabric": {
+          "composition": {
+            "cotton": 100.0
+          },
+          "description_en": "plain navy cotton jersey",
+          "fibers": [
+            "cotton"
+          ],
+          "stretch": "contain little"
+        },
         "fabric_preset": "cotton_jersey_v0",
         "garment_family": "basic_short_sleeve_crew",
         "id": "tee_regular_m_navy_v1",

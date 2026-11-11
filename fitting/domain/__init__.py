@@ -22,6 +22,7 @@ from fitting.domain.enums import (
 from fitting.domain.garment import (
     FAMILY_BASIC_SHORT_SLEEVE_CREW,
     MAX_GARMENT_CM,
+    FabricInfo,
     GarmentMeasurements,
     GarmentVariant,
     MeasurementMeta,
@@ -45,6 +46,7 @@ __all__ = [
     "ApiError",
     "BodyInput",
     "ErrorCode",
+    "FabricInfo",
     "FieldError",
     "FieldErrorCode",
     "FitLabel",
