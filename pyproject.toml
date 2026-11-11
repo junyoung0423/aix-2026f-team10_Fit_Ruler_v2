@@ -31,6 +31,14 @@ garment = [
     "trimesh>=4,<5",
     "svgpathtools>=1.6,<2",
 ]
+# D1: fal/LTX 실사화 스파이크(fitting/adapters/fal_ltx)와 영상 프레임 추출(fitting/adapters/media).
+# 테스트는 가짜 fal 클라이언트만 쓴다. 실제 호출은 FAL_KEY가 있을 때 tools.spike_fal_ltx --yes로만 한다.
+realize = [
+    "fal-client>=1.0.3,<2",
+    "httpx>=0.27,<1",
+    "opencv-python-headless>=4.10,<6",
+    "numpy>=1.26,<3",
+]
 
 [tool.setuptools.packages.find]
 include = ["fitting*", "server*", "tools*"]
