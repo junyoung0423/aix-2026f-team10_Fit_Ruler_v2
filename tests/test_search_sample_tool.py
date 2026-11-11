@@ -27,9 +27,9 @@ def test_garment_file_prints_a_valid_result(capsys):
     assert code == 0
     assert err == ""
     result = SampleSearchResult.model_validate_json(out)
-    assert result.selected_sample_id == "gc_tee_reg_l"
-    assert result.score_cm == 0.0
-    assert result.exact_match is True
+    assert result.selected_sample_id == "tee_gc_regular_04"
+    assert result.score_cm == 3.85
+    assert result.exact_match is False
     assert len(result.ranking) == 10
 
 
@@ -47,9 +47,9 @@ def test_top_limits_the_ranking_only(capsys):
     assert code == 0
     result = SampleSearchResult.model_validate_json(out)
     assert [r.sample_id for r in result.ranking] == [
-        "gc_tee_reg_l",
-        "gc_tee_over_s",
-        "gc_tee_reg_m",
+        "tee_gc_regular_04",
+        "tee_gc_regular_03",
+        "tee_gc_regular_06",
     ]
     assert (
         result.selected_sample_id == SampleSearchResult.model_validate_json(full).selected_sample_id
@@ -59,37 +59,62 @@ def test_top_limits_the_ranking_only(capsys):
 def test_dimensions_can_be_given_directly(capsys):
     code, out, _ = _run(
         capsys,
-        *("--chest", 116, "--shoulder", 50, "--sleeve", 23, "--length", 71),
+        *("--chest", 118, "--shoulder", 52, "--sleeve", 24, "--length", 74),
         *("--samples", SAMPLES, "--top", 3),
     )
 
     assert code == 0
     result = SampleSearchResult.model_validate_json(out)
     assert [(r.sample_id, r.score_cm) for r in result.ranking] == [
-        ("gc_tee_over_m", 0.6),
-        ("gc_tee_reg_xl", 1.4),
-        ("gc_tee_reg_xxl", 1.6),
+        ("tee_gc_relaxed_08", 5.85),
+        ("tee_gc_relaxed_07", 7.05),
+        ("tee_gc_regular_06", 8.25),
     ]
 
 
-def test_waist_option_is_compared_when_the_sample_has_it(capsys, tmp_path):
-    samples = json.loads(SAMPLES.read_text(encoding="utf-8"))
-    samples["samples"][2]["measurements"]["waist_girth_cm"] = 90.0  # gc_tee_reg_l
-    path = tmp_path / "samples.json"
-    path.write_text(json.dumps(samples), encoding="utf-8")
-
-    code, out, _ = _run(
-        capsys,
-        *("--chest", 108, "--shoulder", 46, "--sleeve", 22, "--length", 70, "--waist", 96),
-        *("--samples", path),
-    )
+def test_waist_is_not_compared_and_the_option_is_gone(capsys):
+    """허리는 비교하지 않는다. 의류 파일에 허리(96)가 있어도 결과에 나오지 않는다."""
+    _, out, _ = _run(capsys, "--garment", GARMENT, "--samples", SAMPLES)
 
     best = SampleSearchResult.model_validate_json(out).ranking[0]
+    assert "waist_girth_cm" not in {c.dimension for c in best.compared}
+    assert best.skipped == []
+
+    code, out, err = _run(
+        capsys, *("--chest", 108, "--shoulder", 46, "--waist", 96), *("--samples", SAMPLES)
+    )
+    assert (code, out) == (1, "")
+    assert "--waist" in err  # 없는 옵션
+
+
+def test_garment_without_length_reports_it_as_skipped(capsys):
+    code, out, _ = _run(
+        capsys, *("--chest", 98, "--shoulder", 43, "--sleeve", 20), *("--samples", SAMPLES)
+    )
+
+    result = SampleSearchResult.model_validate_json(out)
     assert code == 0
-    assert best.sample_id == "gc_tee_reg_l"
-    assert best.compared[-1].dimension == "waist_girth_cm"
-    assert best.compared[-1].diff_cm == -6.0
-    assert best.score_cm == 0.55  # 0.5 × 6 ÷ 5.5
+    assert (result.selected_sample_id, result.score_cm) == ("tee_gc_slim_01", 6.44)
+    assert result.tie_broken is True
+    assert [(s.dimension, s.reason.value) for s in result.ranking[0].skipped] == [
+        ("body_length_cm", "GARMENT_VALUE_MISSING")
+    ]
+
+
+def test_exact_match_allows_half_a_centimeter(capsys):
+    code, out, _ = _run(
+        capsys,
+        *("--chest", 108.4, "--shoulder", 34.5, "--sleeve", 22.3, "--length", 71.6),
+        *("--samples", SAMPLES, "--top", 1),
+    )
+
+    result = SampleSearchResult.model_validate_json(out)
+    assert code == 0
+    assert (result.selected_sample_id, result.score_cm, result.exact_match) == (
+        "tee_gc_regular_04",
+        0.27,
+        True,
+    )
 
 
 def test_custom_rules_file_is_used(capsys, tmp_path):
@@ -140,7 +165,7 @@ def test_exit_2_when_sample_ids_repeat(capsys, tmp_path):
 
     assert code == 2
     assert err.startswith("DUPLICATE_SAMPLE_ID: ")
-    assert "gc_tee_reg_s" in err
+    assert "tee_gc_slim_01" in err
 
 
 # --- 종료 코드 1: 파일·형식·사용법 오류 -----------------------------------------------
@@ -265,7 +290,7 @@ def test_runs_as_a_module():
     )
 
     assert done.returncode == 0, done.stderr
-    assert json.loads(done.stdout)["selected_sample_id"] == "gc_tee_reg_l"
+    assert json.loads(done.stdout)["selected_sample_id"] == "tee_gc_regular_04"
 
 
 def test_module_exit_code_2_for_missing_required_dimension():

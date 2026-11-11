@@ -84,10 +84,13 @@ def test_search_example_is_reference_case_1():
     """견본 검색 예시는 예시 의류로 실제 검색을 돌린 결과다 (기준 사례 1)."""
     result = SampleSearchResult.model_validate_json(_read("sample_search_result.json"))
 
-    assert result.selected_sample_id == "gc_tee_reg_l"
-    assert result.score_cm == 0.0
-    assert result.exact_match is True
-    assert [item.sample_id for item in result.ranking][:2] == ["gc_tee_reg_l", "gc_tee_over_s"]
+    assert result.selected_sample_id == "tee_gc_regular_04"
+    assert result.score_cm == 3.85
+    assert result.exact_match is False
+    assert [item.sample_id for item in result.ranking][:2] == [
+        "tee_gc_regular_04",
+        "tee_gc_regular_03",
+    ]
 
 
 def test_job_not_found_example_is_an_api_error():
