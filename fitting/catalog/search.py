@@ -1,14 +1,22 @@
 """치수가 비슷한 견본 검색 (#5). 의류 치수표와 가장 가까운 견본 1개를 고른다.
 
 순수 계산이다. 견본집 파일·네트워크·외부 도구를 모르고, 견본 목록을 받아 결과만 돌려준다.
-규칙(비교 치수·가중치·필수 여부)은 코드에 두지 않고 `config/sample_search_v0.yaml`에서 읽는다.
+규칙(비교 치수·가중치·필수 여부·일치 허용 오차)은 코드에 두지 않고
+`config/sample_search_v0.yaml`에서 읽는다. 값은 팀 문서 `docs/decisions.md`의
+"1주차 기준 [제안]" 4절을 따른다.
 
-- 비교 치수와 단위는 `GarmentMeasurements`와 같다. 모두 cm이고 가슴·허리는 둘레다. 검색은 단위나
-  단면·둘레를 바꾸지 않으므로, 단면 값은 부르는 쪽이 2배 해서 넘긴다.
-- 점수 = Σ(가중치 × |견본 − 의류|) ÷ Σ(가중치). 의류와 견본 둘 다 값이 있는 치수만 더한다.
-  작을수록 비슷하다. 계산은 핏 계산기처럼 10진수(`Decimal`)로 하고, 점수는 반올림해서 비교한다.
-- 순위: 반올림한 점수가 작은 순. 같으면 ① 비교한 치수 개수가 많은 쪽 ② 어깨 차이 절댓값이 작은
-  쪽 ③ 가슴 차이 절댓값이 작은 쪽 ④ `sample_id` 오름차순. 입력 순서와 상관없이 결과가 같다.
+- 비교 치수와 단위는 `GarmentMeasurements`와 같다. 모두 cm이고 가슴은 둘레다. 검색은 단위나
+  단면·둘레를 바꾸지 않으므로, 단면 값은 부르는 쪽이 2배 해서 넘긴다. 허리는 비교하지 않는다.
+- 점수 = Σ(가중치 × |견본 − 의류|) ÷ Σ(가중치). 의류에 값이 없는 선택 치수(총장·소매)는 빼고
+  남은 가중치로 나눈다. 작을수록 비슷하다. 계산은 핏 계산기처럼 10진수(`Decimal`)로 하고, 점수는
+  반올림해서 비교한다.
+- 순위: 반올림한 점수가 작은 순. 같으면(동률) ① 가슴 차이 절댓값이 작은 쪽 ② `sample_id`
+  사전순. 입력 순서와 상관없이 결과가 같다.
+  팀 문서의 "거리 차이가 0.01 cm 미만이면 동률"은 "0.01 cm로 반올림한 점수가 같으면 동률"로
+  구현한다. `|a − b| < 0.01`은 a, b, c 사이에서 이어지지 않을 수 있어 순서가 흔들리기 때문이다.
+- 정확히 일치: 비교한 모든 치수의 차이 절댓값이 허용 오차(기본 0.5 cm) 이하(경계 포함).
+  고르는 견본은 점수 순서 그대로다.
+- 견본은 설정에 있는 치수가 모두 있어야 후보가 된다. 하나라도 없으면 그 견본만 뺀다.
 """
 
 import math
@@ -29,12 +37,11 @@ from fitting.fit import to_decimal
 
 DEFAULT_SEARCH_RULES_PATH = Path(__file__).resolve().parents[2] / "config" / "sample_search_v0.yaml"
 
-# 동률일 때 차이를 보는 치수 (순위 규칙 ②③). 설정 파일에 없는 치수면 가장 뒤로 보낸다.
-_TIE_SHOULDER = "shoulder_width_cm"
+# 동률일 때 차이를 보는 치수 (순위 규칙 ①). 설정 파일에 없는 치수면 모두 같은 값으로 본다.
 _TIE_CHEST = "chest_girth_cm"
 _NOT_COMPARED = Decimal("Infinity")
 
-_TOP_KEYS = {"version", "score_decimals", "dimensions"}
+_TOP_KEYS = {"version", "score_decimals", "exact_match_tolerance_cm", "dimensions"}
 _DIMENSION_KEYS = {"name", "weight", "required"}
 _MAX_SCORE_DECIMALS = 6
 
@@ -51,10 +58,9 @@ class SampleSearchErrorCode(str, Enum):
 
 
 class SkipReason(str, Enum):
-    """선택 치수를 비교하지 않은 이유."""
+    """선택 치수를 비교하지 않은 이유. 견본은 치수가 모두 있어야 후보라서 의류 쪽 이유뿐이다."""
 
     GARMENT_VALUE_MISSING = "GARMENT_VALUE_MISSING"
-    SAMPLE_VALUE_MISSING = "SAMPLE_VALUE_MISSING"
 
 
 class ExcludeReason(str, Enum):
@@ -111,7 +117,7 @@ class DimensionComparison(BaseModel):
 
 
 class SkippedDimension(BaseModel):
-    """한쪽에 값이 없어 비교하지 않은 선택 치수."""
+    """의류에 값이 없어 비교하지 않은 선택 치수. 점수는 이 치수를 뺀 가중치로 나눈다."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -120,13 +126,13 @@ class SkippedDimension(BaseModel):
 
 
 class ExcludedSample(BaseModel):
-    """필수 치수가 없어 후보에서 뺀 견본."""
+    """비교 치수가 하나라도 없어 후보에서 뺀 견본."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     sample_id: str
     reason: ExcludeReason
-    missing: list[str]  # 견본에 없는 필수 치수 필드 이름
+    missing: list[str]  # 견본에 없는 치수 필드 이름 (설정의 치수 순서)
 
 
 class RankedSample(BaseModel):
@@ -151,7 +157,7 @@ class SampleSearchResult(BaseModel):
     selected_sample_id: str
     selected_measurements: GarmentMeasurements
     score_cm: float
-    exact_match: bool  # 비교한 모든 치수의 차이가 0인가
+    exact_match: bool  # 비교한 모든 치수의 차이 절댓값이 허용 오차 이하인가 (경계 포함)
     tie_broken: bool  # 1위와 반올림 점수가 같은 다른 후보가 있어 동률 규칙으로 골랐는가
     ranking: list[RankedSample]  # 후보 전체, 순위순
     excluded: list[ExcludedSample]
@@ -172,6 +178,7 @@ class SearchRules:
     version: str
     dimensions: tuple[DimensionRule, ...]
     score_decimals: int
+    exact_match_tolerance: Decimal  # cm. 이 값 이하의 차이는 정확히 일치로 본다
 
 
 def load_search_rules(path: Path | str | None = None) -> SearchRules:
@@ -213,6 +220,13 @@ def parse_search_rules(data: Any) -> SearchRules:
         raise SearchRulesError("score_decimals: 정수여야 합니다")
     if not 0 <= decimals <= _MAX_SCORE_DECIMALS:
         raise SearchRulesError(f"score_decimals: 0~{_MAX_SCORE_DECIMALS} 사이여야 합니다")
+    tolerance = top["exact_match_tolerance_cm"]
+    if isinstance(tolerance, bool) or not isinstance(tolerance, int | float):
+        raise SearchRulesError("exact_match_tolerance_cm: 숫자여야 합니다")
+    if isinstance(tolerance, float) and not math.isfinite(tolerance):
+        raise SearchRulesError("exact_match_tolerance_cm: 유한한 숫자여야 합니다")
+    if tolerance < 0:
+        raise SearchRulesError("exact_match_tolerance_cm: 0 이상이어야 합니다")
     raw_dimensions = top["dimensions"]
     if not isinstance(raw_dimensions, list) or not raw_dimensions:
         raise SearchRulesError("dimensions: 비교 치수를 하나 이상 목록으로 적어야 합니다")
@@ -223,7 +237,12 @@ def parse_search_rules(data: Any) -> SearchRules:
         raise SearchRulesError(f"dimensions: 같은 치수가 두 번 있습니다: {', '.join(duplicated)}")
     if not any(d.required for d in dimensions):
         raise SearchRulesError("dimensions: required가 true인 치수가 하나 이상 있어야 합니다")
-    return SearchRules(version=version, dimensions=dimensions, score_decimals=decimals)
+    return SearchRules(
+        version=version,
+        dimensions=dimensions,
+        score_decimals=decimals,
+        exact_match_tolerance=to_decimal(float(tolerance)),
+    )
 
 
 def _dimension(data: Any, where: str) -> DimensionRule:
@@ -273,9 +292,8 @@ class _Scored:
     skipped: list[SkippedDimension]
 
     def sort_key(self) -> tuple:
-        shoulder = abs(self.diffs[_TIE_SHOULDER]) if _TIE_SHOULDER in self.diffs else _NOT_COMPARED
         chest = abs(self.diffs[_TIE_CHEST]) if _TIE_CHEST in self.diffs else _NOT_COMPARED
-        return (self.score, -len(self.compared), shoulder, chest, self.sample.sample_id)
+        return (self.score, chest, self.sample.sample_id)
 
 
 def search_sample(
@@ -314,7 +332,7 @@ def search_sample(
     excluded: list[ExcludedSample] = []
     candidates: list[_Scored] = []
     for sample in sorted(samples, key=lambda s: s.sample_id):
-        absent = [d.name for d in rules.dimensions if d.required and _value(sample, d.name) is None]
+        absent = [d.name for d in rules.dimensions if _value(sample, d.name) is None]
         if absent:
             excluded.append(
                 ExcludedSample(
@@ -329,7 +347,7 @@ def search_sample(
     if not candidates:
         raise SampleSearchError(
             SampleSearchErrorCode.NO_CANDIDATES,
-            "비교할 견본이 없습니다. 견본집이 비었거나 모든 견본에 필수 치수가 없습니다.",
+            "비교할 견본이 없습니다. 견본집이 비었거나 모든 견본에 비교 치수가 빠져 있습니다.",
         )
 
     ordered = sorted(candidates, key=_Scored.sort_key)
@@ -339,7 +357,7 @@ def search_sample(
         selected_sample_id=best.sample.sample_id,
         selected_measurements=best.sample.measurements,
         score_cm=float(best.score),
-        exact_match=all(diff == 0 for diff in best.diffs.values()),
+        exact_match=all(abs(d) <= rules.exact_match_tolerance for d in best.diffs.values()),
         tie_broken=any(other.score == best.score for other in ordered[1:]),
         ranking=[
             RankedSample(
@@ -374,11 +392,7 @@ def _score(garment: GarmentMeasurements, sample: SampleCandidate, rules: SearchR
                 SkippedDimension(dimension=rule.name, reason=SkipReason.GARMENT_VALUE_MISSING)
             )
             continue
-        if sample_cm is None:
-            skipped.append(
-                SkippedDimension(dimension=rule.name, reason=SkipReason.SAMPLE_VALUE_MISSING)
-            )
-            continue
+        assert sample_cm is not None  # 치수가 빠진 견본은 search_sample이 이미 뺐다
         diff = to_decimal(sample_cm) - to_decimal(garment_cm)
         diffs[rule.name] = diff
         weighted += rule.weight * abs(diff)
@@ -392,7 +406,7 @@ def _score(garment: GarmentMeasurements, sample: SampleCandidate, rules: SearchR
                 weight=float(rule.weight),
             )
         )
-    # 필수 치수가 양쪽에 있으므로 비교한 치수가 하나 이상이고 total_weight는 0보다 크다.
+    # 의류의 필수 치수는 있고 견본은 치수가 모두 있으므로 total_weight는 0보다 크다.
     step = Decimal(1).scaleb(-rules.score_decimals)
     score = (weighted / total_weight).quantize(step, rounding=ROUND_HALF_UP)
     return _Scored(sample=sample, score=score, diffs=diffs, compared=compared, skipped=skipped)

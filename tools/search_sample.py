@@ -7,7 +7,7 @@
         --samples tests/fixtures/catalog/samples_v0.json
 
 - `--garment`는 `GarmentVariant` JSON 파일이다. 치수를 직접 줄 때는 `--chest --shoulder --sleeve
-  --length --waist`(cm, 가슴·허리는 둘레)를 쓴다. 둘 중 하나만 쓸 수 있다.
+  --length`(cm, 가슴은 둘레)를 쓴다. 둘 중 하나만 쓸 수 있다. 허리는 비교하지 않는다.
 - `--samples`는 `{"note": "...", "samples": [SampleCandidate, ...]}` 형식의 견본집 JSON이다.
 - 표준 출력에 `SampleSearchResult` JSON(UTF-8, 들여쓰기 2)을 쓴다. `--top N`이면 `ranking`을 앞의
   N개로 자른다.
@@ -42,7 +42,6 @@ _DIMENSION_OPTIONS = {
     "shoulder": "shoulder_width_cm",
     "sleeve": "sleeve_length_cm",
     "length": "body_length_cm",
-    "waist": "waist_girth_cm",
 }
 
 
