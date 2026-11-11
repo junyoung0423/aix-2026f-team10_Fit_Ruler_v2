@@ -62,6 +62,28 @@ pytest
 
 `.env.example`을 `.env`로 복사해 `FAL_KEY` 등을 채웁니다. `.env`는 커밋하지 않습니다.
 
+## 서버 실행
+
+```bash
+uvicorn server.app:app --reload   # http://127.0.0.1:8000/docs 에서 OpenAPI 문서
+```
+
+핏 API(`/api/fit`)와 피팅 작업 API(`/api/fittings`, `/api/artifacts`)가 함께 뜹니다. 지금은 실제 핏 계산기 + 가짜 영상 어댑터로 돌고(실제 어댑터 연결은 B4), 작업 상태는 메모리에만 있어 서버를 다시 켜면 사라집니다. 경로와 상태는 [docs/api/README.md](docs/api/README.md)에 있습니다.
+
+| 환경변수 | 기본 | 뜻 |
+|---|---|---|
+| `FIT_ARTIFACTS_DIR` | `artifacts/files/` | 산출물 폴더 |
+| `FIT_MAX_WORKERS` | 1 | 동시에 도는 영상 경로 수 |
+| `FIT_FAKE_STAGE_DELAY_S` | 0 | 가짜 영상 단계마다 쉬는 초 (화면에서 진행 상태를 볼 때) |
+| `FIT_FAKE_PLACEHOLDERS` | 꺼짐 (`1`이면 켬) | 가짜 모드에서 이미지 산출물에 단색 자리표시 PNG를 쓴다 |
+| `FIT_GARMENTS_DIR` | `data/garments/` | 등록 의류 폴더 |
+
+```bash
+FIT_FAKE_STAGE_DELAY_S=1.5 FIT_FAKE_PLACEHOLDERS=1 uvicorn server.app:app --port 8000
+```
+
+견본 검색은 `python -m tools.search_sample --garment data/garments/tee_regular_m_navy_v1.json --samples tests/fixtures/catalog/samples_v0.json`으로 확인합니다([견본 검색](docs/api/README.md)).
+
 ## 팀 공유 드라이브
 
 `.blend`·영상·메시·SMPL 모델처럼 커밋하지 않는 파일의 위치: (첫 공유 때 적는다)

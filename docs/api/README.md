@@ -7,7 +7,7 @@
 
 | 파일 | 내용 | 만드는 법 |
 |---|---|---|
-| `schemas/*.schema.json` | 요청·의류·핏 리포트·작업 상태·핏 API·포트 DTO의 JSON Schema (draft 2020-12) | 자동 |
+| `schemas/*.schema.json` | 요청·의류·핏 리포트·작업 상태·핏 API·견본 검색 결과·포트 DTO의 JSON Schema (draft 2020-12) | 자동 |
 | `examples/fitting_request.json` | 피팅 요청 본문 (`POST /api/fittings`, B3). 실사화 동의 `realize_consent: true` | 손으로 |
 | `examples/fit_request.json` | 핏 요청 본문 (`POST /api/fit`). `fitting_request.json`에서 `mode`·`realize_consent`를 뺀 모양 | 손으로 |
 | `examples/garment.json` | 등록 의류 1벌 (시연용, 실제 의류 아님). `data/garments/`에도 같은 파일이 있다. 색·원단 필드(`color_hex`, `fabric`)의 값도 시연용이다 | 손으로 |
@@ -16,6 +16,8 @@
 | `examples/api_error_input_invalid.json` | 입력 오류 422 `INPUT_INVALID` (범위 밖 가슴둘레, 문자열 숫자 키) | 자동 (서버와 같은 코드) |
 | `examples/api_error_garment_not_found.json` | 없는 의류 404 `GARMENT_NOT_FOUND` | 자동 (서버와 같은 코드) |
 | `examples/api_error_garment_not_ready.json` | 계산할 수 없는 의류 409 `GARMENT_NOT_READY` | 자동 (실제 계산기 + 서버와 같은 코드) |
+| `examples/api_error_job_not_found.json` | 없는 작업 ID 404 `JOB_NOT_FOUND` (#12) | 자동 (서버와 같은 코드) |
+| `examples/sample_search_result.json` | 견본 검색 결과 (#5). 예시 의류 + 합성 견본집으로 실제 검색을 돌린 기준 사례 1 | 자동 (실제 검색) |
 | `examples/fitting_status_running.json` | 리포트 완료, 실사화 진행 중 | 자동 |
 | `examples/fitting_status_succeeded.json` | 전체 성공 | 자동 (실제 계산기 + 가짜 영상 어댑터) |
 | `examples/fitting_status_no_consent.json` | 실사화 미동의: 렌더까지 하고 성공, 실사화·검증 건너뜀 | 자동 (실제 계산기 + 가짜 영상 어댑터) |
@@ -69,6 +71,9 @@ uvicorn server.app:app --reload   # http://127.0.0.1:8000/docs 에서 OpenAPI �
 | 입력 범위·형식 오류 | 422 | `INPUT_INVALID` | 틀린 필드마다 하나 |
 | 없는 의류 ID | 404 | `GARMENT_NOT_FOUND` [제안] | `null` |
 | 준비 안 된 의류, 의류군·프로토콜 불일치, 필수 실측 누락 | 409 [제안] | `GARMENT_NOT_READY` | `null` |
+| 없는 작업 ID (`GET /api/fittings/{job_id}`) | 404 [제안] | `JOB_NOT_FOUND` | `null` |
+| 없는 산출물 ID, 형식이 틀린 ID (`GET /api/artifacts/{artifact_id}`) | 404 [제안] | `ARTIFACT_NOT_FOUND` | `null` |
+| 같은 `Idempotency-Key`인데 요청 본문이 다름 | 422 | `INPUT_INVALID` | `[{"field": "Idempotency-Key", "code": "INVALID", ...}]` |
 
 - `safe_message`는 화면에 그대로 보여 줄 수 있는 문장입니다. 내부 사유(어떤 프로토콜이 다른지 등)는 응답에 넣지 않고 서버 로그에만 남깁니다.
 - `fields[].field`는 요청 본문 안의 위치(`measurements.chest_cm`)이고, 본문 전체 문제(잘못된 JSON 등)면 `""`입니다.
@@ -114,6 +119,51 @@ python -m tools.register_aihub_garment <AI Hub 라벨 JSON> [--out data/garments
 
 - 변환 규칙과 필드 대응은 `docs/spikes/aihub-71501.md`에 있습니다. AI Hub 원본(라벨·이미지)은 저장소에 넣지 않습니다. 변환한 의류 파일을 공개 저장소에 커밋해도 되는지는 아직 확인 중입니다(`docs/decisions.md`).
 
+## 피팅 작업 API (#12)
+
+핏 리포트는 바로, 3D·실사화는 백그라운드에서 돌립니다. 화면은 첫 응답으로 리포트를 보여 주고, 같은 작업을 반복해 조회하면서 몸 → 착장 → 렌더 → 실사화 → 검증 단계가 넘어가는 것을 따라갑니다.
+
+| 경로 | 성공 | 내용 |
+|---|---|---|
+| `POST /api/fittings` | 202 `FittingStatus` | 본문 `FittingRequest`(`fitting_request.json`), 선택 헤더 `Idempotency-Key`. 첫 상태에 핏 리포트(`report.regions`)와 `job_id`가 들어 있다 |
+| `GET /api/fittings/{job_id}` | 200 `FittingStatus` | 작업의 현재 상태 |
+| `GET /api/artifacts/{artifact_id}` | 200 파일 | 산출물 파일 ("산출물 파일" 절) |
+
+오류는 모두 `ApiError`입니다. 입력 오류 422(`/api/fit`과 같은 `fields`), 없는 의류 404 `GARMENT_NOT_FOUND`, 준비 안 된·계산할 수 없는 의류 409 `GARMENT_NOT_READY`, 없는 작업 404 `JOB_NOT_FOUND`, 없는 산출물 404 `ARTIFACT_NOT_FOUND`(위 오류 표).
+
+### 첫 응답과 폴링
+
+- **첫 응답(202)**: `report`는 이미 완료(`SUCCEEDED`)이고 `regions`는 `POST /api/fit` 결과와 같습니다. 영상 경로는 아직 시작 전입니다.
+  - 작업 `status: ACCEPTED`, `visual.status: QUEUED`, 영상 다섯 단계 `WAITING`, `visual.quality_status: PENDING`.
+  - 실사화에 동의하지 않았으면(`realize_consent: false`, 기본값) 첫 응답부터 REALIZE·VALIDATE가 `SKIPPED`, `visual.skip_reason: CONSENT_NOT_GIVEN`, `visual.quality_status: null`입니다. 새 필드는 없습니다.
+  - `mode: report_only`는 첫 응답이 이미 최종 상태입니다(작업 `SUCCEEDED`, 영상 `SKIPPED`, `skip_reason: REPORT_ONLY`).
+- **진행**: 실행을 시작하면 작업 `RUNNING`이 되고, 단계가 시작될 때 그 단계가 `RUNNING`, 성공으로 끝나면 `SUCCEEDED`가 됩니다. `visual.stage`가 지금 단계이고, 산출물 ID(`drape_preview_artifact_id` 등)는 그 단계가 끝나는 대로 채워집니다. 화면은 `ACCEPTED`·`RUNNING`인 동안 1초마다 조회합니다.
+- **대기**: 영상 경로는 동시에 1개만 돕니다(`FIT_MAX_WORKERS`). 순서를 기다리는 작업은 `ACCEPTED`·`QUEUED`·단계 `WAITING` 그대로입니다. 리포트는 대기 중에도 이미 들어 있습니다.
+- **끝**: 모두 성공하면 `SUCCEEDED`, 영상 경로가 실패하면 `PARTIAL_SUCCEEDED`입니다. 어느 쪽이든 `report`는 첫 응답과 같습니다. 영상 경로가 예상하지 못한 오류로 죽어도 그 단계가 `FAILED`, 남은 단계가 `SKIPPED`가 되고 `visual.error_code`는 그 단계의 코드(몸 `BODY_FIT_NOT_CONVERGED`, 착장 `DRAPE_INVALID`, 렌더 `RENDER_FAILED`, 실사화 `EXTERNAL_SUBMIT_UNKNOWN`, 검증 `VALIDATION_UNVERIFIABLE`)입니다. 오류 내용은 서버 로그에만 남습니다.
+- **서버를 다시 켜면 작업이 사라집니다.** 작업 상태는 메모리에만 있어서 이전 작업을 조회하면 404 `JOB_NOT_FOUND`입니다. 보관 작업이 200개를 넘으면 끝난 작업부터 오래된 순으로 지웁니다(진행 중 작업은 지우지 않음).
+- 타임아웃·재시도는 아직 없습니다(B5).
+
+### `Idempotency-Key`
+
+같은 키로 같은 본문을 다시 보내면 새 작업을 만들지 않고 **200**으로 기존 작업의 **현재** 상태를 돌려줍니다(네트워크 재시도에서 작업이 둘 생기지 않게). 키가 같은데 본문이 다르면 422 `INPUT_INVALID`(`fields`에 `Idempotency-Key`)입니다. 헤더가 없거나 비어 있으면 요청마다 새 작업입니다.
+
+### 환경변수
+
+| 변수 | 기본 | 뜻 |
+|---|---|---|
+| `FIT_ARTIFACTS_DIR` | `artifacts/files/` | 산출물 폴더 |
+| `FIT_MAX_WORKERS` | 1 | 동시에 도는 영상 경로 수 |
+| `FIT_FAKE_STAGE_DELAY_S` | 0 | 가짜 영상 단계마다 쉬는 초. 화면에서 진행 상태를 눈으로 볼 때 쓴다 |
+| `FIT_FAKE_PLACEHOLDERS` | 꺼짐 (`1`이면 켬) | 가짜 모드에서 이미지 산출물(3D 미리보기, 대표 프레임, 대응 렌더 프레임) ID가 상태에 나타나면 산출물 폴더에 단색 384×512 자리표시 PNG를 쓴다. 영상(mp4)은 만들지 않는다 |
+
+지금 서버는 **실제 핏 계산기 + 가짜 영상 어댑터**로 돕니다(실제 어댑터 연결은 B4). `FIT_FAKE_*`는 가짜 어댑터를 쓸 때만 봅니다. 값이 틀리면(`FIT_MAX_WORKERS=0`, `FIT_FAKE_STAGE_DELAY_S=-1` 등) 서버를 띄울 때 바로 오류가 납니다.
+
+```bash
+FIT_FAKE_STAGE_DELAY_S=1.5 FIT_FAKE_PLACEHOLDERS=1 uvicorn server.app:app --port 8000
+```
+
+화면(A4)은 이렇게 띄운 서버로 단계가 바뀌는 모습과 3D 미리보기 자리를 볼 수 있습니다.
+
 ## 읽는 법 (작업 상태)
 
 - `report`(핏 경로)와 `visual`(영상 경로)은 서로 독립입니다. `visual.status`가 `FAILED`여도 `report.regions`는 그대로 보여 줍니다(#12). 이때 작업 전체 `status`는 `PARTIAL_SUCCEEDED`입니다.
@@ -128,9 +178,50 @@ python -m tools.register_aihub_garment <AI Hub 라벨 JSON> [--out data/garments
 - `report.summary`·`report.warnings`는 핏 리포트의 요약 줄과 경고입니다. 예: `DEMO_GARMENT`면 "시연용 의류"를 표시합니다.
 - `visual.render_frame_artifact_id`는 대표 프레임(`frame_artifact_id`)에 대응하는 렌더 프레임입니다. 두 장을 나란히 보여 줍니다(#11).
 - `visual.quality_metrics`는 검증 숫자 지표입니다. 예: `color_delta_e`(색 차이), `silhouette_iou`(실루엣 겹침). 검증을 하지 않았으면 `null`입니다. 예시의 값은 가짜입니다.
-- 산출물 ID(`*_artifact_id`)를 파일 주소로 바꾸는 방법은 B3에서 정합니다. 예시의 ID는 가짜입니다.
+- 산출물 ID(`*_artifact_id`)는 `GET /api/artifacts/{artifact_id}`로 파일을 받습니다(아래 "산출물 파일"). 예시의 ID는 가짜라서 그 파일은 없습니다.
 
-## 산출물 파일 (임시 약속)
+## 산출물 파일
 
-- `GET /api/artifacts/{artifact_id}`는 그 산출물 파일(3D 미리보기, 렌더 클립, 실사 영상, 프레임)을 돌려줍니다.
-- 지금은 경로 모양만 정한 약속이고, 구현은 B3에서 합니다. 화면 mock은 이 경로로 만듭니다.
+`GET /api/artifacts/{artifact_id}`는 상태의 `*_artifact_id`가 가리키는 파일(3D 미리보기, 렌더 클립, 실사 영상, 프레임)을 돌려줍니다.
+
+- **산출물 폴더**: 인자 `artifacts_dir` > 환경변수 `FIT_ARTIFACTS_DIR` > `artifacts/files/`(`.gitignore`로 커밋되지 않음).
+- **파일 이름**: `{artifact_id}.{확장자}`. 실제 어댑터(C4·C5·D4·D5, 서버 연결은 B4)가 이 폴더에 이 이름으로 씁니다. 같은 ID로 확장자가 다른 파일이 여러 개면 **파일 이름 순서로 첫 번째**를 줍니다.
+- **Content-Type**은 확장자로 정합니다(`.png` `image/png`, `.jpg` `image/jpeg`, `.mp4` `video/mp4`, `.webm` `video/webm`, `.json` `application/json`, `.glb` `model/gltf-binary`). 모르는 확장자는 `application/octet-stream`입니다.
+- **ID 형식**: `^[A-Za-z0-9_-]{1,128}$`만 받습니다. 그 밖(`..`, `/`, 확장자 `.` 포함)은 파일을 찾지 않고 404 `ARTIFACT_NOT_FOUND`입니다. 찾은 파일의 실제 경로(심볼릭 링크 해석 후)가 산출물 폴더 안인지도 확인합니다. 없는 ID와 형식이 틀린 ID는 구분하지 않습니다.
+- 가짜 어댑터는 파일을 만들지 않아 기본으로는 404입니다. `FIT_FAKE_PLACEHOLDERS=1`이면 이미지 산출물만 자리표시 PNG로 열립니다.
+
+## 견본 검색 (#5)
+
+등록할 의류의 치수표와 견본집의 견본 치수를 비교해 가장 비슷한 견본 1개를 고릅니다. 순수 계산이고(`fitting/catalog/search.py`), 파일·네트워크·외부 도구를 모릅니다. 선택한 견본은 최적화(#6)가 이어받습니다.
+
+**규칙 `sample_search_v0`** ([제안], `config/sample_search_v0.yaml`):
+
+| 치수 (`GarmentMeasurements`) | 가중치 | 필수 |
+|---|---|---|
+| `shoulder_width_cm` | 2.0 | 예 |
+| `chest_girth_cm` | 1.0 | 예 |
+| `body_length_cm` | 1.0 | 아니오 |
+| `sleeve_length_cm` | 1.0 | 아니오 |
+| `waist_girth_cm` | 0.5 | 아니오 |
+
+- 모든 치수는 cm이고 가슴·허리는 **둘레**입니다. 검색은 단위나 단면·둘레를 바꾸지 않습니다(단면이면 부르는 쪽이 2배 해서 넘깁니다).
+- 점수 `score_cm` = Σ(가중치 × 차이의 절댓값) ÷ Σ가중치. 의류와 견본 **둘 다 값이 있는 치수만** 더합니다. 작을수록 비슷하고, 0.01 cm로 반올림합니다(핏 계산기와 같은 10진수 반올림).
+- 순위: 반올림한 점수가 작은 순. 같으면 ① 비교한 치수 개수가 많은 쪽 ② 어깨 차이가 작은 쪽 ③ 가슴 차이가 작은 쪽 ④ `sample_id` 오름차순. 입력 순서와 상관없이 결과가 같습니다.
+- `exact_match`: 비교한 모든 치수의 차이가 0. `tie_broken`: 1위와 반올림 점수가 같은 다른 후보가 있었음.
+- 필수 치수 누락: 의류에 없으면 `SampleSearchError(GARMENT_REQUIRED_MISSING)`(빠진 필드 이름 포함), 견본에 없으면 그 견본만 후보에서 빼고 결과 `excluded`에 `SAMPLE_REQUIRED_MISSING`으로 남깁니다. 후보가 없으면 `NO_CANDIDATES`, 견본 ID가 겹치면 `DUPLICATE_SAMPLE_ID`.
+- 선택 치수가 한쪽에 없으면 그 치수만 건너뛰고 `skipped`에 `GARMENT_VALUE_MISSING`·`SAMPLE_VALUE_MISSING`으로 남깁니다.
+
+**입력·출력**: `search_sample(garment: GarmentMeasurements, samples: Sequence[SampleCandidate], rules=None) -> SampleSearchResult`. `SampleCandidate`는 `{sample_id, measurements: GarmentMeasurements}`이고, 결과(`sample_search_result.schema.json`, 예시 `sample_search_result.json`)는 선택 견본(`selected_sample_id`·`selected_measurements`·`score_cm`)과 후보 전체 순위(`ranking[].compared`·`skipped`), 제외한 견본(`excluded`)을 담습니다.
+
+**명령어**:
+
+```bash
+python -m tools.search_sample --garment data/garments/tee_regular_m_navy_v1.json \
+    --samples tests/fixtures/catalog/samples_v0.json --top 3
+python -m tools.search_sample --chest 116 --shoulder 50 --sleeve 23 --length 71 \
+    --samples tests/fixtures/catalog/samples_v0.json
+```
+
+- `--garment`(`GarmentVariant` JSON)나 치수 옵션(`--chest --shoulder --sleeve --length --waist`, cm) 중 하나만 씁니다. `--rules`로 다른 규칙 파일을, `--top N`으로 순위 앞 N개만 출력합니다.
+- 견본집 파일은 `{"note": "...", "samples": [SampleCandidate, ...]}`입니다. `tests/fixtures/catalog/samples_v0.json`은 **합성 값**(GarmentCode로 만든 견본이 아님)이며, C3 견본집으로 기준 사례를 다시 확인하기 전까지 테스트·확인용입니다.
+- 종료 코드: 성공 0, 견본을 고를 수 없음(`SampleSearchError`) 2(표준 오류에 코드와 한국어 한 줄), 파일·형식·사용법 오류 1.
