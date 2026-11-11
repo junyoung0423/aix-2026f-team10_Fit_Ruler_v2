@@ -35,6 +35,8 @@ runs/
 
 # AI Hub 원본 데이터 (재배포 불가). 원본은 data/raw/ 아래에만 둔다
 data/raw/
+# AI Hub 변환 의류는 이용 조건 확인 전까지 커밋하지 않는다(docs/decisions.md)
+data/garments/*_aihub_*.json
 
 # OS / 에디터
 .DS_Store

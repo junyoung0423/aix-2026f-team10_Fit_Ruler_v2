@@ -91,13 +91,29 @@ export interface MeasurementMeta {
   notes: string | null;
 }
 
+/** 원단 정보 (C1 #3). 서버 계약에서는 기본값이 있는 선택 필드다. */
+export interface FabricInfo {
+  /** 섬유 키(영어 소문자·밑줄), 출처에 적힌 순서 */
+  fibers: string[];
+  /** 섬유 키 -> 비율(%). 출처에 비율이 없으면 null */
+  composition: Record<string, number> | null;
+  /** 신축성. 출처 값 그대로 */
+  stretch: string | null;
+  /** 실사화(D5) 프롬프트용 영어 한 줄 */
+  description_en: string | null;
+}
+
 export interface GarmentVariant {
   schema_version: string;
   id: string;
   style: string;
   size: string;
   color: string;
+  /** 화면 색 견본용 `#rrggbb` (C1 #3). 없으면 null */
+  color_hex?: string | null;
   fabric_preset: string;
+  /** 원단 정보 (C1 #3). 없으면 null */
+  fabric?: FabricInfo | null;
   garment_family: string;
   status: GarmentStatus;
   measurements: GarmentMeasurements;

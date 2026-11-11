@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api/api';
+import type { MeasurementField } from '../api/contract';
 import type { FittingRequest, FittingStatus, GarmentList, Stage } from '../api/types';
 import { example } from './examples';
 import { createMockApi } from './mockApi';
@@ -7,9 +8,15 @@ import { createMockApi } from './mockApi';
 
 const REQUEST = example<FittingRequest>('fitting_request.json');
 
-function setup(failStage: Stage | null = null) {
+function setup(failStage: Stage | null = null, rejectField: MeasurementField | null = null) {
   let time = 0;
-  const api = createMockApi({ now: () => time, latencyMs: 0, storage: null, failStage: () => failStage });
+  const api = createMockApi({
+    now: () => time,
+    latencyMs: 0,
+    storage: null,
+    failStage: () => failStage,
+    rejectField: () => rejectField,
+  });
   return { api, advance: (ms: number) => (time += ms) };
 }
 
@@ -59,6 +66,12 @@ describe('POST /api/fit', () => {
         max: 160,
       },
     ]);
+  });
+
+  it('rejectField를 주면 범위 안의 값도 422로 거절한다(?mockReject)', async () => {
+    const error = (await setup(null, 'shoulder_cm').api.fit(REQUEST).catch((e: unknown) => e)) as ApiError;
+    expect(error.status).toBe(422);
+    expect(error.fields.map((f) => f.field)).toEqual(['measurements.shoulder_cm']);
   });
 
   it('없는 의류는 404 GARMENT_NOT_FOUND, 프로토콜이 다르면 422', async () => {

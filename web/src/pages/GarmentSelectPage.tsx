@@ -2,11 +2,12 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ApiError, errorMessage, isFittingApiMissing } from '../api/api';
 import { api } from '../api/client';
-import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL } from '../api/contract';
+import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL, measurementFieldOf } from '../api/contract';
 import type { FitRequest, FittingStatus, GarmentListItem, Measurements } from '../api/types';
 import { MEASUREMENT_PROTOCOL_VERSION } from '../api/types';
 import { colorHex, garmentName } from '../labels';
 import { useFitting } from '../state/fittingStore';
+import type { InputPageState } from './InputPage';
 
 const summary = (m: Measurements) =>
   MEASUREMENT_FIELDS.map((field) => `${MEASUREMENT_LABEL[field]} ${m[field]}`).join(' · ') + ' cm';
@@ -72,6 +73,13 @@ export function GarmentSelectPage() {
       saveResult(id, { report, garmentId: item.garment.id, garmentName: garmentName(item.garment), jobId: job?.job_id ?? null });
       navigate(`/fittings/${encodeURIComponent(id)}`);
     } catch (error) {
+      // 서버가 치수를 거절하면(422) 칸별 오류를 들고 입력 화면으로 돌아간다.
+      if (error instanceof ApiError && error.code === 'INPUT_INVALID' && error.fields.some((f) => measurementFieldOf(f.field))) {
+        const state: InputPageState = { message: error.message, fields: error.fields };
+        navigate('/', { state });
+        return;
+      }
+      // 없는 의류(404)·계산할 수 없는 의류(409) 등은 서버 문구를 이 화면에 보여 준다.
       const lines = [errorMessage(error)];
       if (error instanceof ApiError) lines.push(...error.fields.map((field) => field.message));
       setSubmitError(lines);

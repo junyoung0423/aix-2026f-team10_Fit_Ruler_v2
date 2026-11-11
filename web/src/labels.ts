@@ -20,6 +20,13 @@ const LABEL_KO: Partial<Record<Region, Partial<Record<FitLabel, string>>>> = {
   shoulder: { NARROW: '좁음 예상', REGULAR: '기본 범위', DROPPED: '어깨선 내려옴 예상' },
 };
 
+/** 부위별 판정 구간의 순서(작은 쪽 → 큰 쪽). 기준표 fit_rules_v0의 bands 순서와 같다. */
+export const REGION_BANDS: Partial<Record<Region, readonly FitLabel[]>> = {
+  chest: ['INSUFFICIENT', 'SNUG', 'REGULAR', 'LOOSE'],
+  shoulder: ['NARROW', 'REGULAR', 'DROPPED'],
+  waist: ['INSUFFICIENT', 'SNUG', 'REGULAR', 'LOOSE'],
+};
+
 export function fitLabelText(region: Region, label: FitLabel): string {
   if (label === 'UNKNOWN' || label === 'NOT_EVALUATED') return '판정 안 함';
   return LABEL_KO[region]?.[label] ?? label;

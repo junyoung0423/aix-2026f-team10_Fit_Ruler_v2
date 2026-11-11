@@ -1,5 +1,61 @@
 {
   "$defs": {
+    "FabricInfo": {
+      "additionalProperties": false,
+      "description": "원단 정보 (#3). 출처 값을 옮겨 두는 곳이고, 천 물성 매핑은 C4(#8)에서 한다.",
+      "properties": {
+        "composition": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "exclusiveMinimum": 0,
+                "maximum": 100,
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Composition"
+        },
+        "description_en": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description En"
+        },
+        "fibers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fibers",
+          "type": "array"
+        },
+        "stretch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stretch"
+        }
+      },
+      "title": "FabricInfo",
+      "type": "object"
+    },
     "GarmentMeasurements": {
       "additionalProperties": false,
       "description": "의류 실측 (명세서 3장). 단면과 둘레, 소매와 팔길이를 서로 대체하지 않는다.",
@@ -191,6 +247,30 @@
       "minLength": 1,
       "title": "Color",
       "type": "string"
+    },
+    "color_hex": {
+      "anyOf": [
+        {
+          "pattern": "^#[0-9a-f]{6}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Color Hex"
+    },
+    "fabric": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FabricInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "fabric_preset": {
       "minLength": 1,
