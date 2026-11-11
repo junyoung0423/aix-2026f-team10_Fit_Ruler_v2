@@ -105,6 +105,13 @@ python -m tools.register_aihub_garment <AI Hub 라벨 JSON> [--out data/garments
 - ID는 `tee_unknown_unknown_{color}_aihub_{상품 번호}`입니다. 데이터에 의류 사이즈·핏형이 없어 `style`·`size`는 `unknown`입니다.
 - 반팔 라운드넥 티셔츠가 아니거나, 색이 여러 개이거나, 치수가 받는 범위 밖(mm 등)이면 이유를 출력하고 쓰지 않습니다(종료 코드 2).
 - 같은 ID 파일이 있으면 덮어쓰지 않고 멈춥니다(종료 코드 1). `--force`일 때만 덮어씁니다.
+- AI Hub 변환 의류는 저장소 밖 폴더에 등록하고 `FIT_GARMENTS_DIR`로 서버에 알려 줍니다(`data/garments/*_aihub_*.json`은 `.gitignore`로 막혀 있습니다). 시연용 의류도 같이 보려면 `data/garments/tee_regular_m_navy_v1.json`을 그 폴더에 복사합니다.
+
+  ```bash
+  python -m tools.register_aihub_garment <라벨> --out C:\dev\aihub\garments
+  FIT_GARMENTS_DIR=C:\dev\aihub\garments uvicorn server.app:app --port 8000
+  ```
+
 - 변환 규칙과 필드 대응은 `docs/spikes/aihub-71501.md`에 있습니다. AI Hub 원본(라벨·이미지)은 저장소에 넣지 않습니다. 변환한 의류 파일을 공개 저장소에 커밋해도 되는지는 아직 확인 중입니다(`docs/decisions.md`).
 
 ## 읽는 법 (작업 상태)
