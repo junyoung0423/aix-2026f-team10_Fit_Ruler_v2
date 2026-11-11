@@ -194,34 +194,37 @@ FIT_FAKE_STAGE_DELAY_S=1.5 FIT_FAKE_PLACEHOLDERS=1 uvicorn server.app:app --port
 
 등록할 의류의 치수표와 견본집의 견본 치수를 비교해 가장 비슷한 견본 1개를 고릅니다. 순수 계산이고(`fitting/catalog/search.py`), 파일·네트워크·외부 도구를 모릅니다. 선택한 견본은 최적화(#6)가 이어받습니다.
 
-**규칙 `sample_search_v0`** ([제안], `config/sample_search_v0.yaml`):
+**규칙 `sample_search_v0`**: 팀 문서 `docs/decisions.md`의 "1주차 기준 [제안]" 4절을 구현했습니다(`config/sample_search_v0.yaml`).
 
-| 치수 (`GarmentMeasurements`) | 가중치 | 필수 |
+| 치수 (`GarmentMeasurements`) | 가중치 | 의류에 필수 |
 |---|---|---|
-| `shoulder_width_cm` | 2.0 | 예 |
-| `chest_girth_cm` | 1.0 | 예 |
-| `body_length_cm` | 1.0 | 아니오 |
-| `sleeve_length_cm` | 1.0 | 아니오 |
-| `waist_girth_cm` | 0.5 | 아니오 |
+| `chest_girth_cm` | 0.4 | 예 |
+| `shoulder_width_cm` | 0.3 | 예 |
+| `body_length_cm` | 0.2 | 아니오 |
+| `sleeve_length_cm` | 0.1 | 아니오 |
 
-- 모든 치수는 cm이고 가슴·허리는 **둘레**입니다. 검색은 단위나 단면·둘레를 바꾸지 않습니다(단면이면 부르는 쪽이 2배 해서 넘깁니다).
-- 점수 `score_cm` = Σ(가중치 × 차이의 절댓값) ÷ Σ가중치. 의류와 견본 **둘 다 값이 있는 치수만** 더합니다. 작을수록 비슷하고, 0.01 cm로 반올림합니다(핏 계산기와 같은 10진수 반올림).
-- 순위: 반올림한 점수가 작은 순. 같으면 ① 비교한 치수 개수가 많은 쪽 ② 어깨 차이가 작은 쪽 ③ 가슴 차이가 작은 쪽 ④ `sample_id` 오름차순. 입력 순서와 상관없이 결과가 같습니다.
-- `exact_match`: 비교한 모든 치수의 차이가 0. `tie_broken`: 1위와 반올림 점수가 같은 다른 후보가 있었음.
-- 필수 치수 누락: 의류에 없으면 `SampleSearchError(GARMENT_REQUIRED_MISSING)`(빠진 필드 이름 포함), 견본에 없으면 그 견본만 후보에서 빼고 결과 `excluded`에 `SAMPLE_REQUIRED_MISSING`으로 남깁니다. 후보가 없으면 `NO_CANDIDATES`, 견본 ID가 겹치면 `DUPLICATE_SAMPLE_ID`.
-- 선택 치수가 한쪽에 없으면 그 치수만 건너뛰고 `skipped`에 `GARMENT_VALUE_MISSING`·`SAMPLE_VALUE_MISSING`으로 남깁니다.
+- 모든 치수는 cm이고 가슴은 **둘레**입니다. 검색은 단위나 단면·둘레를 바꾸지 않습니다(단면이면 부르는 쪽이 2배 해서 넘깁니다). **허리는 비교하지 않습니다**(AI Hub 의류는 허리 위치가 확인되지 않았고, 견본에는 허리 측정 정의가 없습니다). 결과의 `skipped`에도 허리는 나오지 않습니다.
+- 점수 `score_cm` = Σ(가중치 × 차이의 절댓값) ÷ Σ가중치. 의류에 총장·소매가 없으면 그 항목을 빼고 **남은 가중치로** 나눕니다(총장이 없으면 합 0.8). 작을수록 비슷하고, 0.01 cm로 반올림합니다(핏 계산기와 같은 10진수 반올림).
+- **정확히 일치**: 비교한 모든 치수의 차이 절댓값이 **0.5 cm 이하**(경계 포함)면 `exact_match: true`입니다. 고르는 견본은 점수 순서 그대로입니다.
+- **동률**: 반올림한 점수가 같으면 ① 가슴 차이의 절댓값이 작은 견본 ② 견본 `sample_id` 사전순. 입력 순서와 상관없이 결과가 같습니다. 팀 문서의 "거리 차이가 0.01 cm 미만이면 동률"은 "0.01 cm로 반올림한 점수가 같으면 동률"로 구현했습니다(`|a − b| < 0.01`은 a, b, c 사이에서 이어지지 않아 순서가 흔들리기 때문입니다). `tie_broken`: 1위와 점수가 같은 다른 후보가 있었음.
+- **필수 치수 누락**
+  - 의류에 가슴이나 어깨가 없으면 `SampleSearchError(GARMENT_REQUIRED_MISSING)`(빠진 필드 이름 포함)입니다. 계약의 READY 조건과 같습니다.
+  - 견본은 **네 치수가 모두** 있어야 후보입니다. 하나라도 없으면 그 견본만 빼고 결과 `excluded`에 `SAMPLE_REQUIRED_MISSING`과 빠진 필드 목록을 남깁니다(팀 문서는 이런 견본이 C3 견본집에 들어가지 못하게 한다고 하고, 검색은 한 번 더 막습니다).
+  - 의류에 총장·소매가 없으면 `skipped`에 `GARMENT_VALUE_MISSING`으로 남깁니다.
+  - 후보가 없으면 `NO_CANDIDATES`, 견본 ID가 겹치면 `DUPLICATE_SAMPLE_ID`.
+- 견본 ID 형식(`tee_gc_{style}_{두 자리 번호}`, 예: `tee_gc_regular_03`)은 C가 정합니다. 검색 함수는 형식을 강제하지 않고, 테스트용 견본집만 이 형식을 씁니다.
 
-**입력·출력**: `search_sample(garment: GarmentMeasurements, samples: Sequence[SampleCandidate], rules=None) -> SampleSearchResult`. `SampleCandidate`는 `{sample_id, measurements: GarmentMeasurements}`이고, 결과(`sample_search_result.schema.json`, 예시 `sample_search_result.json`)는 선택 견본(`selected_sample_id`·`selected_measurements`·`score_cm`)과 후보 전체 순위(`ranking[].compared`·`skipped`), 제외한 견본(`excluded`)을 담습니다.
+**입력·출력**: `search_sample(garment: GarmentMeasurements, samples: Sequence[SampleCandidate], rules=None) -> SampleSearchResult`. `SampleCandidate`는 `{sample_id, measurements: GarmentMeasurements}`이고, 결과(`sample_search_result.schema.json`, 예시 `sample_search_result.json`)는 선택 견본(`selected_sample_id`·`selected_measurements`·`score_cm`·`exact_match`)과 후보 전체 순위(`ranking[].compared`·`skipped`), 제외한 견본(`excluded`)을 담습니다.
 
 **명령어**:
 
 ```bash
 python -m tools.search_sample --garment data/garments/tee_regular_m_navy_v1.json \
     --samples tests/fixtures/catalog/samples_v0.json --top 3
-python -m tools.search_sample --chest 116 --shoulder 50 --sleeve 23 --length 71 \
+python -m tools.search_sample --chest 118 --shoulder 52 --sleeve 24 --length 74 \
     --samples tests/fixtures/catalog/samples_v0.json
 ```
 
-- `--garment`(`GarmentVariant` JSON)나 치수 옵션(`--chest --shoulder --sleeve --length --waist`, cm) 중 하나만 씁니다. `--rules`로 다른 규칙 파일을, `--top N`으로 순위 앞 N개만 출력합니다.
-- 견본집 파일은 `{"note": "...", "samples": [SampleCandidate, ...]}`입니다. `tests/fixtures/catalog/samples_v0.json`은 **합성 값**(GarmentCode로 만든 견본이 아님)이며, C3 견본집으로 기준 사례를 다시 확인하기 전까지 테스트·확인용입니다.
+- `--garment`(`GarmentVariant` JSON)나 치수 옵션(`--chest --shoulder --sleeve --length`, cm) 중 하나만 씁니다. `--rules`로 다른 규칙 파일을, `--top N`으로 순위 앞 N개만 출력합니다.
+- 견본집 파일은 `{"note": "...", "samples": [SampleCandidate, ...]}`입니다. `tests/fixtures/catalog/samples_v0.json`은 **합성 값**(GarmentCode로 만든 견본이 아님, 팀 문서 3절의 10개 계획을 흉내 냄)이며, C3 견본집으로 기준 사례를 다시 확인하기 전까지 테스트·확인용입니다.
 - 종료 코드: 성공 0, 견본을 고를 수 없음(`SampleSearchError`) 2(표준 오류에 코드와 한국어 한 줄), 파일·형식·사용법 오류 1.
