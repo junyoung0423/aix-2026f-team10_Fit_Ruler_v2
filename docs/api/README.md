@@ -10,7 +10,7 @@
 | `schemas/*.schema.json` | 요청·의류·핏 리포트·작업 상태·핏 API·포트 DTO의 JSON Schema (draft 2020-12) | 자동 |
 | `examples/fitting_request.json` | 피팅 요청 본문 (`POST /api/fittings`, B3). 실사화 동의 `realize_consent: true` | 손으로 |
 | `examples/fit_request.json` | 핏 요청 본문 (`POST /api/fit`). `fitting_request.json`에서 `mode`·`realize_consent`를 뺀 모양 | 손으로 |
-| `examples/garment.json` | 등록 의류 1벌 (시연용, 실제 의류 아님). `data/garments/`에도 같은 파일이 있다 | 손으로 |
+| `examples/garment.json` | 등록 의류 1벌 (시연용, 실제 의류 아님). `data/garments/`에도 같은 파일이 있다. 색·원단 필드(`color_hex`, `fabric`)의 값도 시연용이다 | 손으로 |
 | `examples/fit_report.json` | 핏 리포트. 위 요청·의류를 #2 핏 계산기(기본 기준표 `fit_rules_v0`)로 계산한 결과 | 자동 (실제 계산기) |
 | `examples/garment_list.json` | 의류 목록 (`GET /api/garments`) | 자동 |
 | `examples/api_error_input_invalid.json` | 입력 오류 422 `INPUT_INVALID` (범위 밖 가슴둘레, 문자열 숫자 키) | 자동 (서버와 같은 코드) |
@@ -80,6 +80,32 @@ uvicorn server.app:app --reload   # http://127.0.0.1:8000/docs 에서 OpenAPI �
 - 파일 하나에 의류 한 벌, `*.json`, UTF-8. 내용은 `GarmentVariant`(`garment_variant.schema.json`, 예시 `garment.json`)입니다. 파일 이름은 `{id}.json`을 권장합니다.
 - `READY`는 가슴·어깨 실측이 있어야 합니다. 없는 실측은 0이 아니라 `null`로 둡니다. 단면 너비를 2배 해서 둘레로 바꿨으면 `measurement_meta.chest_from_flat_width: true`로 적습니다.
 - 서버는 요청마다 디렉터리를 다시 읽습니다. 형식에 맞지 않는 파일과 이미 나온 `id`의 파일(파일 이름 순서로 뒤)은 건너뛰고 서버 로그에 경고를 남깁니다.
+
+#### 색·원단 필드 (C1에서 추가, 기본값 있는 선택 필드)
+
+| 필드 | 형식 | 누가 쓰나 | 내용 |
+|---|---|---|---|
+| `color` | 영어 소문자 키 | 전원 | 예: `navy`, `black`, `white`. 화면 이름(한글)은 화면이 키로 바꿉니다 |
+| `color_hex` | `#rrggbb` 또는 `null` | 화면(A) | 색 견본(swatch)에 그대로 씁니다. 출처에 hex가 없으면 색 키의 대표값([제안])이라 실제 옷 색과 다를 수 있습니다. `null`이면 화면의 기본 색을 씁니다 |
+| `fabric` | `FabricInfo` 또는 `null` | 착장(C4)·실사화(D5) | 원단 정보. 없으면 `null` |
+| `fabric.fibers` | 섬유 키 목록 | C4 | 영어 소문자·밑줄(예: `cotton`, `polyester`, `viscose_rayon`), 출처에 적힌 순서 |
+| `fabric.composition` | 섬유 키 → 비율(%) 또는 `null` | C4 | AI Hub 71501에는 비율이 없어 `null`입니다 |
+| `fabric.stretch` | 문자열 또는 `null` | C4 | 신축성, 출처 값 그대로(AI Hub: `none at all`, `none`, `contain little`, `contain`, `contain a lot`) |
+| `fabric.description_en` | 영어 한 줄 또는 `null` | 실사화(D5) | 프롬프트에 의류 색·원단을 넣을 때 씁니다. 예: `plain black cotton jersey` |
+
+`fabric_preset`(Blender 천 물성 이름)은 그대로 있고, 원단 정보 → 천 물성 매핑은 C4에서 합니다.
+
+#### AI Hub 라벨에서 등록 (#3)
+
+```bash
+python -m tools.register_aihub_garment <AI Hub 라벨 JSON> [--out data/garments] [--force]
+```
+
+- AI Hub 의류 통합 데이터(dataSetSn 71501) 라벨 1개를 의류 1벌로 바꿔 `{out}/{id}.json`에 쓰고, 다시 읽어 확인합니다.
+- ID는 `tee_unknown_unknown_{color}_aihub_{상품 번호}`입니다. 데이터에 의류 사이즈·핏형이 없어 `style`·`size`는 `unknown`입니다.
+- 반팔 라운드넥 티셔츠가 아니거나, 색이 여러 개이거나, 치수가 받는 범위 밖(mm 등)이면 이유를 출력하고 쓰지 않습니다(종료 코드 2).
+- 같은 ID 파일이 있으면 덮어쓰지 않고 멈춥니다(종료 코드 1). `--force`일 때만 덮어씁니다.
+- 변환 규칙과 필드 대응은 `docs/spikes/aihub-71501.md`에 있습니다. AI Hub 원본(라벨·이미지)은 저장소에 넣지 않습니다. 변환한 의류 파일을 공개 저장소에 커밋해도 되는지는 아직 확인 중입니다(`docs/decisions.md`).
 
 ## 읽는 법 (작업 상태)
 
