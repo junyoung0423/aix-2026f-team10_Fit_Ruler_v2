@@ -1,0 +1,35 @@
+# 견본 검색 규칙 sample_search_v0 (#5). 의류 치수표와 가장 비슷한 견본 1개를 고르는 기준이다.
+#
+# [제안] 팀 합의 기한(11/09)이 지나 B가 정했다. 값을 바꾸면 version을 올려 이전 결과를 재현할 수 있게 한다.
+#
+# dimensions의 name은 GarmentMeasurements 필드 이름이다. 단위는 모두 cm이고, 가슴·허리는 둘레다.
+# 순서는 결과의 compared·skipped 순서와 같다.
+# - weight: 점수에 곱하는 가중치(0보다 커야 한다). 점수 = Σ(weight × |견본 − 의류|) ÷ Σ(weight)
+# - required: true면 의류와 견본 모두 이 치수가 있어야 한다.
+#   의류에 없으면 검색을 멈추고, 견본에 없으면 그 견본만 후보에서 뺀다.
+#
+# 어깨 가중치가 가장 큰 이유: GarmentCode 티셔츠는 어깨를 디자인 파라미터로 바꾸지 못한다(C2 스파이크).
+# 견본 최적화(#6)에서 고칠 수 없으니 검색에서 가장 가깝게 고른다.
+# 가슴은 둘레라서 같은 차이가 단면의 2배로 잡힌다. 가중치 1.0이 단면 기준 2.0과 같다.
+version: sample_search_v0
+
+# 점수를 소수 몇째 자리까지 반올림할지. 반올림한 점수로 순위와 동률을 가른다.
+score_decimals: 2
+
+dimensions:
+  - name: shoulder_width_cm
+    weight: 2.0
+    required: true
+  - name: chest_girth_cm
+    weight: 1.0
+    required: true
+  - name: body_length_cm
+    weight: 1.0
+    required: false
+  - name: sleeve_length_cm
+    weight: 1.0
+    required: false
+  # 견본 측정에 아직 허리가 없고 의류 허리 위치도 확인 전이라 낮게 둔다.
+  - name: waist_girth_cm
+    weight: 0.5
+    required: false

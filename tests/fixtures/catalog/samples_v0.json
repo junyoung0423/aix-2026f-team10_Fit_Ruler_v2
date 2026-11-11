@@ -1,0 +1,105 @@
+{
+  "note": "합성 값, GarmentCode로 만든 견본이 아님. 견본 검색(#5) 테스트·명령어 확인용이다. 단위 cm, 가슴·허리는 둘레, 허리는 아직 측정하지 않아 null이다.",
+  "samples": [
+    {
+      "sample_id": "gc_tee_reg_s",
+      "measurements": {
+        "chest_girth_cm": 96.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 42.0,
+        "sleeve_length_cm": 20.0,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_reg_m",
+      "measurements": {
+        "chest_girth_cm": 102.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 44.0,
+        "sleeve_length_cm": 21.0,
+        "body_length_cm": 68.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_reg_l",
+      "measurements": {
+        "chest_girth_cm": 108.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 46.0,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 70.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_reg_xl",
+      "measurements": {
+        "chest_girth_cm": 114.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 48.0,
+        "sleeve_length_cm": 23.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_reg_xxl",
+      "measurements": {
+        "chest_girth_cm": 120.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 50.0,
+        "sleeve_length_cm": 24.0,
+        "body_length_cm": 74.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_over_s",
+      "measurements": {
+        "chest_girth_cm": 108.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 48.0,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 68.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_over_m",
+      "measurements": {
+        "chest_girth_cm": 114.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 50.0,
+        "sleeve_length_cm": 23.0,
+        "body_length_cm": 70.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_over_l",
+      "measurements": {
+        "chest_girth_cm": 120.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 52.0,
+        "sleeve_length_cm": 24.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_over_xl",
+      "measurements": {
+        "chest_girth_cm": 126.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 54.0,
+        "sleeve_length_cm": 25.0,
+        "body_length_cm": 74.0
+      }
+    },
+    {
+      "sample_id": "gc_tee_over_xxl",
+      "measurements": {
+        "chest_girth_cm": 132.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 56.0,
+        "sleeve_length_cm": 26.0,
+        "body_length_cm": 76.0
+      }
+    }
+  ]
+}
