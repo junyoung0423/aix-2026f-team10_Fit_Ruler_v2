@@ -13,6 +13,7 @@ from fitting.adapters.fake.adapters import (
     FakeValidator,
     fake_ports,
 )
+from fitting.adapters.fake.delay import with_stage_delay
 
 __all__ = [
     "FakeBodyBuilder",
@@ -22,4 +23,5 @@ __all__ = [
     "FakeRenderer",
     "FakeValidator",
     "fake_ports",
+    "with_stage_delay",
 ]
