@@ -42,6 +42,7 @@ from fitting.adapters.fal_ltx import (
     estimate_cost,
     frames_for_clip,
     output_size,
+    port_metrics,
     run_render_to_real,
 )
 from fitting.adapters.fal_ltx.render_to_real import download
@@ -64,7 +65,9 @@ def write_test_clip(
     fps: float = 24.0,
     size: tuple[int, int] = (540, 720),
 ) -> Path:
-    """C의 렌더 클립 대신 쓰는 임시 클립: 목 아래만 보이는 마네킹이 검정 반팔 티를 입고 좌우로 살짝 흔들린다.
+    """C의 렌더 클립 대신 쓰는 임시 클립.
+
+    목 아래만 보이는 마네킹이 검정 반팔 티를 입고 좌우로 살짝 흔들린다.
 
     얼굴 처리 결정(턱 아래로 잘라 프레임 밖)에 맞춰 머리는 그리지 않는다.
     """
@@ -73,9 +76,7 @@ def write_test_clip(
     if not writer.isOpened():
         raise OSError(f"임시 클립을 만들 수 없습니다: {path}")
     background = (
-        np.linspace(232, 200, height, dtype=np.uint8)[:, None, None]
-        .repeat(width, 1)
-        .repeat(3, 2)
+        np.linspace(232, 200, height, dtype=np.uint8)[:, None, None].repeat(width, 1).repeat(3, 2)
     )
     skin, shirt, shade = (150, 178, 214), (34, 34, 36), (60, 60, 64)
     frames = round(seconds * fps)
@@ -85,13 +86,9 @@ def write_test_clip(
         cx = width // 2 + dx
 
         def pts(points: list[tuple[float, float]], cx: int = cx) -> np.ndarray:
-            return np.array(
-                [(cx + x * width, y * height) for x, y in points], dtype=np.int32
-            )
+            return np.array([(cx + x * width, y * height) for x, y in points], dtype=np.int32)
 
-        cv2.rectangle(
-            frame, (cx - 34, 0), (cx + 34, int(0.12 * height)), skin, -1
-        )  # 목
+        cv2.rectangle(frame, (cx - 34, 0), (cx + 34, int(0.12 * height)), skin, -1)  # 목
         cv2.fillPoly(
             frame,
             [pts([(-0.40, 0.30), (-0.30, 0.18), (-0.24, 0.80), (-0.36, 0.82)])],
@@ -151,9 +148,7 @@ def load_env_file(path: Path) -> None:
 
 
 def write_json(path: Path, data: Any) -> None:
-    path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
-    )
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -161,9 +156,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         description="fal / LTX-2.3 render-to-real 1회 호출 스파이크 (기본은 드라이런)"
     )
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument(
-        "--input", type=Path, help="렌더 클립 경로 (C의 정면 렌더 클립)"
-    )
+    source.add_argument("--input", type=Path, help="렌더 클립 경로 (C의 정면 렌더 클립)")
     source.add_argument(
         "--make-test-clip",
         action="store_true",
@@ -175,27 +168,19 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="생성 후 내려받기에서 멈춘 기록 폴더를 마무리한다 (다시 생성하지 않음, 비용 없음)",
     )
     parser.add_argument("--resolution", choices=["480p", "720p"], default="720p")
-    parser.add_argument(
-        "--intensity", choices=["light", "strong", "strong-v2"], default="light"
-    )
+    parser.add_argument("--intensity", choices=["light", "strong", "strong-v2"], default="light")
     parser.add_argument("--fps", type=float, default=24.0, help="출력 fps")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument(
-        "--garment", default=DEFAULT_GARMENT, help="프롬프트에 넣을 옷 설명(영어)"
-    )
+    parser.add_argument("--garment", default=DEFAULT_GARMENT, help="프롬프트에 넣을 옷 설명(영어)")
     parser.add_argument(
         "--max-cost-usd",
         type=float,
         default=0.5,
         help="예상 비용이 이 값을 넘으면 호출하지 않는다",
     )
-    parser.add_argument(
-        "--timeout", type=float, default=600.0, help="호출 대기 상한(초)"
-    )
+    parser.add_argument("--timeout", type=float, default=600.0, help="호출 대기 상한(초)")
     parser.add_argument("--out-dir", type=Path, default=None)
-    parser.add_argument(
-        "--yes", action="store_true", help="실제로 fal을 호출한다 (비용 발생)"
-    )
+    parser.add_argument("--yes", action="store_true", help="실제로 fal을 호출한다 (비용 발생)")
     return parser.parse_args(argv)
 
 
@@ -207,15 +192,15 @@ def finish_record(
 ) -> dict[str, Any]:
     """내려받은 결과 영상을 재고, 실사 대표 프레임과 record.json을 남긴다."""
     output_info = read_video_info(output_path)
-    actual = estimate_cost(
-        output_info.width, output_info.height, output_info.frame_count
-    )
+    actual = estimate_cost(output_info.width, output_info.height, output_info.frame_count)
     real_frame = save_representative_frame(output_path, out_dir / "frame_real.png")
     record = {
         **plan,
         "result": result,
         "output": output_info.to_dict(),
         "cost_from_output": {"megapixels": actual.megapixels, "usd": actual.usd},
+        # B1 Realizer 포트의 지표 키 (D4가 PortResult.metrics에 그대로 쓴다)
+        "port_metrics": port_metrics(result, actual.usd),
         "real_frame": real_frame.to_dict(),
     }
     write_json(out_dir / "record.json", record)
@@ -223,13 +208,16 @@ def finish_record(
     durations = result["durations"]
     print(f"완료: request_id={result['request_id']}")
     print(
-        f"출력: {output_info.width}×{output_info.height}, {output_info.fps:g}fps, {output_info.frame_count}프레임"
+        f"출력: {output_info.width}×{output_info.height}, {output_info.fps:g}fps, "
+        f"{output_info.frame_count}프레임"
     )
     print(
-        f"시간: 업로드 {durations['upload_s']}초 · 대기 {durations['queue_s']}초 · 생성 {durations['processing_s']}초 · 전체 {durations['total_s']}초"
+        f"시간: 업로드 {durations['upload_s']}초 · 대기 {durations['queue_s']}초 · "
+        f"생성 {durations['processing_s']}초 · 전체 {durations['total_s']}초"
     )
     print(
-        f"출력 기준 비용: {actual.megapixels}MP → 약 ${actual.usd:.4f} (fal 대시보드 청구액과 비교해 기록)"
+        f"출력 기준 비용: {actual.megapixels}MP → 약 ${actual.usd:.4f} "
+        "(fal 대시보드 청구액과 비교해 기록)"
     )
     print(f"실사 대표 프레임: {real_frame.index}번 → {real_frame.path.name}")
     return record
@@ -244,11 +232,7 @@ def resume(out_dir: Path, downloader: Callable[[str, Path], None] = download) ->
         print(f"이어서 할 기록이 없습니다: {error.filename}", file=sys.stderr)
         return 2
     error_path = out_dir / "error.json"
-    first = (
-        json.loads(error_path.read_text(encoding="utf-8"))
-        if error_path.exists()
-        else {}
-    )
+    first = json.loads(error_path.read_text(encoding="utf-8")) if error_path.exists() else {}
     durations = dict(first.get("durations") or {})
 
     output_path = out_dir / "output.mp4"
@@ -324,28 +308,32 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"엔드포인트: {ENDPOINT}")
     print(
-        f"입력: {info.width}×{info.height}, {info.fps:g}fps, {info.frame_count}프레임 ({info.duration_s:.2f}초)"
+        f"입력: {info.width}×{info.height}, {info.fps:g}fps, {info.frame_count}프레임 "
+        f"({info.duration_s:.2f}초)"
     )
     print(
-        f"설정: intensity={settings.intensity}, {settings.resolution}, {settings.num_frames}프레임 @ {settings.frames_per_second:g}fps, 오디오 끔, seed={settings.seed}"
+        f"설정: intensity={settings.intensity}, {settings.resolution}, "
+        f"{settings.num_frames}프레임 @ {settings.frames_per_second:g}fps, "
+        f"오디오 끔, seed={settings.seed}"
     )
     print(
-        f"예상 출력(상한): {estimate.width}×{estimate.height}, {estimate.megapixels}MP → 약 ${estimate.usd:.4f} (단가 {PRICE_CHECKED_ON} 기준)"
+        f"예상 출력(상한): {estimate.width}×{estimate.height}, {estimate.megapixels}MP "
+        f"→ 약 ${estimate.usd:.4f} (단가 {PRICE_CHECKED_ON} 기준)"
     )
     print(
-        f"렌더 대표 프레임: {render_frame.index}번 ({render_frame.time_s}초) → {render_frame.path.name}"
+        f"렌더 대표 프레임: {render_frame.index}번 ({render_frame.time_s}초) "
+        f"→ {render_frame.path.name}"
     )
     print(f"기록 폴더: {out_dir}")
 
     if not args.yes:
-        print(
-            "\n드라이런이라 fal을 부르지 않았습니다. 실제로 호출하려면 --yes를 붙이세요."
-        )
+        print("\n드라이런이라 fal을 부르지 않았습니다. 실제로 호출하려면 --yes를 붙이세요.")
         return 0
 
     if estimate.usd > args.max_cost_usd:
         print(
-            f"예상 비용 ${estimate.usd:.4f}이 상한 ${args.max_cost_usd:.2f}을 넘어 호출하지 않습니다.",
+            f"예상 비용 ${estimate.usd:.4f}이 상한 ${args.max_cost_usd:.2f}을 넘어 "
+            "호출하지 않습니다.",
             file=sys.stderr,
         )
         return 2

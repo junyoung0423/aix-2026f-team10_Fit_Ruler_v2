@@ -15,9 +15,11 @@ from fitting.adapters.fal_ltx import (
     estimate_cost,
     frames_for_clip,
     output_size,
+    port_metrics,
     run_render_to_real,
     with_trigger,
 )
+from fitting.ports import Realizer
 
 
 @dataclass
@@ -31,9 +33,7 @@ class InProgress:
 
 
 class FakeClient:
-    def __init__(
-        self, response: dict[str, Any] | None = None, error: Exception | None = None
-    ):
+    def __init__(self, response: dict[str, Any] | None = None, error: Exception | None = None):
         self.response = response or {
             "video": {
                 "url": "https://fal.example/out.mp4",
@@ -51,9 +51,7 @@ class FakeClient:
     def subscribe(
         self, application: str, arguments: dict[str, Any], **kwargs: Any
     ) -> dict[str, Any]:
-        self.calls.append(
-            {"application": application, "arguments": arguments, **kwargs}
-        )
+        self.calls.append({"application": application, "arguments": arguments, **kwargs})
         kwargs["on_enqueue"]("req-123")
         kwargs["on_queue_update"](Queued(position=2))
         kwargs["on_queue_update"](InProgress(logs=[{"message": "loading model"}]))
@@ -73,9 +71,7 @@ def ticking_clock():
     return lambda: float(next(ticks))
 
 
-SETTINGS = RenderToRealSettings(
-    prompt="a person wearing a black T-shirt", num_frames=73
-)
+SETTINGS = RenderToRealSettings(prompt="a person wearing a black T-shirt", num_frames=73)
 
 
 def test_with_trigger() -> None:
@@ -119,9 +115,7 @@ def test_arguments_turn_audio_off_and_skip_unset_values() -> None:
 
 def test_settings_reject_too_long_output() -> None:
     with pytest.raises(ValueError, match="480p"):
-        RenderToRealSettings(
-            prompt="x", resolution="720p", num_frames=169
-        ).check()  # 7초
+        RenderToRealSettings(prompt="x", resolution="720p", num_frames=169).check()  # 7초
     RenderToRealSettings(prompt="x", resolution="480p", num_frames=169).check()
 
 
@@ -146,15 +140,10 @@ def test_run_saves_request_response_and_output(tmp_path: Path) -> None:
     assert result.queue_positions == [2]
     assert result.logs == ["loading model", "step 15/15"]
     assert result.output_path.read_bytes() == b"video"
-    request = json.loads(
-        (tmp_path / "out" / "request.json").read_text(encoding="utf-8")
-    )
+    request = json.loads((tmp_path / "out" / "request.json").read_text(encoding="utf-8"))
     assert request["arguments"]["video_url"].endswith("render.mp4")
     assert (
-        json.loads((tmp_path / "out" / "response.json").read_text(encoding="utf-8"))[
-            "seed"
-        ]
-        == 42
+        json.loads((tmp_path / "out" / "response.json").read_text(encoding="utf-8"))["seed"] == 42
     )
     durations = result.to_dict()["durations"]
     assert durations["upload_s"] == 1.0
@@ -190,3 +179,27 @@ def test_run_writes_error_record_on_failure(tmp_path: Path) -> None:
     assert record["request_id"] == "req-123"
     assert caught.value.record == record
     assert not (tmp_path / "out" / "output.mp4").exists()
+
+
+def test_port_metrics_use_the_realizer_contract_keys() -> None:
+    result = {"request_id": "req-1", "durations": {"queue_s": 24.4, "processing_s": 43.4}}
+    metrics = port_metrics(result, 0.0698)
+    assert metrics == {
+        "external_request_id": "req-1",
+        "cost_usd": 0.0698,
+        "queue_s": 24.4,
+        "processing_s": 43.4,
+    }
+    # 키 이름이 B1 계약(Realizer 포트 설명)과 같다
+    doc = Realizer.__doc__ or ""
+    for key in metrics:
+        assert f"`{key}`" in doc
+
+
+def test_port_metrics_keep_missing_values_as_null() -> None:
+    assert port_metrics({"request_id": None, "durations": {}}, None) == {
+        "external_request_id": None,
+        "cost_usd": None,
+        "queue_s": None,
+        "processing_s": None,
+    }

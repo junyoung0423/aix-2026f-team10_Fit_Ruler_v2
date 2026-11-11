@@ -3,10 +3,12 @@
 import json
 from pathlib import Path
 
-import cv2
-import numpy as np
+import pytest
 
-from tools import spike_fal_ltx
+cv2 = pytest.importorskip("cv2")  # 선택 의존성 realize가 없으면 건너뛴다
+np = pytest.importorskip("numpy")
+
+from tools import spike_fal_ltx  # noqa: E402 (cv2가 있을 때만 불러온다)
 
 
 def write_clip(path: Path, frames: int = 12, size: tuple[int, int] = (48, 64)) -> Path:
@@ -72,6 +74,12 @@ def test_resume_downloads_output_and_finishes_record(tmp_path: Path) -> None:
     assert record["result"]["durations"]["download_s"] is not None
     assert record["output"]["frame_count"] == 12
     assert record["cost_from_output"]["megapixels"] == 1  # 48×64×12 = 0.04MP → 올림 1
+    assert record["port_metrics"] == {
+        "external_request_id": "req-1",
+        "cost_usd": record["cost_from_output"]["usd"],
+        "queue_s": 24.4,
+        "processing_s": 43.4,
+    }
     assert (out_dir / "frame_real.png").exists()
     assert not (out_dir / "error.json").exists()
     assert (out_dir / "error_first_attempt.json").exists()

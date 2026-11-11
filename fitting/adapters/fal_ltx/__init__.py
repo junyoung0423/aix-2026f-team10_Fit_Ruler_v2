@@ -11,6 +11,7 @@ from .render_to_real import (
     estimate_cost,
     frames_for_clip,
     output_size,
+    port_metrics,
     run_render_to_real,
     with_trigger,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "estimate_cost",
     "frames_for_clip",
     "output_size",
+    "port_metrics",
     "run_render_to_real",
     "with_trigger",
 ]

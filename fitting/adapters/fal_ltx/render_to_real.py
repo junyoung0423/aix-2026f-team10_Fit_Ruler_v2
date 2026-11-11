@@ -37,14 +37,10 @@ MAX_SECONDS: dict[str, float] = {"480p": 15.0, "720p": 6.0}
 
 def with_trigger(prompt: str) -> str:
     text = prompt.strip()
-    return (
-        text if text.startswith(PROMPT_TRIGGER) else f"{PROMPT_TRIGGER} {text}".strip()
-    )
+    return text if text.startswith(PROMPT_TRIGGER) else f"{PROMPT_TRIGGER} {text}".strip()
 
 
-def frames_for_clip(
-    input_frames: int, input_fps: float, output_fps: float = 24.0
-) -> int:
+def frames_for_clip(input_frames: int, input_fps: float, output_fps: float = 24.0) -> int:
     """입력 클립 길이에 맞는 출력 프레임 수.
 
     LTX 계열은 프레임 수가 '8의 배수 + 1'일 때 맞게 동작한다(fal 기본값 121 = 8 × 15 + 1).
@@ -59,7 +55,9 @@ def frames_for_clip(
 def output_size(
     width: int, height: int, resolution: Resolution, detail_refine: bool = False
 ) -> tuple[int, int]:
-    """예상 출력 크기(상한). 짧은 변을 해상도에 맞추고 비율은 유지한다. 세부 보정을 켜면 가로세로가 2배.
+    """예상 출력 크기(상한). 짧은 변을 해상도에 맞추고 비율은 유지한다.
+
+    세부 보정을 켜면 가로세로가 2배다.
 
     2026-11-10 실제 호출에서는 입력보다 크게 키우지 않았다(540×720 입력, 720p 요청 → 576×768 출력).
     그래서 이 값은 비용 상한 계산에 쓴다.
@@ -222,6 +220,21 @@ class RenderToRealResult:
         }
 
 
+def port_metrics(result: dict[str, Any], cost_usd: float | None) -> dict[str, Any]:
+    """호출 기록(`RenderToRealResult.to_dict()` 형식)을 `Realizer` 포트의 지표 키로 옮긴다.
+
+    키는 B1 계약(`fitting/ports/interfaces.py`의 `Realizer`)과 같다. D4 정식 어댑터는
+    이 값을 `PortResult.metrics`에 그대로 쓴다. `cost_usd`는 출력 영상 크기로 계산한 값이다.
+    """
+    durations = result.get("durations") or {}
+    return {
+        "external_request_id": result.get("request_id"),
+        "cost_usd": cost_usd,
+        "queue_s": durations.get("queue_s"),
+        "processing_s": durations.get("processing_s"),
+    }
+
+
 class RenderToRealError(RuntimeError):
     """호출 실패. 실패 기록(error.json)을 남긴 뒤 원래 예외를 감싸서 던진다."""
 
@@ -232,9 +245,7 @@ class RenderToRealError(RuntimeError):
 
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
-    )
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
 
 def _error_record(
@@ -299,9 +310,7 @@ def run_render_to_real(
 
         stage = "request"
         arguments = settings.to_arguments(video_url)
-        _write_json(
-            out_dir / "request.json", {"endpoint": ENDPOINT, "arguments": arguments}
-        )
+        _write_json(out_dir / "request.json", {"endpoint": ENDPOINT, "arguments": arguments})
         response = client.subscribe(
             ENDPOINT,
             arguments=arguments,
@@ -325,9 +334,7 @@ def run_render_to_real(
     except Exception as error:
         record = _error_record(error, stage, timeline, state["request_id"])
         _write_json(out_dir / "error.json", record)
-        raise RenderToRealError(
-            f"{stage} 단계에서 실패했습니다: {error}", record
-        ) from error
+        raise RenderToRealError(f"{stage} 단계에서 실패했습니다: {error}", record) from error
 
     return RenderToRealResult(
         request_id=state["request_id"],

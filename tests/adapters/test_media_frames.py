@@ -1,10 +1,11 @@
 from pathlib import Path
 
-import cv2
-import numpy as np
 import pytest
 
-from fitting.adapters.media.frames import (
+cv2 = pytest.importorskip("cv2")  # 선택 의존성 realize가 없으면 건너뛴다
+np = pytest.importorskip("numpy")
+
+from fitting.adapters.media.frames import (  # noqa: E402 (cv2가 있을 때만 불러온다)
     candidate_range,
     read_video_info,
     save_representative_frame,
@@ -73,9 +74,7 @@ def test_korean_path_with_space(tmp_path: Path) -> None:
     assert read_video_info(clip).frame_count == 10
     result = save_representative_frame(clip, folder / "대표 프레임.png")
     assert result.path.exists() and result.path.stat().st_size > 0
-    decoded = cv2.imdecode(
-        np.frombuffer(result.path.read_bytes(), np.uint8), cv2.IMREAD_COLOR
-    )
+    decoded = cv2.imdecode(np.frombuffer(result.path.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
     assert decoded.shape == (SIZE[1], SIZE[0], 3)
 
 
