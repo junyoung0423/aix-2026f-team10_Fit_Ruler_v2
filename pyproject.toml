@@ -22,17 +22,27 @@ dev = [
     "pytest>=8",
     "ruff>=0.5",
 ]
+# C2: GarmentCode·Blender 스파이크 어댑터(fitting/adapters/garmentcode·blender)의 순수 계산 부분.
+# 이전 pipelines/garment/requirements.txt 기준. libigl·cgal·pygarment(GarmentCode)·bpy는 넣지 않는다.
+# GarmentCode는 별도 Python 3.9 가상환경, bpy는 Blender 안에서만 쓴다(docs/spikes/garmentcode-blender.md).
+garment = [
+    "numpy>=1.26,<3",
+    "scipy>=1.11,<2",
+    "trimesh>=4,<5",
+    "svgpathtools>=1.6,<2",
+]
 
 [tool.setuptools.packages.find]
 include = ["fitting*", "server*", "tools*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Blender·SMPL·fal이 필요한 테스트는 마커를 붙이고 CI에서 뺀다.
-# 로컬에서 돌릴 때: pytest -m blender (또는 smpl, fal)
-addopts = "-ra -m 'not blender and not smpl and not fal'"
+# Blender·GarmentCode·SMPL·fal이 필요한 테스트는 마커를 붙이고 CI에서 뺀다.
+# 로컬에서 돌릴 때: pytest -m blender (또는 garmentcode, smpl, fal)
+addopts = "-ra -m 'not blender and not garmentcode and not smpl and not fal'"
 markers = [
     "blender: Blender가 설치된 PC에서만 실행",
+    "garmentcode: GarmentCode와 그 가상환경(Python 3.9)이 있는 PC에서만 실행",
     "smpl: SMPL 모델 파일이 있는 PC에서만 실행",
     "fal: fal API를 실제로 호출 (비용 발생)",
 ]
@@ -43,3 +53,11 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# C2: 이전 저장소(pipelines/garment/)에서 옮긴 스파이크 코드. 긴 줄만 그대로 둔다
+# (이전 코드와 줄 단위로 비교하기 쉽게). 새로 쓰는 코드는 100자를 지킨다.
+"fitting/adapters/blender/{analyze_drape,blender_drape,drape_config,drape_measure,metrics,run_drape,weld}.py" = ["E501"]
+"fitting/adapters/garmentcode/{coords,export_panels,pattern_measure}.py" = ["E501"]
+"tests/garment/test_{coords,drape_measure,export,metrics,pattern_measure,weld}.py" = ["E501"]
+"tools/make_drape_config.py" = ["E501"]

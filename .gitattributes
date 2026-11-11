@@ -2,3 +2,5 @@
 *.docx binary
 *.png binary
 *.jpg binary
+# GarmentCode에서 받은 fixture는 바이트 그대로 둔다(CRLF 포함, SOURCE.md의 sha256과 같게)
+tests/fixtures/garment/** -text

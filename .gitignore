@@ -28,7 +28,10 @@ models/
 *.obj
 *.ply
 *.npz
+*.npy
 *.pkl
+# 착장 실행 결과(run_drape.py). 기본 출력은 저장소 밖이지만 실수로 생겨도 커밋되지 않게
+runs/
 
 # AI Hub 원본 데이터 (재배포 불가). 원본은 data/raw/ 아래에만 둔다
 data/raw/
