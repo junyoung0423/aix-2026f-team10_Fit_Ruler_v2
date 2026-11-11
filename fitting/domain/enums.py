@@ -64,6 +64,9 @@ class ErrorCode(str, Enum):
     INPUT_INVALID = "INPUT_INVALID"
     GARMENT_NOT_READY = "GARMENT_NOT_READY"
     GARMENT_NOT_FOUND = "GARMENT_NOT_FOUND"  # [제안] 없는 의류 ID (핏 API 404). 명세서에 없다
+    JOB_NOT_FOUND = "JOB_NOT_FOUND"  # [제안] 없는 작업 ID (작업 API 404). 명세서에 없다
+    # [제안] 없는 산출물 ID나 형식이 틀린 ID (산출물 API 404). 명세서에 없다
+    ARTIFACT_NOT_FOUND = "ARTIFACT_NOT_FOUND"
     BODY_FIT_NOT_CONVERGED = "BODY_FIT_NOT_CONVERGED"
     DRAPE_INVALID = "DRAPE_INVALID"
     RENDER_FAILED = "RENDER_FAILED"

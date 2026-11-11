@@ -8,6 +8,8 @@
 작업 상태 예시(`fitting_status_*.json`)는 핏 경로에 같은 계산기를, 영상 경로에 가짜 어댑터를 넣어
 피팅 흐름을 실제로 돌려서 만든다.
 핏 API 예시(`garment_list.json`, `api_error_*.json`)는 서버와 같은 코드(`server.errors`)로 만든다.
+견본 검색 예시(`sample_search_result.json`)는 예시 의류(`garment.json`)와 합성 견본집
+(`tests/fixtures/catalog/samples_v0.json`)으로 실제 검색(`fitting.catalog.search`)을 돌려 만든다.
 모든 예시는 시연용이며 실제 사용자 결과와 섞지 않는다.
 """
 
@@ -22,6 +24,12 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from fitting.adapters.fake import FakeDraper, FakeRealizer, FakeValidator, fake_ports
+from fitting.catalog.search import (
+    SampleCandidate,
+    SampleSearchResult,
+    load_search_rules,
+    search_sample,
+)
 from fitting.domain import (
     ApiError,
     BodyInput,
@@ -46,7 +54,12 @@ from fitting.domain import (
 from fitting.fit import FitEngineError, RuleFitCalculator, compute_report
 from fitting.ports import PortError, PortRequest, PortResult
 from fitting.services.fitting import FittingPorts, run_fitting
-from server.errors import garment_not_found_error, garment_not_ready_error, input_invalid_error
+from server.errors import (
+    garment_not_found_error,
+    garment_not_ready_error,
+    input_invalid_error,
+    job_not_found_error,
+)
 
 EXAMPLE_JOB_ID = "fit_sample_001"
 EXAMPLE_CREATED_AT = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -60,6 +73,7 @@ SCHEMA_MODELS: dict[str, type[BaseModel]] = {
     "fitting_status": FittingStatus,
     "garment_list": GarmentList,
     "api_error": ApiError,
+    "sample_search_result": SampleSearchResult,
     "port_request": PortRequest,
     "port_result": PortResult,
     "port_error": PortError,
@@ -202,7 +216,19 @@ def build_api_examples(root: Path) -> dict[str, BaseModel]:
         "api_error_input_invalid.json": input_invalid,
         "api_error_garment_not_found.json": garment_not_found_error(),
         "api_error_garment_not_ready.json": not_ready,
+        "api_error_job_not_found.json": job_not_found_error(),
     }
+
+
+def build_search_example(root: Path) -> SampleSearchResult:
+    """예시 의류(`garment.json`)와 합성 견본집으로 실제 검색을 돌린 결과 (기준 사례 1)."""
+    garment = GarmentVariant.model_validate_json(_read(root, "garment.json"))
+    catalog = json.loads(
+        (root / "tests" / "fixtures" / "catalog" / "samples_v0.json").read_text(encoding="utf-8")
+    )
+    samples = [SampleCandidate.model_validate(item) for item in catalog["samples"]]
+    rules = load_search_rules(root / "config" / "sample_search_v0.yaml")
+    return search_sample(garment.measurements, samples, rules)
 
 
 def build_artifacts(root: Path) -> dict[Path, str]:
@@ -218,6 +244,9 @@ def build_artifacts(root: Path) -> dict[Path, str]:
         files[api_dir(root) / "examples" / name] = _dump(status.model_dump(mode="json"))
     for name, model in build_api_examples(root).items():
         files[api_dir(root) / "examples" / name] = _dump(model.model_dump(mode="json"))
+    files[api_dir(root) / "examples" / "sample_search_result.json"] = _dump(
+        build_search_example(root).model_dump(mode="json")
+    )
     return files
 
 
