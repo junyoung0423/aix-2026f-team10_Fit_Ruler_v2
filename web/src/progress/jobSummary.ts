@@ -22,6 +22,27 @@ export function stageMessage(stage: StageProgress, visual: VisualPart): string |
   return '앞 단계가 실패해 건너뛰었습니다.';
 }
 
+const BEFORE_REALIZE = new Set(['BODY_FIT', 'DRAPE', 'RENDER']);
+
+/**
+ * 실사 착장 결과 칸의 안내(실사 영상·프레임이 없을 때).
+ * 실사화보다 앞 단계에서 멈췄으면 그 단계 오류 문장 대신 "…단계에서 멈춰 실사화를 하지 않았습니다"로 보여 준다.
+ * 실사화·검증 단계의 실패는 오류 문장을 그대로 보여 준다.
+ */
+export function realizeMessage(job: FittingStatus): string {
+  const { visual } = job;
+  if (visual.skip_reason === 'CONSENT_NOT_GIVEN') return '실사화(외부 전송)에 동의하지 않아 실사 영상은 만들지 않았습니다.';
+  if (visual.skip_reason === 'REPORT_ONLY') return '핏 리포트만 요청했습니다.';
+  if (visual.status === 'FAILED') {
+    const failed = visualStages(job.stages).find((stage) => stage.status === 'FAILED')?.stage ?? visual.stage;
+    if (failed && BEFORE_REALIZE.has(failed)) return `${STAGE_LABEL[failed]} 단계에서 멈춰 실사화를 하지 않았습니다.`;
+    return visual.error_code ? errorText(visual.error_code) : '실사화를 하지 못했습니다.';
+  }
+  const realize = job.stages.find((stage) => stage.stage === 'REALIZE');
+  if (realize?.status === 'RUNNING') return '실사화 중입니다.';
+  return '렌더가 끝나면 실사화를 시작합니다.';
+}
+
 /** attempt_no가 2 이상이면 "재시도 2회째" */
 export const attemptText = (stage: StageProgress) => (stage.attempt_no >= 2 ? `재시도 ${stage.attempt_no}회째` : null);
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ErrorCode, FittingStatus, Stage, StageStatus } from '../api/types';
 import { ERROR_LABEL } from '../labels';
 import { example } from '../mocks/examples';
-import { attemptText, errorText, formatElapsed, jobHeadline, stageMessage, visualStages } from './jobSummary';
+import { attemptText, errorText, formatElapsed, jobHeadline, realizeMessage, stageMessage, visualStages } from './jobSummary';
 
 const job = (name: string) => example<FittingStatus>(`fitting_status_${name}.json`);
 
@@ -100,6 +100,33 @@ describe('stageMessage (단계별 실패·건너뜀)', () => {
   it('진행 중·완료·대기 단계에는 설명이 없다', () => {
     const status = job('running');
     expect(visualStages(status.stages).map((s) => stageMessage(s, status.visual))).toEqual([null, null, null, null, null]);
+  });
+});
+
+describe('realizeMessage (실사 착장 결과 칸)', () => {
+  it('착장 실패면 착장 오류 문장 대신 앞 단계에서 멈췄다고 알린다', () => {
+    expect(realizeMessage(job('drape_failed'))).toBe('3D 착장 단계에서 멈춰 실사화를 하지 않았습니다.');
+  });
+
+  it('몸·렌더 실패도 그 단계 이름으로', () => {
+    const body = withStages(job('drape_failed'), ['FAILED', 'SKIPPED', 'SKIPPED', 'SKIPPED', 'SKIPPED'], 'PARTIAL_SUCCEEDED');
+    expect(realizeMessage({ ...body, visual: { ...body.visual, stage: 'BODY_FIT', error_code: 'BODY_FIT_NOT_CONVERGED' } })).toBe(
+      '몸 생성 단계에서 멈춰 실사화를 하지 않았습니다.',
+    );
+    const render = withStages(job('drape_failed'), ['SUCCEEDED', 'SUCCEEDED', 'FAILED', 'SKIPPED', 'SKIPPED'], 'PARTIAL_SUCCEEDED');
+    expect(realizeMessage({ ...render, visual: { ...render.visual, stage: 'RENDER', error_code: 'RENDER_FAILED' } })).toBe(
+      '정면 렌더 단계에서 멈춰 실사화를 하지 않았습니다.',
+    );
+  });
+
+  it('실사화 실패면 실사화 오류 문장', () => {
+    expect(realizeMessage(job('realize_failed'))).toBe(ERROR_LABEL.REALIZE_TIMEOUT);
+  });
+
+  it('미동의·리포트만·진행 중 문구는 그대로', () => {
+    expect(realizeMessage(job('no_consent'))).toBe('실사화(외부 전송)에 동의하지 않아 실사 영상은 만들지 않았습니다.');
+    expect(realizeMessage(job('report_only'))).toBe('핏 리포트만 요청했습니다.');
+    expect(realizeMessage(job('running'))).toBe('실사화 중입니다.');
   });
 });
 

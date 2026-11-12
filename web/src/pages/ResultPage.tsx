@@ -6,7 +6,7 @@ import type { FittingStatus, VisualPart } from '../api/types';
 import { ArtifactImage } from '../components/ArtifactImage';
 import { FitReportView, type ReportLike } from '../components/FitReportView';
 import { StageTimeline } from '../components/StageTimeline';
-import { errorText, formatElapsed, jobHeadline } from '../progress/jobSummary';
+import { formatElapsed, jobHeadline, realizeMessage } from '../progress/jobSummary';
 import { MAX_CONSECUTIVE_FAILURES, isTerminal, startPolling } from '../progress/poller';
 import { canRestart, restartFitting } from '../progress/retry';
 import { useFitting } from '../state/fittingStore';
@@ -24,16 +24,6 @@ function previewMessage(visual: VisualPart): string {
   if (visual.status === 'FAILED') return '3D 착장 전에 멈춰 미리보기가 없습니다.';
   if (visual.status === 'SKIPPED') return '3D 착장을 하지 않았습니다.';
   return '3D 착장이 끝나면 미리보기가 나옵니다.';
-}
-
-function realizeMessage(job: FittingStatus): string {
-  const { visual } = job;
-  if (visual.skip_reason === 'CONSENT_NOT_GIVEN') return '실사화(외부 전송)에 동의하지 않아 실사 영상은 만들지 않았습니다.';
-  if (visual.skip_reason === 'REPORT_ONLY') return '핏 리포트만 요청했습니다.';
-  if (visual.status === 'FAILED') return visual.error_code ? errorText(visual.error_code) : '실사화를 하지 못했습니다.';
-  const realize = job.stages.find((stage) => stage.stage === 'REALIZE');
-  if (realize?.status === 'RUNNING') return '실사화 중입니다.';
-  return '렌더가 끝나면 실사화를 시작합니다.';
 }
 
 function qualityLine(visual: VisualPart): { text: string; ok: boolean } | null {
