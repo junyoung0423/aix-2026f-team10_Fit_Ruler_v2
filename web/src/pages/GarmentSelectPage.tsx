@@ -5,23 +5,40 @@ import { api } from '../api/client';
 import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL, measurementFieldOf } from '../api/contract';
 import type { FitRequest, FittingStatus, GarmentListItem, Measurements } from '../api/types';
 import { MEASUREMENT_PROTOCOL_VERSION } from '../api/types';
-import { colorHex, garmentName } from '../labels';
+import { sizeItems, sizeText, sortGarments, sourceBadge } from '../garmentCard';
+import { fabricText, garmentName, swatchColor } from '../labels';
 import { useFitting } from '../state/fittingStore';
 import type { InputPageState } from './InputPage';
 
 const summary = (m: Measurements) =>
   MEASUREMENT_FIELDS.map((field) => `${MEASUREMENT_LABEL[field]} ${m[field]}`).join(' · ') + ' cm';
 
-const sizes = (item: GarmentListItem) => {
-  const m = item.garment.measurements;
-  return [
-    m.chest_girth_cm !== null && `가슴둘레 ${m.chest_girth_cm}`,
-    m.shoulder_width_cm !== null && `어깨 ${m.shoulder_width_cm}`,
-    m.body_length_cm !== null && `총장 ${m.body_length_cm}`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-};
+function GarmentCardBody({ item }: { item: GarmentListItem }) {
+  const { garment } = item;
+  const [chest, ...rest] = sizeItems(garment.measurements);
+  const badge = sourceBadge(item);
+  const fabric = fabricText(garment.fabric);
+  return (
+    <>
+      <span className="swatch" style={{ background: swatchColor(garment) }} aria-hidden="true" />
+      <span className="garment-name">{garmentName(garment)}</span>
+      <span className="garment-chest num">
+        {chest.label} {chest.text} cm
+      </span>
+      <span className="garment-size">{sizeText(rest)}</span>
+      {fabric && <span className="garment-meta">{fabric}</span>}
+      {badge?.kind === 'demo' && <span className="badge demo-badge">{badge.text}</span>}
+      {badge?.kind === 'measured' && (
+        <>
+          <span className="badge demo-badge measured-badge" title={badge.source}>
+            {badge.text}
+          </span>
+          <span className="garment-source">{badge.source}</span>
+        </>
+      )}
+    </>
+  );
+}
 
 export function GarmentSelectPage() {
   const { measurements, saveResult } = useFitting();
@@ -37,7 +54,7 @@ export function GarmentSelectPage() {
     let alive = true;
     api
       .listGarments()
-      .then((list) => alive && setGarments(list.garments))
+      .then((list) => alive && setGarments(sortGarments(list.garments)))
       .catch((error: unknown) => alive && setLoadError(errorMessage(error)));
     return () => {
       alive = false;
@@ -61,8 +78,8 @@ export function GarmentSelectPage() {
     try {
       // 1) 핏 리포트는 3D·AI 없이 바로 계산한다 (POST /api/fit, B2)
       const report = await api.fit(fitRequest);
-      // 2) 3D·실사화 작업 (POST /api/fittings, B3). 작업 API가 아직 없을 때(경로 없음 404·연결 안 됨)만
-      //    리포트만 보여 준다. 그 밖의 실패(422·409·500 등)는 아래 catch에서 이 화면에 오류로 보여 준다.
+      // 2) 3D·실사화 작업 (POST /api/fittings, B3). 작업 서버에 닿지 못하거나 경로가 없을 때(경로 없음 404·연결 안 됨)만
+      //    리포트만 보여 준다(안전장치). 그 밖의 실패(422·409·500 등)는 아래 catch에서 이 화면에 오류로 보여 준다.
       let job: FittingStatus | null = null;
       try {
         job = await api.createFitting({ ...fitRequest, mode: 'full', realize_consent: consent });
@@ -117,10 +134,7 @@ export function GarmentSelectPage() {
                     checked={selectedId === garment.id}
                     onChange={() => setSelectedId(garment.id)}
                   />
-                  <span className="swatch" style={{ background: colorHex(garment.color) }} aria-hidden="true" />
-                  <span className="garment-name">{garmentName(garment)}</span>
-                  <span className="garment-size">{sizes(item)} cm</span>
-                  {item.is_demo && <span className="badge demo-badge">시연용 의류</span>}
+                  <GarmentCardBody item={item} />
                 </label>
               );
             })}

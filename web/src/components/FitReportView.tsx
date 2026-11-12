@@ -1,5 +1,5 @@
 import type { FitLabel, Region, RegionResult } from '../api/types';
-import { signedCm } from '../format';
+import { bodyGarmentText, signedCm } from '../format';
 import { REGION_BANDS, REGION_LABEL, WARNING_LABEL, fitLabelText } from '../labels';
 
 /** FitReport(POST /api/fit)와 작업 상태의 ReportPart가 공통으로 가진 부분 */
@@ -29,11 +29,14 @@ function FitScale({ region, label }: { region: Region; label: FitLabel }) {
 
 function FitRow({ result }: { result: RegionResult }) {
   const { region, label } = result;
+  const values = bodyGarmentText(result);
   if (!judged(label)) {
+    // 판정하지 않은 행: 있는 값만 보여 주고 서버 설명 문장을 그대로 쓴다.
     return (
       <li className="fit-row fit-row-missing">
         <span className="fit-part">{REGION_LABEL[region]}</span>
         <span className={`verdict verdict-${label.toLowerCase()}`}>{fitLabelText(region, label)}</span>
+        {values && <span className="fit-values num">{values}</span>}
         <p className="fit-sentence">{result.explanation}</p>
       </li>
     );
@@ -47,6 +50,7 @@ function FitRow({ result }: { result: RegionResult }) {
         <span className="sr-only"> (옷 − 몸)</span>
       </span>
       <FitScale region={region} label={label} />
+      {values && <span className="fit-values num">{values}</span>}
       <p className="fit-sentence">
         {result.explanation}
         {result.is_estimated && (

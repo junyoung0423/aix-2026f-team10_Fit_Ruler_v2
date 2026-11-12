@@ -382,10 +382,29 @@ a:focus-visible {
   font-weight: 700;
 }
 
+.garment-chest {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
 .garment-meta,
 .garment-size {
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.garment-size {
+  font-variant-numeric: tabular-nums;
+}
+
+.garment-source {
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.measured-badge {
+  margin-left: 0;
 }
 
 .consent {
@@ -484,6 +503,16 @@ a:focus-visible {
 }
 
 .fit-row-missing .fit-sentence {
+  grid-column: 3 / -1;
+}
+
+.fit-values {
+  grid-column: 2 / -1;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.fit-row-missing .fit-values {
   grid-column: 3 / -1;
 }
 
@@ -685,6 +714,8 @@ a:focus-visible {
   }
 
   .fit-scale,
+  .fit-values,
+  .fit-row-missing .fit-values,
   .fit-sentence,
   .fit-row-missing .fit-sentence {
     grid-column: 1 / -1;

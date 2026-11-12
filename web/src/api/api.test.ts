@@ -24,7 +24,7 @@ async function createFittingError(): Promise<unknown> {
   throw new Error('createFitting이 실패하지 않았다');
 }
 
-describe('isFittingApiMissing: 작업 API(B3)가 없을 때만 리포트만 보여 준다', () => {
+describe('isFittingApiMissing: 작업 API에 닿지 못할 때만 리포트만 보여 준다', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('경로가 없는 404(FastAPI 기본 응답)는 작업 API 없음으로 본다', async () => {

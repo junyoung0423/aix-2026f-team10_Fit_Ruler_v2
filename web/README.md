@@ -37,14 +37,14 @@ CI(`.github/workflows/ci.yml`의 `web` job)가 lint·타입 검사·테스트·�
 | `GET /api/artifacts/{artifact_id}` | 산출물 파일 | B3 |
 
 - **오류:** 모두 `ApiErrorBody {code, safe_message, fields}`다. 화면에는 `safe_message`와 `fields[].message`를 그대로 보여 준다.
-- **결과 화면이 데이터를 받는 곳:** 핏 리포트는 `POST /api/fit`에서, 3D·실사화 진행은 `/api/fittings`에서 받는다. 그래서 B3 전에 실제 서버에 붙여도 핏 리포트는 나온다. 진행 상태 자리에는 "B3가 준비되면 나온다"는 안내가 나온다.
-  - 리포트만 보여 주는 경우는 작업 API가 아직 없을 때(경로 없음 404, 연결 안 됨)뿐이다. `POST /api/fittings`가 422·409·500 등으로 실패하면 티셔츠 선택 화면에 오류를 보여 준다(`isFittingApiMissing`, `src/api/api.ts`).
+- **결과 화면이 데이터를 받는 곳:** 핏 리포트는 `POST /api/fit`에서, 3D·실사화 진행은 `/api/fittings`에서 받는다. 작업 서버에 닿지 못해도 핏 리포트는 나온다. 이때 진행 상태 자리에는 "3D·실사 진행 상태를 받지 못해 핏 리포트만 보여 드립니다"라는 안내가 나온다.
+  - 리포트만 보여 주는 경우는 작업 API에 닿지 못할 때(경로 없음 404, 연결 안 됨)뿐이다. `POST /api/fittings`가 422·409·500 등으로 실패하면 티셔츠 선택 화면에 오류를 보여 준다(`isFittingApiMissing`, `src/api/api.ts`).
 
 ## 가짜 API와 실제 서버
 
 기본은 가짜 API(`src/mocks/`)다. 가짜 API가 하는 일은 다음과 같다.
 
-- **의류 4벌:** 첫 벌은 팀 저장소 `data/garments/tee_regular_m_navy_v1.json`과 같고, 나머지는 화면 개발용 시연 의류다.
+- **의류 5벌:** 첫 벌은 팀 저장소 `data/garments/tee_regular_m_navy_v1.json`과 같고, 세 벌은 화면 개발용 시연 의류다. 마지막 한 벌은 AI Hub 변환 의류와 **모양만** 같은 합성 의류다(핏형·사이즈 `unknown`, 실측, 총장 없음, 허리 위치 미확인, 원단·`color_hex` 있음). 값과 ID는 지어낸 것이고 AI Hub 값을 옮기지 않았다.
 - **핏 계산:** B2 계산기와 기준표 `config/fit_rules_v0.yaml`을 옮겨서 한다. 팀 예시 요청으로 계산한 결과가 `docs/api/examples/fit_report.json`과 같은지 테스트한다. 기준표가 바뀌면 `src/mocks/fit.ts`도 고친다.
 - **입력 오류:** 서버와 같은 형식과 문구로 돌려준다. 범위 밖은 422 `INPUT_INVALID`, 없는 의류는 404 `GARMENT_NOT_FOUND`다.
 - **3D·실사화 단계:** 몇 초씩 걸려 진행되는 것처럼 보여 준다(몸 생성 2초 → 착장 3초 → 렌더 2초 → 실사화 4초 → 검증 1초). `realize_consent`가 false면 렌더까지만 하고 성공으로 끝낸다.

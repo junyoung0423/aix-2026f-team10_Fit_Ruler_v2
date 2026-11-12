@@ -64,7 +64,7 @@ export interface FitRequest {
   measurement_protocol_version: string;
 }
 
-/** POST /api/fittings 요청 본문 (B3에서 구현) */
+/** POST /api/fittings 요청 본문 (B3) */
 export interface FittingRequest extends FitRequest {
   mode: Mode;
   /** 실사화(렌더 클립을 외부 서비스로 전송)에 동의했는지. false면 렌더까지만 한다. */
@@ -162,7 +162,7 @@ export interface FitReport {
   created_at: string;
 }
 
-// ---------- 작업 상태 (fitting/domain/status.py, B3에서 API 구현)
+// ---------- 작업 상태 (fitting/domain/status.py, API는 B3)
 
 export interface StageProgress {
   stage: Stage;

@@ -72,21 +72,83 @@ export const WARNING_LABEL: Record<string, string> = {
 };
 
 /**
- * 의류 키의 화면 이름과 색 견본. 표기 방법은 C1에서 정하기로 했다(docs/decisions.md "색·원단 표기").
- * 그 전까지 쓰는 임시 표다. 모르는 키는 키를 그대로 보여 준다.
+ * 의류 키의 화면 이름과 색 견본 (docs/decisions.md "색·원단 표기").
+ * 색 키는 `fitting/adapters/aihub/tables.py`의 `COLOR_HEX` 13개와 같고, hex도 그 [제안] 값과 같다.
+ * 견본은 서버가 준 `color_hex`를 먼저 쓰고, 이 표는 `color_hex`가 없을 때만 쓴다. 모르는 키는 키를 그대로 보여 준다.
  */
 const STYLE_LABEL: Record<string, string> = { regular: '기본핏', relaxed: '여유핏', slim: '슬림핏', oversized: '오버핏' };
 const COLOR: Record<string, { label: string; hex: string }> = {
-  navy: { label: '네이비', hex: '#24324f' },
   black: { label: '검정', hex: '#222326' },
   white: { label: '흰색', hex: '#f4f4f2' },
   gray: { label: '회색', hex: '#8d9096' },
+  red: { label: '빨강', hex: '#c0392b' },
+  orange: { label: '주황', hex: '#e67e22' },
+  pink: { label: '분홍', hex: '#f2a7bb' },
+  yellow: { label: '노랑', hex: '#f1d24a' },
+  brown: { label: '갈색', hex: '#7b5539' },
+  green: { label: '초록', hex: '#3f7d4e' },
+  blue: { label: '파랑', hex: '#2f5fa7' },
+  purple: { label: '보라', hex: '#6c4a9e' },
+  beige: { label: '베이지', hex: '#d9c8a9' },
+  navy: { label: '네이비', hex: '#24324f' },
 };
+const DEFAULT_SWATCH = '#c9ced6';
+const HEX_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
-export const colorHex = (color: string) => COLOR[color]?.hex ?? '#c9ced6';
+/** 데이터에 사이즈·핏형이 없는 의류(AI Hub)의 값 (docs/decisions.md "AI Hub 의류의 사이즈·핏형 표시") */
+export const UNKNOWN_KEY = 'unknown';
+
+export const COLOR_KEYS = Object.keys(COLOR);
+export const colorHex = (color: string) => COLOR[color]?.hex ?? DEFAULT_SWATCH;
 export const colorLabel = (color: string) => COLOR[color]?.label ?? color;
 export const styleLabel = (style: string) => STYLE_LABEL[style] ?? style;
 
-/** 예: "기본핏 반팔 티 · M · 네이비" */
-export const garmentName = (garment: GarmentVariant) =>
-  `${styleLabel(garment.style)} 반팔 티 · ${garment.size} · ${colorLabel(garment.color)}`;
+/** 색 견본: 서버의 `color_hex`(`#rrggbb`) → 색 키 표 → 기본 회색 순서 */
+export const swatchColor = (garment: Pick<GarmentVariant, 'color' | 'color_hex'>) =>
+  garment.color_hex && HEX_PATTERN.test(garment.color_hex) ? garment.color_hex : colorHex(garment.color);
+
+/**
+ * 예: "기본핏 반팔 티 · M · 네이비". 핏형·사이즈가 `unknown`이면 그 부분을 뺀다. 예: "반팔 티 · 빨강"
+ */
+export function garmentName(garment: Pick<GarmentVariant, 'style' | 'size' | 'color'>): string {
+  const kind = garment.style === UNKNOWN_KEY ? '반팔 티' : `${styleLabel(garment.style)} 반팔 티`;
+  const size = garment.size === UNKNOWN_KEY ? null : garment.size;
+  return [kind, size, colorLabel(garment.color)].filter(Boolean).join(' · ');
+}
+
+/** 섬유 키(`tables.py`의 `AIHUB_FIBER` 12개). 모르는 키는 그대로 보여 준다. */
+const FIBER_LABEL: Record<string, string> = {
+  cotton: '면',
+  hemp: '마',
+  cellulose_other: '기타 셀룰로스 섬유',
+  silk: '실크',
+  wool: '울',
+  protein_other: '기타 단백질 섬유',
+  viscose_rayon: '비스코스 레이온',
+  regenerated_other: '기타 재생 섬유',
+  polyester: '폴리에스터',
+  nylon: '나일론',
+  polyurethane: '폴리우레탄',
+  synthetic_other: '기타 합성 섬유',
+};
+
+/** 신축성 값(`tables.py`의 `AIHUB_STRETCH`, 출처 값 그대로). 모르는 값은 "신축성 {값}"으로 보여 준다. */
+const STRETCH_LABEL: Record<string, string> = {
+  'none at all': '신축성 전혀 없음',
+  none: '신축성 없음',
+  'contain little': '신축성 조금',
+  contain: '신축성 있음',
+  'contain a lot': '신축성 많음',
+};
+
+export const FIBER_KEYS = Object.keys(FIBER_LABEL);
+export const STRETCH_VALUES = Object.keys(STRETCH_LABEL);
+export const fiberLabel = (fiber: string) => FIBER_LABEL[fiber] ?? fiber;
+export const stretchLabel = (stretch: string) => STRETCH_LABEL[stretch] ?? `신축성 ${stretch}`;
+
+/** 원단 한 줄. 예: "면 · 폴리우레탄 · 신축성 조금". 원단 정보가 없거나 비어 있으면 null */
+export function fabricText(fabric: GarmentVariant['fabric']): string | null {
+  if (!fabric) return null;
+  const parts = [...fabric.fibers.map(fiberLabel), ...(fabric.stretch ? [stretchLabel(fabric.stretch)] : [])];
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
