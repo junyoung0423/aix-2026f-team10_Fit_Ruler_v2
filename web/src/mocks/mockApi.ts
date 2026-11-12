@@ -1,3 +1,13 @@
+/**
+ * 가짜 API. 서버 없이 화면을 개발할 때 쓴다(`VITE_USE_MOCK`가 false가 아니면 이것을 쓴다).
+ *
+ * 주소 옵션 (티셔츠 선택 화면 주소 뒤에 붙이고 "핏 보기"를 누른다. 작업을 만들 때 읽어 그 작업에 남긴다)
+ * - `?mockFail=단계`   그 단계가 실패한다. body·drape·render·realize·validate
+ * - `?mockReject=칸`   그 칸을 서버가 422로 거절한다. height_cm·chest_cm·waist_cm·shoulder_cm·arm_length_cm
+ * - `?mockFlaky=N`     진행 상태 조회(GET /api/fittings/{id})가 처음 N번 연결 오류로 실패한다(다시 부르기 확인)
+ * - `?mockLost=1`      진행 상태 조회가 404 JOB_NOT_FOUND다(서버를 다시 켜 작업 기록이 사라진 경우)
+ * 여러 개를 함께 쓸 수 있다. 예: `/garments?mockFail=realize&mockFlaky=2`
+ */
 import { ApiError, type FittingApi } from '../api/api';
 import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL, MEASUREMENT_RANGES, type MeasurementField } from '../api/contract';
 import type {
@@ -59,6 +69,10 @@ interface JobRecord {
   notReady: boolean;
   createdAt: number;
   failStage: Stage | null;
+  /** 남은 조회 실패 횟수(?mockFlaky) */
+  flaky?: number;
+  /** 작업 기록이 없는 것처럼 404를 돌려줄지(?mockLost) */
+  lost?: boolean;
 }
 
 export interface MockApiOptions {
@@ -72,6 +86,10 @@ export interface MockApiOptions {
   failStage?: () => Stage | null;
   /** 서버가 거절한 것처럼 422를 돌려줄 치수 칸. 기본은 주소의 ?mockReject= 값(height_cm 등). */
   rejectField?: () => MeasurementField | null;
+  /** 진행 상태 조회가 처음 몇 번 연결 오류로 실패할지. 기본은 주소의 ?mockFlaky= 값 */
+  flakyCount?: () => number;
+  /** 진행 상태 조회가 404 JOB_NOT_FOUND인지. 기본은 주소의 ?mockLost=1 */
+  lostJob?: () => boolean;
 }
 
 const STORAGE_KEY = 'fit-ruler.mock-jobs.v2';
@@ -82,6 +100,8 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
   const storage = options.storage === undefined ? sessionStorageOrNull() : options.storage;
   const failStage = options.failStage ?? failStageFromUrl;
   const rejectField = options.rejectField ?? rejectFieldFromUrl;
+  const flakyCount = options.flakyCount ?? flakyCountFromUrl;
+  const lostJob = options.lostJob ?? lostJobFromUrl;
   const jobs = new Map<string, JobRecord>(loadJobs(storage).map((record) => [record.jobId, record]));
   const isoNow = () => new Date(now()).toISOString();
 
@@ -113,6 +133,8 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
         notReady,
         createdAt,
         failStage: failStage(),
+        flaky: flakyCount(),
+        lost: lostJob(),
       };
       jobs.set(jobId, record);
       saveJobs(storage, [...jobs.values()]);
@@ -122,7 +144,12 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
     async getFitting(jobId: string) {
       await wait(latencyMs);
       const record = jobs.get(jobId);
-      if (!record) throw new ApiError(404, 'UNEXPECTED_RESPONSE', '작업을 찾을 수 없습니다. 처음부터 다시 진행해 주세요.');
+      if (!record || record.lost) throw jobNotFound();
+      if (record.flaky && record.flaky > 0) {
+        record.flaky -= 1;
+        saveJobs(storage, [...jobs.values()]);
+        throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결할 수 없습니다. 잠시 뒤 다시 시도해 주세요. (가짜 API)');
+      }
       return buildStatus(record, now());
     },
 
@@ -184,7 +211,10 @@ function buildStatus(record: JobRecord, at: number): FittingStatus {
   }
 
   const elapsed = at - record.createdAt;
-  const visual: VisualPart = { ...skippedVisual(null), status: 'RUNNING', quality_status: 'PENDING' };
+  // 실사화에 동의하지 않았으면 첫 응답부터 skip_reason이 CONSENT_NOT_GIVEN, quality_status가 null이다(docs/api/README.md).
+  const visual: VisualPart = request.realize_consent
+    ? { ...skippedVisual(null), status: 'RUNNING', quality_status: 'PENDING' }
+    : { ...skippedVisual('CONSENT_NOT_GIVEN'), status: 'RUNNING' };
   const stages: StageProgress[] = [];
   let start = 0;
   let stopped: 'failed' | 'consent' | null = null;
@@ -312,6 +342,10 @@ function findGarment(garmentId: string): GarmentVariant {
   return garment;
 }
 
+/** 서버와 같은 문구(docs/api/examples/api_error_job_not_found.json) */
+const jobNotFound = () =>
+  new ApiError(404, 'JOB_NOT_FOUND', '작업을 찾을 수 없어요. 서버가 다시 시작됐거나 오래된 작업일 수 있어요.');
+
 const garmentNotReady = () =>
   new ApiError(409, 'GARMENT_NOT_READY', '선택한 의류를 아직 사용할 수 없어요. 다른 의류를 선택해 주세요.');
 
@@ -325,6 +359,17 @@ function rejectFieldFromUrl(): MeasurementField | null {
   if (typeof window === 'undefined') return null;
   const value = new URLSearchParams(window.location.search).get('mockReject') ?? '';
   return MEASUREMENT_FIELDS.find((field) => field === value) ?? null;
+}
+
+function flakyCountFromUrl(): number {
+  if (typeof window === 'undefined') return 0;
+  const value = Number(new URLSearchParams(window.location.search).get('mockFlaky') ?? '0');
+  return Number.isInteger(value) && value > 0 ? Math.min(value, 20) : 0;
+}
+
+function lostJobFromUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('mockLost') === '1';
 }
 
 function makeId(prefix: string, at: number): string {
