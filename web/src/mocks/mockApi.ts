@@ -15,7 +15,7 @@ import type {
   VisualPart,
 } from '../api/types';
 import { MEASUREMENT_PROTOCOL_VERSION } from '../api/types';
-import { colorHex } from '../labels';
+import { colorHex, swatchColor } from '../labels';
 import { computeFitReport, notComputableReason } from './fit';
 import { MOCK_GARMENTS, mockGarmentList } from './garments';
 import { placeholderImage } from './placeholder';
@@ -132,7 +132,7 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
       const label = ARTIFACT_LABEL[role];
       if (!record || !label) return null; // 실사 영상은 가짜 파일이 없어 대표 프레임만 보여 준다
       const garment = MOCK_GARMENTS.find((item) => item.id === record.request.garment_variant_id);
-      return placeholderImage(label, colorHex(garment?.color ?? ''));
+      return placeholderImage(label, garment ? swatchColor(garment) : colorHex(''));
     },
   };
 }
