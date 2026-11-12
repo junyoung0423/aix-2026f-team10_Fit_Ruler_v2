@@ -23,7 +23,7 @@ const item = (id: string, chest: number | null, isDemo: boolean): GarmentListIte
 
 describe('치수 줄', () => {
   it('가슴둘레 · 어깨 · 소매 · 총장 순서', () => {
-    expect(sizeText(FULL)).toBe('가슴둘레 108 · 어깨 46 · 소매 22 · 총장 70');
+    expect(sizeText(sizeItems(FULL))).toBe('가슴둘레 108 cm · 어깨 46 cm · 소매 22 cm · 총장 70 cm');
     expect(sizeItems(FULL).map((size) => size.key)).toEqual([
       'chest_girth_cm',
       'shoulder_width_cm',
@@ -34,16 +34,18 @@ describe('치수 줄', () => {
 
   it('값이 없는 치수는 빼지 않고 "—"', () => {
     const noLength = { ...FULL, body_length_cm: null, sleeve_length_cm: null };
-    expect(sizeText(noLength)).toBe('가슴둘레 108 · 어깨 46 · 소매 — · 총장 —');
+    expect(sizeText(sizeItems(noLength))).toBe('가슴둘레 108 cm · 어깨 46 cm · 소매 — · 총장 —');
     expect(sizeItems(noLength).filter((size) => size.missing).map((size) => size.label)).toEqual(['소매', '총장']);
   });
 
-  it('소수 값은 그대로', () => {
-    expect(sizeText(MOCK_MEASURED_GARMENT.measurements)).toBe('가슴둘레 103.5 · 어깨 45.5 · 소매 20.5 · 총장 —');
+  it('소수 값은 그대로, 단위는 값이 있는 항목에만', () => {
+    const [, ...rest] = sizeItems(MOCK_MEASURED_GARMENT.measurements);
+    expect(sizeText(rest)).toBe('어깨 45.5 cm · 소매 20.5 cm · 총장 —');
+    expect(sizeText(rest)).not.toContain('— cm');
   });
 
   it('허리는 카드에 보이지 않는다', () => {
-    expect(sizeText(FULL)).not.toContain('허리');
+    expect(sizeText(sizeItems(FULL))).not.toContain('허리');
   });
 });
 

@@ -26,11 +26,11 @@ export function sizeItems(measurements: GarmentMeasurements): SizeItem[] {
   });
 }
 
-/** 예: "가슴둘레 108 · 어깨 46 · 소매 22 · 총장 —" (단위 cm) */
-export const sizeText = (measurements: GarmentMeasurements) =>
-  sizeItems(measurements)
-    .map((item) => `${item.label} ${item.text}`)
-    .join(' · ');
+/** 단위는 값이 있는 항목에만 붙인다. 예: "총장 70 cm", "총장 —" */
+export const sizeItemText = (item: SizeItem) => (item.missing ? `${item.label} —` : `${item.label} ${item.text} cm`);
+
+/** 예: "어깨 45.5 cm · 소매 20.5 cm · 총장 —" */
+export const sizeText = (items: readonly SizeItem[]) => items.map(sizeItemText).join(' · ');
 
 export type SourceBadge = { kind: 'demo'; text: string } | { kind: 'measured'; text: string; source: string };
 

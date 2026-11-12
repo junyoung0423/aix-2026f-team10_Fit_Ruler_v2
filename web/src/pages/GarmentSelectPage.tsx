@@ -5,7 +5,7 @@ import { api } from '../api/client';
 import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL, measurementFieldOf } from '../api/contract';
 import type { FitRequest, FittingStatus, GarmentListItem, Measurements } from '../api/types';
 import { MEASUREMENT_PROTOCOL_VERSION } from '../api/types';
-import { sizeItems, sortGarments, sourceBadge } from '../garmentCard';
+import { sizeItems, sizeText, sortGarments, sourceBadge } from '../garmentCard';
 import { fabricText, garmentName, swatchColor } from '../labels';
 import { useFitting } from '../state/fittingStore';
 import type { InputPageState } from './InputPage';
@@ -25,9 +25,7 @@ function GarmentCardBody({ item }: { item: GarmentListItem }) {
       <span className="garment-chest num">
         {chest.label} {chest.text} cm
       </span>
-      <span className="garment-size">
-        {rest.map((size) => `${size.label} ${size.text}`).join(' · ')} cm
-      </span>
+      <span className="garment-size">{sizeText(rest)}</span>
       {fabric && <span className="garment-meta">{fabric}</span>}
       {badge?.kind === 'demo' && <span className="badge demo-badge">{badge.text}</span>}
       {badge?.kind === 'measured' && (
