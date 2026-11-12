@@ -118,7 +118,7 @@ export function ResultPage() {
         ) : (
           <p className="note">
             {stored && !stored.jobId
-              ? '3D·실사화 진행은 서버의 작업 API(B3)가 준비되면 나옵니다. 지금은 핏 리포트만 보여 드립니다.'
+              ? '3D·실사 진행 상태를 받지 못해 핏 리포트만 보여 드립니다.'
               : (error ?? '진행 상태를 불러오는 중…')}
           </p>
         )}

@@ -6,7 +6,7 @@ export interface StoredResult {
   report: FitReport;
   garmentId: string;
   garmentName: string;
-  /** 3D·실사화 작업 ID. 작업을 만들지 못했으면(B3 전 실제 서버 등) null */
+  /** 3D·실사화 작업 ID. 작업을 만들지 못했으면(작업 서버에 닿지 못함·경로 없음) null */
   jobId: string | null;
 }
 

@@ -17,11 +17,12 @@ import type {
  * |---|---|---|
  * | GET  /api/garments              | GarmentList   | B2 |
  * | POST /api/fit                   | FitReport     | B2 |
- * | POST /api/fittings              | FittingStatus | B3 (첫 상태를 돌려준다고 가정) |
+ * | POST /api/fittings              | FittingStatus | B3 (202, 첫 상태에 핏 리포트) |
  * | GET  /api/fittings/{job_id}     | FittingStatus | B3 |
- * | GET  /api/artifacts/{artifact_id} | 파일        | B3 (docs/api/README.md의 임시 약속) |
+ * | GET  /api/artifacts/{artifact_id} | 파일        | B3 |
  *
- * 오류는 모두 `ApiErrorBody`다: 422 INPUT_INVALID, 404 GARMENT_NOT_FOUND, 409 GARMENT_NOT_READY.
+ * 오류는 모두 `ApiErrorBody`다: 422 INPUT_INVALID, 404 GARMENT_NOT_FOUND·JOB_NOT_FOUND·ARTIFACT_NOT_FOUND,
+ * 409 GARMENT_NOT_READY.
  */
 export interface FittingApi {
   listGarments(): Promise<GarmentList>;
@@ -54,7 +55,8 @@ export class ApiError extends Error {
 }
 
 /**
- * 작업 API(`POST /api/fittings`, B3)가 아직 없어서 실패했는지.
+ * 작업 API(`POST /api/fittings`, B3)에 닿지 못해 실패했는지. 서버가 꺼져 있거나 경로가 없는 서버(예: 옛 버전)에
+ * 붙었을 때 핏 리포트만이라도 보여 주는 안전장치다.
  * - 경로가 없으면 계약 형식이 아닌 404(FastAPI 기본 응답 `{"detail": "Not Found"}`)가 온다.
  * - 작업 서버에 닿지 못하면 NETWORK_ERROR다.
  * 이 두 경우만 핏 리포트만 보여 주고, 계약 오류(422·404 GARMENT_NOT_FOUND·409)나 500 등은 화면에 오류로 보여 준다.
