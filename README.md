@@ -68,19 +68,44 @@ pytest
 uvicorn server.app:app --reload   # http://127.0.0.1:8000/docs 에서 OpenAPI 문서
 ```
 
-핏 API(`/api/fit`)와 피팅 작업 API(`/api/fittings`, `/api/artifacts`)가 함께 뜹니다. 지금은 실제 핏 계산기 + 가짜 영상 어댑터로 돌고(실제 어댑터 연결은 B4), 작업 상태는 메모리에만 있어 서버를 다시 켜면 사라집니다. 경로와 상태는 [docs/api/README.md](docs/api/README.md)에 있습니다.
+핏 API(`/api/fit`)와 피팅 작업 API(`/api/fittings`, `/api/artifacts`)가 함께 뜹니다. 핏 계산기는 항상 실제이고, 영상 단계(몸·착장·렌더·실사화·검증)는 [어댑터 설정](docs/adapters.md)대로 가짜 또는 실제 어댑터로 돕니다(지금 기본은 전부 가짜). 작업 상태는 메모리에만 있어 서버를 다시 켜면 사라집니다. 경로와 상태는 [docs/api/README.md](docs/api/README.md)에 있습니다.
 
 | 환경변수 | 기본 | 뜻 |
 |---|---|---|
+| `FIT_ADAPTERS` | `default` | 어댑터 설정: `config/adapters/`의 이름(`default`, `fake`)이나 yaml 파일 경로 |
+| `FIT_WORK_DIR` | `artifacts/work/` | 어댑터의 중간 파일(.blend, 메시 등) 폴더 |
 | `FIT_ARTIFACTS_DIR` | `artifacts/files/` | 산출물 폴더 |
 | `FIT_MAX_WORKERS` | 1 | 동시에 도는 영상 경로 수 |
-| `FIT_FAKE_STAGE_DELAY_S` | 0 | 가짜 영상 단계마다 쉬는 초 (화면에서 진행 상태를 볼 때) |
-| `FIT_FAKE_PLACEHOLDERS` | 꺼짐 (`1`이면 켬) | 가짜 모드에서 이미지 산출물에 단색 자리표시 PNG를 쓴다 |
+| `FIT_FAKE_STAGE_DELAY_S` | 0 | 가짜 영상 단계마다 쉬는 초 (화면에서 진행 상태를 볼 때). 영상 포트가 모두 가짜일 때만 |
+| `FIT_FAKE_PLACEHOLDERS` | 꺼짐 (`1`이면 켬) | 가짜 모드에서 이미지 산출물에 단색 자리표시 PNG를 쓴다. 영상 포트가 모두 가짜일 때만 |
 | `FIT_GARMENTS_DIR` | `data/garments/` | 등록 의류 폴더 |
 
 ```bash
 FIT_FAKE_STAGE_DELAY_S=1.5 FIT_FAKE_PLACEHOLDERS=1 uvicorn server.app:app --port 8000
 ```
+
+### 어댑터 바꾸기
+
+영상 단계 5개를 가짜 또는 실제 어댑터로 고르는 설정은 `config/adapters/*.yaml`입니다(`default.yaml`이 기본, `fake.yaml`은 늘 전부 가짜). 포트 하나당 `fake` 또는 `"파이썬.모듈:팩토리"` 한 줄이라, 담당자는 자기 어댑터가 머지될 때 그 줄만 바꿉니다. **설정이 틀리면 가짜로 대신하지 않고 서버가 뜨지 않습니다.**
+
+```bash
+FIT_ADAPTERS=fake uvicorn server.app:app --port 8000          # config/adapters/fake.yaml
+FIT_ADAPTERS=/내/경로/mixed.yaml uvicorn server.app:app       # 일부만 실제로 섞은 내 설정
+```
+
+팩토리 약속·산출물 파일 이름·연결 방법은 [docs/adapters.md](docs/adapters.md)에 있습니다. 필요한 환경변수는 `.env.example`(`BLENDER_PATH`, `SMPL_MODEL_DIR`, `FAL_KEY`)에 있습니다.
+
+## 피팅 1회 실행
+
+서버 없이 한 프로세스 안에서 기준 사례(신체 1 × 티셔츠 1) 피팅을 끝까지 돌립니다.
+
+```bash
+python -m tools.run_fitting_once                          # 기본 어댑터, 실사화 미동의(렌더까지)
+python -m tools.run_fitting_once --adapters fake --consent
+python -m tools.run_fitting_once --body 175,100,80,40,56 --garment-id tee_regular_m_navy_v1 --out /tmp/run1
+```
+
+단계가 바뀔 때마다 한 줄씩 출력하고, 끝나면 요약(핏 판정, 단계별 상태, 산출물 파일 위치와 있는지)을 출력해 결과 폴더(`artifacts/runs/{job_id}/`)의 `request.json`·`report.json`·`status.json`·`summary.txt`에도 씁니다. 종료 코드는 0 성공, 3 영상 경로 실패(핏 리포트는 있음), 2 작업 실패, 1 설정·입력 오류입니다. 실제 실사화(비용)를 `--consent`로 돌리려면 `--yes`가 있어야 합니다.
 
 견본 검색은 `python -m tools.search_sample --garment data/garments/tee_regular_m_navy_v1.json --samples tests/fixtures/catalog/samples_v0.json`으로 확인합니다([견본 검색](docs/api/README.md)).
 

@@ -1,0 +1,9 @@
+# 영상 단계 5개를 모두 가짜 어댑터로 돌린다. 테스트·CI·시연 연습용이고 내용이 바뀌지 않는다.
+# (default.yaml은 실제 어댑터가 머지되면 바뀌지만 이 파일은 늘 전부 fake다.)
+version: adapters_v0
+ports:
+  body: fake
+  drape: fake
+  render: fake
+  realize: fake
+  validate: fake

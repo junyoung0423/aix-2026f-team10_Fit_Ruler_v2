@@ -156,13 +156,17 @@ python -m tools.register_aihub_garment <AI Hub 라벨 JSON> [--out data/garments
 | `FIT_FAKE_STAGE_DELAY_S` | 0 | 가짜 영상 단계마다 쉬는 초. 화면에서 진행 상태를 눈으로 볼 때 쓴다 |
 | `FIT_FAKE_PLACEHOLDERS` | 꺼짐 (`1`이면 켬) | 가짜 모드에서 이미지 산출물(3D 미리보기, 대표 프레임, 대응 렌더 프레임) ID가 상태에 나타나면 산출물 폴더에 단색 384×512 자리표시 PNG를 쓴다. 영상(mp4)은 만들지 않는다 |
 
-지금 서버는 **실제 핏 계산기 + 가짜 영상 어댑터**로 돕니다(실제 어댑터 연결은 B4). `FIT_FAKE_*`는 가짜 어댑터를 쓸 때만 봅니다. 값이 틀리면(`FIT_MAX_WORKERS=0`, `FIT_FAKE_STAGE_DELAY_S=-1` 등) 서버를 띄울 때 바로 오류가 납니다.
+서버는 **실제 핏 계산기 + 어댑터 설정이 고른 영상 어댑터**로 돕니다(아래 "어댑터 설정"). `FIT_FAKE_*`는 영상 포트가 모두 가짜일 때만 봅니다. 값이 틀리면(`FIT_MAX_WORKERS=0`, `FIT_FAKE_STAGE_DELAY_S=-1` 등) 서버를 띄울 때 바로 오류가 납니다.
 
 ```bash
 FIT_FAKE_STAGE_DELAY_S=1.5 FIT_FAKE_PLACEHOLDERS=1 uvicorn server.app:app --port 8000
 ```
 
 화면(A4)은 이렇게 띄운 서버로 단계가 바뀌는 모습과 3D 미리보기 자리를 볼 수 있습니다.
+
+### 어댑터 설정
+
+영상 단계 5개(몸·착장·렌더·실사화·검증)는 `config/adapters/*.yaml`에서 포트마다 `fake` 또는 `"파이썬.모듈:팩토리"`로 고릅니다. 고르는 순서는 `create_app(adapters=…)` 인자 > 환경변수 `FIT_ADAPTERS` > `default`입니다. 서버를 시작할 때 포트별 어댑터를 로그 한 줄로 남기고, **설정이 틀리면(모듈·팩토리 없음, 팩토리 예외 등) 가짜로 대신하지 않고 서버가 뜨지 않습니다.** 팩토리 약속, 산출물 파일 이름, 연결 방법은 [`docs/adapters.md`](../adapters.md)입니다. 같은 설정으로 서버 없이 한 번 돌리는 명령은 `python -m tools.run_fitting_once`입니다(루트 README).
 
 ## 읽는 법 (작업 상태)
 
@@ -185,7 +189,7 @@ FIT_FAKE_STAGE_DELAY_S=1.5 FIT_FAKE_PLACEHOLDERS=1 uvicorn server.app:app --port
 `GET /api/artifacts/{artifact_id}`는 상태의 `*_artifact_id`가 가리키는 파일(3D 미리보기, 렌더 클립, 실사 영상, 프레임)을 돌려줍니다.
 
 - **산출물 폴더**: 인자 `artifacts_dir` > 환경변수 `FIT_ARTIFACTS_DIR` > `artifacts/files/`(`.gitignore`로 커밋되지 않음).
-- **파일 이름**: `{artifact_id}.{확장자}`. 실제 어댑터(C4·C5·D4·D5, 서버 연결은 B4)가 이 폴더에 이 이름으로 씁니다. 같은 ID로 확장자가 다른 파일이 여러 개면 **파일 이름 순서로 첫 번째**를 줍니다.
+- **파일 이름**: `{artifact_id}.{확장자}`. 실제 어댑터(C4·C5·D4·D5)가 이 폴더에 이 이름으로 씁니다(어댑터는 팩토리가 받는 `settings.artifacts_dir`에 씁니다. `docs/adapters.md`). 같은 ID로 확장자가 다른 파일이 여러 개면 **파일 이름 순서로 첫 번째**를 줍니다.
 - **Content-Type**은 확장자로 정합니다(`.png` `image/png`, `.jpg` `image/jpeg`, `.mp4` `video/mp4`, `.webm` `video/webm`, `.json` `application/json`, `.glb` `model/gltf-binary`). 모르는 확장자는 `application/octet-stream`입니다.
 - **ID 형식**: `^[A-Za-z0-9_-]{1,128}$`만 받습니다. 그 밖(`..`, `/`, 확장자 `.` 포함)은 파일을 찾지 않고 404 `ARTIFACT_NOT_FOUND`입니다. 찾은 파일의 실제 경로(심볼릭 링크 해석 후)가 산출물 폴더 안인지도 확인합니다. 없는 ID와 형식이 틀린 ID는 구분하지 않습니다.
 - 가짜 어댑터는 파일을 만들지 않아 기본으로는 404입니다. `FIT_FAKE_PLACEHOLDERS=1`이면 이미지 산출물만 자리표시 PNG로 열립니다.
