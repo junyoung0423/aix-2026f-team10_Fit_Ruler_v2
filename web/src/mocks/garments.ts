@@ -2,7 +2,8 @@ import type { GarmentListItem, GarmentVariant } from '../api/types';
 
 /**
  * 가짜 API의 등록 의류. 첫 벌은 팀 저장소 `data/garments/tee_regular_m_navy_v1.json`(B2)과 같고,
- * 나머지 세 벌은 화면 개발용으로 만든 시연용 의류다(실제 의류가 아니다).
+ * 그다음 세 벌은 화면 개발용으로 만든 시연용 의류다(실제 의류가 아니다). 마지막 한 벌은 AI Hub 변환 의류
+ * 모양의 합성 의류다(아래 `MOCK_MEASURED_GARMENT`).
  */
 function demoGarment(
   id: string,
@@ -37,6 +38,50 @@ function demoGarment(
     source_ref: 'SAMPLE_NOT_A_REAL_GARMENT',
   };
 }
+
+/**
+ * AI Hub 변환 의류(C1 `tools.register_aihub_garment`)와 **모양만** 같은 합성 의류.
+ * 실제 서버의 AI Hub 의류처럼 핏형·사이즈가 `unknown`이고, 실측(`is_measured: true`)이라 시연용이 아니며,
+ * 총장이 없고(null), 허리 측정 위치가 확인되지 않았고(`waist_position_matched: false`), 원단·`color_hex`가 있다.
+ * 치수·ID·문구는 지어낸 값이다. AI Hub 원본·변환 값을 옮기지 않았다(docs/decisions.md "AI Hub 변환 의류 공개").
+ */
+export const MOCK_MEASURED_GARMENT: GarmentVariant = {
+  schema_version: 'v1',
+  id: 'mock_tee_unknown_unknown_red_measured',
+  style: 'unknown',
+  size: 'unknown',
+  color: 'red',
+  color_hex: '#c0392b',
+  fabric_preset: 'cotton_jersey_v0',
+  fabric: {
+    fibers: ['cotton', 'polyurethane'],
+    composition: null,
+    stretch: 'contain little',
+    description_en: 'plain red cotton jersey',
+  },
+  garment_family: 'basic_short_sleeve_crew',
+  status: 'READY',
+  measurements: {
+    chest_girth_cm: 103.5,
+    waist_girth_cm: 99.0,
+    shoulder_width_cm: 45.5,
+    sleeve_length_cm: 20.5,
+    body_length_cm: null,
+  },
+  measurement_meta: {
+    measurement_protocol_version: 'measure_v1',
+    source: '화면 개발용 합성 의류(A3 mock). 실측 의류의 모양만 흉내 낸 지어낸 값이다.',
+    is_measured: true,
+    chest_from_flat_width: false,
+    waist_from_flat_width: false,
+    waist_position_matched: false,
+    measured_by: null,
+    measured_on: null,
+    notes: 'SYNTHETIC: 실제 의류가 아니다.',
+  },
+  asset_version: 'mock_v1',
+  source_ref: 'SYNTHETIC_NOT_A_REAL_GARMENT',
+};
 
 export const MOCK_GARMENTS: readonly GarmentVariant[] = [
   {
@@ -101,6 +146,7 @@ export const MOCK_GARMENTS: readonly GarmentVariant[] = [
     { chest_girth_cm: 112.0, waist_girth_cm: null, shoulder_width_cm: 48.0, sleeve_length_cm: 22.0, body_length_cm: 72.0 },
     false,
   ),
+  MOCK_MEASURED_GARMENT,
 ];
 
 export const mockGarmentList = (): GarmentListItem[] =>

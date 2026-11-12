@@ -3,6 +3,7 @@ import { ApiError } from '../api/api';
 import type { MeasurementField } from '../api/contract';
 import type { FittingRequest, FittingStatus, GarmentList, Stage } from '../api/types';
 import { example } from './examples';
+import { MOCK_MEASURED_GARMENT } from './garments';
 import { createMockApi } from './mockApi';
 
 
@@ -30,6 +31,23 @@ describe('계약 모양', () => {
     expect(keysOf(list)).toEqual(keysOf(expected));
     expect(list.garments[0]).toEqual(expected.garments[0]);
     expect(list.garments.every((item) => item.garment.status === 'READY')).toBe(true);
+  });
+
+  it('AI Hub 모양 합성 의류가 목록에 시연용 아님(is_demo false)으로 나온다', async () => {
+    const list = await setup().api.listGarments();
+    const measured = list.garments.find((item) => item.garment.id === MOCK_MEASURED_GARMENT.id);
+    expect(measured?.is_demo).toBe(false);
+    expect(measured?.garment).toMatchObject({ style: 'unknown', size: 'unknown', color_hex: '#c0392b' });
+    expect(measured?.garment.measurements.body_length_cm).toBeNull();
+    expect(measured?.garment.measurement_meta).toMatchObject({ is_measured: true, waist_position_matched: false });
+    expect(measured?.garment.fabric?.fibers.length).toBeGreaterThan(0);
+    expect(measured?.garment.id).not.toContain('aihub');
+  });
+
+  it('POST /api/fit: 합성 실측 의류는 시연용 경고 없이 허리 경고만', async () => {
+    const report = await setup().api.fit({ ...REQUEST, garment_variant_id: MOCK_MEASURED_GARMENT.id });
+    expect(report.warnings).toEqual(['WAIST_NOT_EVALUATED']);
+    expect(report.summary).not.toContain('허리');
   });
 
   it('작업 상태가 fitting_status_*.json과 같은 키를 가진다', async () => {
@@ -87,7 +105,7 @@ describe('POST /api/fit', () => {
   });
 });
 
-describe('POST·GET /api/fittings (B3 전 가짜)', () => {
+describe('POST·GET /api/fittings (가짜)', () => {
   it('단계가 시간에 따라 진행되고 끝나면 검증 통과', async () => {
     const { api, advance } = setup();
     const created = await api.createFitting(REQUEST);
@@ -125,6 +143,23 @@ describe('POST·GET /api/fittings (B3 전 가짜)', () => {
       video_artifact_id: null,
     });
     expect(done.stages.map((s) => s.status)).toEqual(expected.stages.map((s) => s.status));
+  });
+
+  it('AI Hub 모양 합성 의류도 같은 흐름: 리포트는 허리 UNKNOWN·WAIST_NOT_EVALUATED, 동의 없으면 렌더까지', async () => {
+    const { api, advance } = setup();
+    const request = { ...REQUEST, garment_variant_id: MOCK_MEASURED_GARMENT.id, realize_consent: false };
+    const created = await api.createFitting(request);
+    expect(created.report.status).toBe('SUCCEEDED');
+    expect(created.report.warnings).toEqual(['WAIST_NOT_EVALUATED']);
+    expect(created.report.regions?.find((r) => r.region === 'waist')).toMatchObject({
+      label: 'UNKNOWN',
+      reason_code: 'MEASUREMENT_NOT_COMPARABLE',
+      garment_cm: null,
+    });
+    advance(20_000);
+    const done = await api.getFitting(created.job_id);
+    expect(done.status).toBe('SUCCEEDED');
+    expect(done.visual).toMatchObject({ status: 'SUCCEEDED', stage: 'RENDER', skip_reason: 'CONSENT_NOT_GIVEN' });
   });
 
   it('리포트만 요청하면 영상 경로를 건너뛴다', async () => {

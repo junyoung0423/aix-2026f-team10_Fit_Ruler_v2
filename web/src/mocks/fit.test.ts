@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FitReport, FitRequest, GarmentVariant, Measurements } from '../api/types';
 import { RULES, classify, computeFitReport, notComputableReason } from './fit';
 import { example } from './examples';
-import { MOCK_GARMENTS } from './garments';
+import { MOCK_GARMENTS, MOCK_MEASURED_GARMENT } from './garments';
 
 
 const OPTIONS = { jobId: 'job_test', createdAt: '2026-11-11T00:00:00Z' };
@@ -56,6 +56,28 @@ describe('판정하지 않는 경우', () => {
     expect(waist).toMatchObject({ label: 'UNKNOWN', reason_code: 'MEASUREMENT_NOT_COMPARABLE', garment_cm: null });
     expect(report.warnings).toContain('WAIST_NOT_EVALUATED');
     expect(report.summary).not.toContain('허리');
+  });
+
+  it('AI Hub 모양 합성 의류: 허리 둘레가 있어도 위치 미확인이면 서버처럼 UNKNOWN·garment_cm null, 시연용 경고 없음', () => {
+    const report = computeFitReport(body, MOCK_MEASURED_GARMENT, OPTIONS);
+    const waist = report.regions.find((r) => r.region === 'waist');
+    expect(MOCK_MEASURED_GARMENT.measurements.waist_girth_cm).not.toBeNull();
+    expect(waist).toMatchObject({
+      label: 'UNKNOWN',
+      reason_code: 'MEASUREMENT_NOT_COMPARABLE',
+      body_cm: 80,
+      garment_cm: null,
+      ease_cm: null,
+      explanation: '의류 허리 측정 위치가 신체 자연 허리와 대응하는지 확인되지 않아 허리 판정을 하지 않습니다.',
+    });
+    expect(report.warnings).toEqual(['WAIST_NOT_EVALUATED']);
+    expect(report.summary).toBe('가슴 밀착 · 어깨 기본 범위'); // 가슴 +3.5, 어깨 +1.5, 허리는 빠짐
+    expect(report.regions.find((r) => r.region === 'body_length')).toMatchObject({
+      label: 'NOT_EVALUATED',
+      reason_code: 'MEASUREMENT_MISSING',
+      garment_cm: null,
+      explanation: '의류 기장 실측이 없어 표시할 수 없습니다.',
+    });
   });
 
   it('허리 실측이 없으면 MEASUREMENT_MISSING', () => {
