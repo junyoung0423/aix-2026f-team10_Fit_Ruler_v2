@@ -87,7 +87,14 @@ export function GarmentSelectPage() {
         if (!isFittingApiMissing(error)) throw error;
       }
       const id = job?.job_id ?? report.job_id;
-      saveResult(id, { report, garmentId: item.garment.id, garmentName: garmentName(item.garment), jobId: job?.job_id ?? null });
+      saveResult(id, {
+        report,
+        garmentId: item.garment.id,
+        garmentName: garmentName(item.garment),
+        jobId: job?.job_id ?? null,
+        // 결과 화면의 "같은 조건으로 다시 시도"가 실사화 동의까지 그대로 다시 보낸다.
+        request: job ? { ...fitRequest, mode: 'full', realize_consent: consent } : undefined,
+      });
       navigate(`/fittings/${encodeURIComponent(id)}`);
     } catch (error) {
       // 서버가 치수를 거절하면(422) 칸별 오류를 들고 입력 화면으로 돌아간다.
