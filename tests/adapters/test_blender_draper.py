@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ import yaml
 from fitting.adapters.blender import draper as dr
 from fitting.adapters.blender import fabric_map as fm
 from fitting.domain import SCHEMA_VERSION, ErrorCode, GarmentVariant, Stage
-from fitting.ports import DRAPE_OUTPUTS, PortFailure, PortRequest
+from fitting.ports import DRAPE_OUTPUTS, Draper, PortFailure, PortRequest
 from server.wiring import (
     ADAPTERS_CONFIG_DIR,
     AdapterConfigError,
@@ -193,6 +194,16 @@ def test_success_returns_blend_and_preview_in_drape_outputs_order(env):
         "SUCCEEDED"
     )
 
+
+
+def test_success_metric_keys_match_the_draper_docstring(env):
+    """`Draper` docstring "지표:" 단락의 키 = 성공 때 어댑터가 내는 지표 키."""
+    paragraph = Draper.__doc__.split("지표:", 1)[1].split("\n\n", 1)[0]
+    documented = set(re.findall(r"`([a-z][a-z0-9_]*)`", paragraph))
+    g = _garment()
+    _prepare(env["prepared"], g)
+    result = _draper(env, FakeRunDrape()).drape(_request(), g)
+    assert set(result.metrics) == documented
 
 def test_demo_fabric_keeps_drape_v1(env):
     """시연 의류(면 100 %, contain little)는 배율 1.0·면밀도 0.18이라 drape_v1을 그대로 쓴다."""

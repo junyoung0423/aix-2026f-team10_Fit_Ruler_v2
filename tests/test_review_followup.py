@@ -23,7 +23,7 @@ from fitting.domain import (
     Stage,
     StageStatus,
 )
-from fitting.ports import BodyBuilder, Draper, PortRequest, Realizer, Renderer, Validator
+from fitting.ports import BodyBuilder, PortRequest, Realizer, Renderer, Validator
 from fitting.services.fitting import run_fitting
 
 from .conftest import EXAMPLES, REPO_ROOT
@@ -139,7 +139,9 @@ def test_fake_validator_metrics_match_the_docs(make_garment):
     assert set(result.metrics) == _documented_keys(Validator)
 
 
-@pytest.mark.parametrize(("port", "owner"), [(Draper, "C4"), (Renderer, "C5")])
+# Draper(C4)는 지표 키를 정했다. 실제 어댑터 지표와 docstring이 같은지는
+# tests/adapters/test_blender_draper.py에서 본다.
+@pytest.mark.parametrize(("port", "owner"), [(Renderer, "C5")])
 def test_undecided_metric_keys_are_marked(port, owner):
     assert f"지표 키는 {owner}에서 정한다" in port.__doc__
 
