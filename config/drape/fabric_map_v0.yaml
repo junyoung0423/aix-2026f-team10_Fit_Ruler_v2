@@ -1,0 +1,42 @@
+# 원단 정보 → 천 물성 매핑 fabric_map_v0 (#8, C4). 값은 모두 [제안]이다(팀 확인 필요).
+#
+# 착장 기본 설정 config/drape/drape_v1.json은 고치지 않는다. 착장 어댑터가 이 표로 작업 폴더에
+# 파생 설정을 쓰고(tools/make_drape_config.py와 같은 방식: name·version·parent·changes 기록), 쓴 물성 값과
+# 파생 설정 sha256을 지표에 남긴다. 결과가 drape_v1과 같으면 파생 설정을 만들지 않고 drape_v1을 그대로 쓴다.
+#
+# - 원단 정보(GarmentVariant.fabric)가 없으면 배율 1.0, 면밀도는 drape_v1 값(0.18 kg/m²) 그대로다.
+# - 표에 없는 값은 기본값을 쓰고 경고를 기록한다(지표 fabric_warnings).
+# - 검사 기준(신장 1.5 등)은 바꾸지 않는다. 물성만 바꾼다.
+version: fabric_map_v0
+
+# 신축성(FabricInfo.stretch, AI Hub 71501 구조표 4-4 값) → drape_v1 cloth의
+# tension_stiffness·compression_stiffness·shear_stiffness에 곱할 배율. 세 값에 같은 배율을 쓴다.
+# 근거 없음 [제안]: drape_v1(Blender Cotton 계열 강성 15)을 "contain little"(시연 의류 값)로 보고,
+# 신축성이 클수록 강성을 낮춘다는 방향만 정했다. 폭(0.6~1.5)은 실측·문헌 근거가 없다.
+stretch_stiffness_multiplier:
+  default: 1.0          # 값 없음(null)·표에 없는 값
+  none at all: 1.5
+  none: 1.25
+  contain little: 1.0
+  contain: 0.8
+  contain a lot: 0.6
+
+# 섬유(FabricInfo.fibers 키, fitting/adapters/aihub/tables.py의 AIHUB_FIBER) → 면밀도(kg/m², drape_v1의
+# weld.areal_density_kg_m2를 바꾼다).
+# 근거: 반팔 저지 원단의 흔한 중량 범위(약 0.14~0.20 kg/m²) 안에서 섬유별 대략값을 고른 [제안]이다.
+# 섬유별 실측·데이터 근거는 없다. cotton은 drape_v1 가정값과 같다.
+# 비율(composition)이 있으면 비율 가중 평균, 없으면(AI Hub) 처음 적힌 섬유(주 섬유로 가정, 근거 없음)를 쓴다.
+fiber_areal_density_kg_m2:
+  default: 0.18         # 섬유 정보 없음·표에 없는 섬유
+  cotton: 0.18
+  hemp: 0.20
+  cellulose_other: 0.18
+  silk: 0.10
+  wool: 0.20
+  protein_other: 0.18
+  viscose_rayon: 0.16
+  regenerated_other: 0.16
+  polyester: 0.15
+  nylon: 0.14
+  polyurethane: 0.18    # 보통 몇 % 섞이는 신축사라 단독 근거 없음. 기본값과 같게 둔다
+  synthetic_other: 0.15
