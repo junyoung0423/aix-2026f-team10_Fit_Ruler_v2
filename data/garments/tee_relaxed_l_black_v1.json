@@ -1,0 +1,41 @@
+{
+  "schema_version": "v1",
+  "id": "tee_relaxed_l_black_v1",
+  "style": "relaxed",
+  "size": "L",
+  "color": "black",
+  "color_hex": "#222326",
+  "fabric_preset": "cotton_jersey_v0",
+  "fabric": {
+    "fibers": [
+      "cotton"
+    ],
+    "composition": {
+      "cotton": 100.0
+    },
+    "stretch": "contain little",
+    "description_en": "plain black cotton jersey"
+  },
+  "garment_family": "basic_short_sleeve_crew",
+  "status": "READY",
+  "measurements": {
+    "chest_girth_cm": 118.0,
+    "waist_girth_cm": 112.0,
+    "shoulder_width_cm": 52.0,
+    "sleeve_length_cm": 24.0,
+    "body_length_cm": 74.0
+  },
+  "measurement_meta": {
+    "measurement_protocol_version": "measure_v1",
+    "source": "docs/decisions.md 1절 기준 티셔츠 2. A1 가짜 API의 mock_tee_relaxed_l_black과 같은 치수의 시연용 샘플. 실제 의류를 실측한 값이 아니다.",
+    "is_measured": false,
+    "chest_from_flat_width": false,
+    "waist_from_flat_width": false,
+    "waist_position_matched": true,
+    "measured_by": null,
+    "measured_on": null,
+    "notes": "SAMPLE ONLY: 개발용 고정 샘플이며 실제 SKU와 대조되지 않았다."
+  },
+  "asset_version": "sample_v1",
+  "source_ref": "SAMPLE_NOT_A_REAL_GARMENT"
+}

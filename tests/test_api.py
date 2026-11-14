@@ -141,7 +141,11 @@ def test_default_directory_has_the_demo_garment():
     assert demo == GARMENT_EXAMPLE  # docs/api/examples/garment.json과 같은 시연용 의류
     client = TestClient(create_app(garments_dir=DEFAULT_GARMENTS_DIR))
     items = client.get("/api/garments").json()["garments"]
-    assert [(i["garment"]["id"], i["is_demo"]) for i in items] == [(DEMO_ID, True)]
+    # 기준 티셔츠 2(시연용, decisions.md 1절)는 C3에서 등록했다
+    assert [(i["garment"]["id"], i["is_demo"]) for i in items] == [
+        (DEMO_ID, True),
+        ("tee_relaxed_l_black_v1", True),
+    ]
 
 
 # --- POST /api/fit 정상 ----------------------------------------------------------------------
