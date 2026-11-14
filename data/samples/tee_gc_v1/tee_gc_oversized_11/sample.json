@@ -22,9 +22,7 @@
   "tolerance_cm": 1.0,
   "shoulder": {
     "judged": false,
-    "shoulder_width_cm": 34.457,
-    "base_design_shoulder_width_cm": 34.457,
-    "diff_from_base_design_cm": 0.0
+    "shoulder_width_cm": 34.457
   },
   "pattern_sha256": "863535389fdec732ae1b022572c7031c357c2240dd6543c72b97a59481fe6653",
   "files": {

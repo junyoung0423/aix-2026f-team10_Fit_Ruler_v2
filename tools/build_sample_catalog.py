@@ -318,7 +318,6 @@ def build(plan, config_path, out, gc_root, fit_cfg, fit_rec, log=print, jobs=1):
                 shutil.rmtree(d)
                 continue
             measured = rounded_measurements(m)
-            base_shoulder = float(res["default_measured_cm"]["shoulder_width_cm"])
             sample = {
                 "catalog": plan["name"],
                 "sample_id": sid,
@@ -327,13 +326,10 @@ def build(plan, config_path, out, gc_root, fit_cfg, fit_rec, log=print, jobs=1):
                 "measurements_cm": measured,
                 "residuals_cm": residuals,
                 "tolerance_cm": tol,
+                # 어깨는 맞추지 않고 판정하지 않는다. 의류와 견본의 어깨 차이는 C4 기록에 둔다
                 "shoulder": {
                     "judged": False,
                     "shoulder_width_cm": measured["shoulder_width_cm"],
-                    "base_design_shoulder_width_cm": round(base_shoulder, 3),
-                    "diff_from_base_design_cm": round(
-                        float(m["shoulder_width_cm"]) - base_shoulder, 3
-                    ),
                 },
                 "pattern_sha256": sha,
                 "files": {"design": "design.yaml", "specification": "specification.json"},

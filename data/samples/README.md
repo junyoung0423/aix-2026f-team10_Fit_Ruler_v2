@@ -62,7 +62,7 @@ tee_gc_v1/
 | `measurements_cm` | 잰 치수 `{chest_girth_cm, waist_girth_cm(null), shoulder_width_cm, sleeve_length_cm, body_length_cm}`. 소수 셋째 자리. `catalog.json`의 `measurements`와 같다 |
 | `residuals_cm` | 잔여 오차 = 잰 치수 − 목표 (가슴·기장·소매) |
 | `tolerance_cm` | 허용 잔여 오차(1.0 cm) |
-| `shoulder` | 어깨는 맞추지 않고 판정하지 않는다(`judged: false`). `shoulder_width_cm` 잰 값, `base_design_shoulder_width_cm` GarmentCode 기본 디자인의 어깨, `diff_from_base_design_cm` 차이(맞춤이 어깨를 바꾸지 않았는지 보는 값) |
+| `shoulder` | `{judged: false, shoulder_width_cm}`. 어깨는 맞추지 않고 판정하지 않는다(GarmentCode가 어깨를 바꾸지 못한다). 등록 의류와 견본의 어깨 차이는 C4 의류별 기록에 둔다 |
 | `pattern_sha256` | 패턴 정규형 sha256 (`pattern_measure.canonical_sha256`) |
 | `files` | `{design, specification}` 파일 이름 |
 | `design_params` | 맞춘 파라미터 `{shirt.width, shirt.length, sleeve.length}` (GarmentCode 비율 값) |
