@@ -1,0 +1,184 @@
+{
+  "catalog": "tee_gc_v1",
+  "version": "1.0.0",
+  "note": "GarmentCode 반팔 티셔츠 견본집. samples는 견본 검색 (fitting.catalog.search.SampleCandidate) 형식이다. 단위 cm, 가슴은 둘레, 허리는 견본에 측정 정의가 없어 null이다. 견본별 생성 기록은 {sample_id}/sample.json에 있다.",
+  "sample_config": {
+    "path": "config/samples/tee_gc_v1.yaml",
+    "name": "tee_gc_v1",
+    "version": "1.0.0",
+    "sha256": "ff44dbc9125438dc4201382339a359cb3c1a32fd11002b673359a691a7f3d130"
+  },
+  "pattern_fit_config": {
+    "path": "config/pattern/pattern_fit_v0.json",
+    "name": "pattern_fit_v0",
+    "version": "0.2.0",
+    "sha256": "2425f2db6a353a2ee0a2a803888199973d6d736c352459e983f607f80135449e"
+  },
+  "generation_body": {
+    "name": "mean_all",
+    "body_yaml": "assets/bodies/mean_all.yaml",
+    "body_yaml_sha256": "fc78250c24f7f40d10ac6e60a1af37deb24bd8439c1109be701ad255b28819eb",
+    "chest_cm": 99.8407
+  },
+  "generation_body_chest_cm": 99.8,
+  "style_bands": [
+    {
+      "style": "slim",
+      "lower": null,
+      "upper": 6.0,
+      "include_lower": false,
+      "include_upper": false
+    },
+    {
+      "style": "regular",
+      "lower": 6.0,
+      "upper": 14.0,
+      "include_lower": true,
+      "include_upper": true
+    },
+    {
+      "style": "relaxed",
+      "lower": 14.0,
+      "upper": 22.0,
+      "include_lower": false,
+      "include_upper": true
+    },
+    {
+      "style": "oversized",
+      "lower": 22.0,
+      "upper": null,
+      "include_lower": false,
+      "include_upper": false
+    }
+  ],
+  "garmentcode": {
+    "commit": "d449629979028123a5c4dc9e732a2ec19b7fce31",
+    "base_design_yaml": "assets/design_params/t-shirt.yaml",
+    "base_design_sha256": "54df26360f7365b0cddf2a1ab4347ce85525b4f8b3f4f5ee055dba4a2c19f4d3"
+  },
+  "tolerance_cm": 1.0,
+  "created_at": "2026-11-14",
+  "excluded": [],
+  "samples": [
+    {
+      "sample_id": "tee_gc_slim_01",
+      "measurements": {
+        "chest_girth_cm": 100.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_slim_02",
+      "measurements": {
+        "chest_girth_cm": 100.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_slim_03",
+      "measurements": {
+        "chest_girth_cm": 104.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_slim_04",
+      "measurements": {
+        "chest_girth_cm": 104.001,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_regular_05",
+      "measurements": {
+        "chest_girth_cm": 108.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_regular_06",
+      "measurements": {
+        "chest_girth_cm": 108.001,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_regular_07",
+      "measurements": {
+        "chest_girth_cm": 112.004,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 21.991,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_regular_08",
+      "measurements": {
+        "chest_girth_cm": 112.001,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 22.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_relaxed_09",
+      "measurements": {
+        "chest_girth_cm": 118.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 22.001,
+        "body_length_cm": 66.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_relaxed_10",
+      "measurements": {
+        "chest_girth_cm": 118.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 21.999,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_oversized_11",
+      "measurements": {
+        "chest_girth_cm": 126.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 24.0,
+        "body_length_cm": 72.0
+      }
+    },
+    {
+      "sample_id": "tee_gc_oversized_12",
+      "measurements": {
+        "chest_girth_cm": 126.0,
+        "waist_girth_cm": null,
+        "shoulder_width_cm": 34.457,
+        "sleeve_length_cm": 23.999,
+        "body_length_cm": 78.0
+      }
+    }
+  ]
+}

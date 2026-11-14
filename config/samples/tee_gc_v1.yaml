@@ -1,0 +1,61 @@
+# 반팔 티셔츠 견본집 tee_gc_v1 (#4, C3). `python -m tools.build_sample_catalog`가 읽는다.
+#
+# 값은 팀 문서 `docs/decisions.md`의 견본집 결정(2026-11-14)을 따른다.
+# - 가슴 여섯 단계(100·104·108·112·118·126 cm) × 기장 두 가지 = 12개. 어깨는 바꾸지 않는다
+#   (GarmentCode 티셔츠에 어깨를 바꾸는 디자인 파라미터가 없다, C2 기록 3절).
+# - 100 cm는 AI Hub 반팔 가슴 중앙값(98 cm)에 가까운 견본으로 C3에서 더했다. 96 cm는 생성용 몸
+#   mean_all(가슴 99.8 cm)보다 작아 넣지 않는다.
+# - 단위 cm, 가슴은 둘레. 목표에 없는 치수(어깨·허리)는 맞추지 않는다.
+# - 패턴 맞춤 설정(조정 파라미터·허용 오차 1.0 cm·생성용 몸)은 pattern_fit_config에 있다.
+#
+# ID: tee_gc_{style}_{두 자리 번호}. 번호는 가슴 오름차순, 그다음 기장 오름차순으로 01부터.
+# style: 생성용 몸 가슴(generation_body_chest_cm) 대비 견본 가슴 여유로 나눈다(style_bands).
+#   생성 명령과 검사 명령이 이 구간과 style이 맞는지 확인한다.
+# 값을 바꾸면 version을 올린다. 결과(data/samples/<catalog>/)에 이 파일의 이름·버전·sha256이 남는다.
+name: tee_gc_v1
+version: 1.0.0
+pattern_fit_config: config/pattern/pattern_fit_v0.json
+generation_body: mean_all
+# GarmentCode assets/bodies/mean_all.yaml의 bust(99.8407)를 0.1 cm로 반올림한 값(decisions.md 3절).
+# 생성 명령이 몸 yaml과 0.1 cm 안에서 같은지 확인한다.
+generation_body_chest_cm: 99.8
+
+# 견본 가슴 − generation_body_chest_cm 구간 (decisions.md 3절 표).
+#   slim: 6 미만, regular: 6 이상 14 이하, relaxed: 14 초과 22 이하, oversized: 22 초과.
+#   6·14는 fit_rules_v0 가슴 구간 경계, 22는 근거 없는 [제안]이다.
+# 각 구간은 lower < 여유 <= upper 또는 lower <= 여유 < upper (include_lower로 정한다). null은 끝없음.
+style_bands:
+  - style: slim
+    lower: null
+    upper: 6.0
+    include_lower: false
+    include_upper: false
+  - style: regular
+    lower: 6.0
+    upper: 14.0
+    include_lower: true
+    include_upper: true
+  - style: relaxed
+    lower: 14.0
+    upper: 22.0
+    include_lower: false
+    include_upper: true
+  - style: oversized
+    lower: 22.0
+    upper: null
+    include_lower: false
+    include_upper: false
+
+samples:
+  - {id: tee_gc_slim_01, style: slim, chest_girth_cm: 100.0, body_length_cm: 66.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_slim_02, style: slim, chest_girth_cm: 100.0, body_length_cm: 72.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_slim_03, style: slim, chest_girth_cm: 104.0, body_length_cm: 66.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_slim_04, style: slim, chest_girth_cm: 104.0, body_length_cm: 72.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_regular_05, style: regular, chest_girth_cm: 108.0, body_length_cm: 66.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_regular_06, style: regular, chest_girth_cm: 108.0, body_length_cm: 72.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_regular_07, style: regular, chest_girth_cm: 112.0, body_length_cm: 66.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_regular_08, style: regular, chest_girth_cm: 112.0, body_length_cm: 72.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_relaxed_09, style: relaxed, chest_girth_cm: 118.0, body_length_cm: 66.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_relaxed_10, style: relaxed, chest_girth_cm: 118.0, body_length_cm: 72.0, sleeve_length_cm: 22.0}
+  - {id: tee_gc_oversized_11, style: oversized, chest_girth_cm: 126.0, body_length_cm: 72.0, sleeve_length_cm: 24.0}
+  - {id: tee_gc_oversized_12, style: oversized, chest_girth_cm: 126.0, body_length_cm: 78.0, sleeve_length_cm: 24.0}

@@ -1,0 +1,75 @@
+{
+  "catalog": "tee_gc_v1",
+  "sample_id": "tee_gc_oversized_12",
+  "style": "oversized",
+  "targets_cm": {
+    "chest_girth_cm": 126.0,
+    "body_length_cm": 78.0,
+    "sleeve_length_cm": 24.0
+  },
+  "measurements_cm": {
+    "chest_girth_cm": 126.0,
+    "waist_girth_cm": null,
+    "shoulder_width_cm": 34.457,
+    "sleeve_length_cm": 23.999,
+    "body_length_cm": 78.0
+  },
+  "residuals_cm": {
+    "chest_girth_cm": 0.0,
+    "body_length_cm": 0.0,
+    "sleeve_length_cm": -0.001
+  },
+  "tolerance_cm": 1.0,
+  "shoulder": {
+    "judged": false,
+    "shoulder_width_cm": 34.457,
+    "base_design_shoulder_width_cm": 34.457,
+    "diff_from_base_design_cm": 0.0
+  },
+  "pattern_sha256": "ffcb09e9f97748ef4f00d42186beda40a8af5044dc48679c14e0ef12c97260ad",
+  "files": {
+    "design": "design.yaml",
+    "specification": "specification.json"
+  },
+  "design_params": {
+    "shirt.width": 1.26201,
+    "shirt.length": 1.900406,
+    "sleeve.length": 0.326506
+  },
+  "params_at_bound": {
+    "shirt.width": false,
+    "shirt.length": false,
+    "sleeve.length": false
+  },
+  "self_intersecting": false,
+  "optimizer": {
+    "method": "scipy.optimize.least_squares (trf, bounds = yaml range)",
+    "nfev": 21,
+    "status": 3,
+    "message": "`xtol` termination condition is satisfied."
+  },
+  "generation_body": {
+    "name": "mean_all",
+    "body_yaml": "assets/bodies/mean_all.yaml",
+    "body_yaml_sha256": "fc78250c24f7f40d10ac6e60a1af37deb24bd8439c1109be701ad255b28819eb",
+    "chest_cm": 99.8407
+  },
+  "garmentcode": {
+    "commit": "d449629979028123a5c4dc9e732a2ec19b7fce31",
+    "base_design_yaml": "assets/design_params/t-shirt.yaml",
+    "base_design_sha256": "54df26360f7365b0cddf2a1ab4347ce85525b4f8b3f4f5ee055dba4a2c19f4d3"
+  },
+  "pattern_fit_config": {
+    "path": "config/pattern/pattern_fit_v0.json",
+    "name": "pattern_fit_v0",
+    "version": "0.2.0",
+    "sha256": "2425f2db6a353a2ee0a2a803888199973d6d736c352459e983f607f80135449e"
+  },
+  "sample_config": {
+    "path": "config/samples/tee_gc_v1.yaml",
+    "name": "tee_gc_v1",
+    "version": "1.0.0",
+    "sha256": "ff44dbc9125438dc4201382339a359cb3c1a32fd11002b673359a691a7f3d130"
+  },
+  "created_at": "2026-11-14"
+}

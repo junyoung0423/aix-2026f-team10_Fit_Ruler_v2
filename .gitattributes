@@ -4,3 +4,5 @@
 *.jpg binary
 # GarmentCode에서 받은 fixture는 바이트 그대로 둔다(CRLF 포함, SOURCE.md의 sha256과 같게)
 tests/fixtures/garment/** -text
+# 견본집 패턴(GarmentCode 출력)도 바이트 그대로 둔다(C3). 같은 패턴인지는 정규형 sha256으로 본다
+data/samples/**/specification.json -text
