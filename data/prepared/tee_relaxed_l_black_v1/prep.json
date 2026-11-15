@@ -1,0 +1,141 @@
+{
+  "schema": "garment_prep_v0",
+  "garment_id": "tee_relaxed_l_black_v1",
+  "garment_file": "tee_relaxed_l_black_v1.json",
+  "garment_sha256": "f487e1c63713bc908681c76eca35579fe6d959c885966907a622443c2fb8cee5",
+  "status": "READY",
+  "failure_reason": null,
+  "failure_detail": null,
+  "targets_cm": {
+    "chest_girth_cm": 118.0,
+    "sleeve_length_cm": 24.0,
+    "body_length_cm": 74.0
+  },
+  "notes": [],
+  "tolerance_cm": 1.0,
+  "configs": {
+    "pattern_fit": {
+      "path": "config/pattern/pattern_fit_v0.json",
+      "name": "pattern_fit_v0",
+      "version": "0.2.0",
+      "sha256": "2425f2db6a353a2ee0a2a803888199973d6d736c352459e983f607f80135449e"
+    },
+    "sample_search": {
+      "path": "config/sample_search_v0.yaml",
+      "name": "sample_search_v0",
+      "version": "sample_search_v0",
+      "sha256": "e85e80784bdb683e228f1aebae0ed7f63a351018a9de2837471d392d114f3f7e"
+    },
+    "catalog": {
+      "path": "data/samples/tee_gc_v1/catalog.json",
+      "name": "tee_gc_v1",
+      "version": "1.0.0",
+      "sha256": "955f4ae1ca16b68fed7000f64be8c5a7c5914614ca3bacab58d4d062f0911255"
+    }
+  },
+  "tool": {
+    "name": "tools.prepare_garments",
+    "version": "0.1.0"
+  },
+  "sample_id": "tee_gc_relaxed_10",
+  "search_score_cm": 5.86,
+  "search": {
+    "score_cm": 5.86,
+    "exact_match": false,
+    "tie_broken": false,
+    "compared": [
+      {
+        "dimension": "chest_girth_cm",
+        "garment_cm": 118.0,
+        "sample_cm": 118.0,
+        "diff_cm": 0.0,
+        "weight": 0.4
+      },
+      {
+        "dimension": "shoulder_width_cm",
+        "garment_cm": 52.0,
+        "sample_cm": 34.457,
+        "diff_cm": -17.543,
+        "weight": 0.3
+      },
+      {
+        "dimension": "body_length_cm",
+        "garment_cm": 74.0,
+        "sample_cm": 72.0,
+        "diff_cm": -2.0,
+        "weight": 0.2
+      },
+      {
+        "dimension": "sleeve_length_cm",
+        "garment_cm": 24.0,
+        "sample_cm": 21.999,
+        "diff_cm": -2.001,
+        "weight": 0.1
+      }
+    ],
+    "skipped": [],
+    "runner_up": {
+      "sample_id": "tee_gc_relaxed_09",
+      "score_cm": 7.06
+    }
+  },
+  "sample_pattern_sha256": "37770a5065ebceeecea7f873c8cf663664bcbd8087170c4e2a1cf0dfd7067d35",
+  "sample_measurements_cm": {
+    "chest_girth_cm": 118.0,
+    "waist_girth_cm": null,
+    "shoulder_width_cm": 34.457,
+    "sleeve_length_cm": 21.999,
+    "body_length_cm": 72.0
+  },
+  "shoulder": {
+    "judged": false,
+    "garment_cm": 52.0,
+    "sample_cm": 34.457,
+    "diff_cm": 17.543
+  },
+  "inputs_key": "ce77d806b8d9ed269bdc1f121b896f068f41dd7257c096bbb27ba15475497fd1",
+  "fitted_measurements_cm": {
+    "chest_girth_cm": 118.004,
+    "shoulder_width_cm": 34.457,
+    "sleeve_length_cm": 23.999,
+    "body_length_cm": 74.0
+  },
+  "residuals_cm": {
+    "chest_girth_cm": 0.004,
+    "sleeve_length_cm": -0.001,
+    "body_length_cm": 0.0
+  },
+  "design_params": {
+    "shirt.width": 1.181918,
+    "shirt.length": 1.814486,
+    "sleeve.length": 0.333371
+  },
+  "fitted_params": [
+    "shirt.length",
+    "shirt.width",
+    "sleeve.length"
+  ],
+  "params_at_bound": {
+    "shirt.width": false,
+    "shirt.length": false,
+    "sleeve.length": false
+  },
+  "any_param_at_bound": false,
+  "self_intersecting": false,
+  "optimizer": {
+    "method": "scipy.optimize.least_squares (trf, bounds = yaml range)",
+    "nfev": 21,
+    "status": 3,
+    "message": "`xtol` termination condition is satisfied.",
+    "seconds": 220.4
+  },
+  "generation_body": {
+    "body_yaml": "C:\\dev\\GarmentCode\\assets\\bodies\\mean_all.yaml",
+    "sha256": "fc78250c24f7f40d10ac6e60a1af37deb24bd8439c1109be701ad255b28819eb"
+  },
+  "design": "design.yaml",
+  "specification": "specification.json",
+  "pattern_sha256": "0778d6f5010c3e260b6dcba738de6be5e917481bf0d51b02135376ed59d6d5ce",
+  "seconds": 231.0,
+  "created_at": "2026-11-15"
+}

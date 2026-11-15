@@ -37,6 +37,8 @@ runs/
 data/raw/
 # AI Hub 변환 의류는 이용 조건 확인 전까지 커밋하지 않는다(docs/decisions.md)
 data/garments/*_aihub_*.json
+# AI Hub 의류의 준비 기록도 같다(준비 폴더는 FIT_PREPARED_DIR로 저장소 밖에 둔다)
+data/prepared/*_aihub_*/
 
 # OS / 에디터
 .DS_Store

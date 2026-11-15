@@ -86,7 +86,13 @@ class BodyBuilder(Protocol):
 class Draper(Protocol):
     """몸에 옷을 입힌다 (C4). 산출물은 `DRAPE_OUTPUTS`.
 
-    지표 키는 C4에서 정한다.
+    지표: `drape_ok`(착장 검사 통과 1), `penetration_area_ratio`, `stretch_max`,
+    `seam_gap_preweld_max_mm`, `frames`, `sim_seconds`, `sample_id`(준비에 쓴 견본),
+    `shoulder_diff_cm`(의류 − 견본 어깨, 판정 안 함), `body_source`·`body_sha256`(몸 출처),
+    `drape_config`·`drape_config_sha256`(쓴 착장 설정), `fabric_map`·`fabric_stiffness_multiplier`·
+    `fabric_areal_density_kg_m2`·`fabric_warnings`(원단 → 물성). 의류 준비 기록이 없거나 준비
+    실패면 `GARMENT_NOT_READY`, 착장 검사 실패·시간 초과·비정상 종료는 `DRAPE_INVALID`로 실패한다.
+    구현과 자세한 뜻은 `fitting/adapters/blender/draper.py`, `docs/adapters.md`.
     """
 
     def drape(self, request: PortRequest, garment: GarmentVariant) -> PortResult: ...
