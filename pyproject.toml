@@ -73,6 +73,6 @@ select = ["E", "F", "I", "UP", "B"]
 # C2: 이전 저장소(pipelines/garment/)에서 옮긴 스파이크 코드. 긴 줄만 그대로 둔다
 # (이전 코드와 줄 단위로 비교하기 쉽게). 새로 쓰는 코드는 100자를 지킨다.
 "fitting/adapters/blender/{analyze_drape,blender_drape,drape_config,drape_measure,metrics,run_drape,weld}.py" = ["E501"]
-"fitting/adapters/garmentcode/{coords,export_panels,pattern_measure}.py" = ["E501"]
+"fitting/adapters/garmentcode/{coords,export_panels,pattern_fit,pattern_measure}.py" = ["E501"]
 "tests/garment/test_{coords,drape_measure,export,metrics,pattern_measure,weld}.py" = ["E501"]
 "tools/make_drape_config.py" = ["E501"]

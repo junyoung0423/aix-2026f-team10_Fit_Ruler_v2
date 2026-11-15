@@ -1,0 +1,19 @@
+{
+  "name": "pattern_fit_v0",
+  "version": "0.2.0",
+  "status": "draft",
+  "description": "GarmentCode 기본 티셔츠를 목표 실측에 맞추는 설정. 패턴 생성용 몸은 mean_all 고정. C3 견본집 생성과 C4 견본 최적화가 쓴다.",
+  "body_yaml": "assets/bodies/mean_all.yaml",
+  "design_yaml": "assets/design_params/t-shirt.yaml",
+  "_paths_note": "body_yaml·design_yaml은 GarmentCode 루트 기준 상대경로(pattern_fit.resolve_config, --gc-root / FIT_RULER_GC_ROOT, 기본 C:/dev/GarmentCode). 0.2.0(C3, 새 저장소로 옮김): 이전 저장소에만 있는 targets_json과 옮기지 않은 sensitivity 키를 뺐다. 목표는 명령행 --targets 또는 fit_design 인자로 받는다. 맞춤 값은 이전 0.1.2와 같다.",
+  "tolerance_cm": 1.0,
+  "_tolerance_note": "명세서 6장 패턴 최적화 초기 목표: 목표 실측과 패턴 재측정 차이 1.0 cm 이하. 완화하지 않는다.",
+  "fit_params": {
+    "shirt.width": "chest_girth_cm",
+    "shirt.length": "body_length_cm",
+    "sleeve.length": "sleeve_length_cm"
+  },
+  "_fit_params_note": "근거: C3 민감도 표(이전 저장소). shoulder_width_cm를 바꾸는 디자인 파라미터가 없다(어깨점 = (body.shoulder_w - 2)/2, sleeves.py).",
+  "diff_step": 1e-4,
+  "max_nfev": 60
+}

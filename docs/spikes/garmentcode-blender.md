@@ -6,7 +6,10 @@
 - 2026-11-11 C2(#4 #8): 이전 저장소 `aix-2026f-team10_Fit_Ruler`의 `pipelines/garment/`(브랜치
   `feat/T02-garment-pattern-drape`)에서 이 저장소로 옮겼습니다. 옮긴 위치는 아래 표, 설치·실행은 6절에 있습니다.
   아래 2~5절의 결과는 이전 저장소에서 낸 것이고, 옮긴 뒤 견본 1을 다시 돌린 결과는 6절 끝에 있습니다.
-  - 옮기지 않은 것(이전 저장소에만 있음): `pattern_fit.py`·`configs/pattern_fit_v0.json`(C4에서 옮김),
+  - 2026-11-14 C3(#4): `pattern_fit.py`의 generate·fit을 `fitting/adapters/garmentcode/pattern_fit.py`로,
+    `configs/pattern_fit_v0.json`을 `config/pattern/pattern_fit_v0.json`(0.2.0: 이전 저장소 경로 `targets_json`을 뺌,
+    맞춤 값은 같음)으로 옮겼다. 견본집 결과는 7절.
+  - 옮기지 않은 것(이전 저장소에만 있음): `pattern_fit.py sensitivity`,
     `garments/skus/`·`garments/MEASURING.md`(의류 등록은 `data/garments/` 형식을 씀).
   - 실험 설정은 이전 저장소 `pipelines/garment/configs/experiments/`에 있다(C2 e01~e08, C3).
 
@@ -15,6 +18,8 @@
 | `export_panels.py`, `pattern_measure.py`, `coords.py` | `fitting/adapters/garmentcode/` |
 | `blender_drape.py`, `run_drape.py`, `drape_config.py`, `drape_measure.py`, `weld.py`, `metrics.py`, `analyze_drape.py` | `fitting/adapters/blender/` |
 | `configs/drape_v0.json`, `configs/drape_v1.json` | `config/drape/` |
+| `pattern_fit.py` (generate·fit, C3) | `fitting/adapters/garmentcode/pattern_fit.py` |
+| `configs/pattern_fit_v0.json` (C3) | `config/pattern/pattern_fit_v0.json` |
 | `fixtures/tee_gc_default/`, `fixtures/tee_gc_sleeve045/` | `tests/fixtures/garment/` |
 | `tests/` | `tests/garment/` |
 | `tools/make_config.py` | `tools/make_drape_config.py` |
@@ -63,8 +68,8 @@ Blender 5.2 cloth (blender_drape.py, 설정 config/drape/drape_v1.json)
   - 모두 진동·어깨 꼭대기 근처입니다.
   - 고치지 않고 그대로 기록했습니다. 견본 1도 여유가 작았던(1.454) 같은 부위입니다.
 - 명령은 `<repo>`에서 실행합니다. 자리표시는 6절 "설치·실행"과 같습니다.
-- **생성 명령** (이전 저장소 `<old repo>`에서. `pattern_fit.py`는 C4에서 옮긴다):
-  - `<venv>\Scripts\python.exe pipelines\garment\pattern_fit.py generate pipelines\garment\fixtures\tee_gc_sleeve045\t-shirt_sleeve045.yaml <GarmentCode>\assets\bodies\mean_all.yaml <runs>\gen_sleeve045 --gc-root <GarmentCode>`
+- **생성 명령** (C3에서 이 저장소로 옮겼다. 이전에는 이전 저장소의 `pipelines\garment\pattern_fit.py generate`):
+  - `<venv>\Scripts\python.exe -m fitting.adapters.garmentcode.pattern_fit generate tests\fixtures\garment\tee_gc_sleeve045\t-shirt_sleeve045.yaml <GarmentCode>\assets\bodies\mean_all.yaml <runs>\gen_sleeve045 --gc-root <GarmentCode>`
 - **착장 명령** (이 저장소):
   - `<venv>\Scripts\python.exe -m fitting.adapters.blender.run_drape --spec tests\fixtures\garment\tee_gc_sleeve045\pattern_specification.json --body <GarmentCode>\assets\bodies\mean_all.obj --config config\drape\drape_v1.json --name sleeve045_v1 --out-root <runs>\C2PR --gc-root <GarmentCode> --blender "<blender.exe>"`
 
@@ -256,3 +261,51 @@ python -m tools.make_drape_config config\drape\drape_v1.json <out.json> --name .
 - 착장 좌표(`garment_draped_co.npy`)가 세 실행 모두 비트 단위로 같습니다. `garment_ref_co.npy`와 `analysis.json`(오프라인 재계산 일치, 착장 후 측정)도 Csync와 같습니다.
 - `drape_metrics.json`은 Csync와 키가 모두 같고, 다른 값은 시간(`sim_seconds`, `weld.relax_seconds`)뿐입니다.
   C2 `v1_a`는 진단 키(`stretch_min`, `stretch_p01`, `gravity_response`)가 생기기 전 실행이라 그 키가 없습니다.
+
+## 7. C3 견본집 착장 시험 (2026-11-14~15, drape_v1, 기준 몸 mean_all)
+
+견본집 `tee_gc_v1`(`data/samples/tee_gc_v1/`) 12개를 drape_v1 그대로 한 번씩 착장했습니다. 실패가 나와도 착장 설정·코드는 고치지 않았습니다.
+출력은 `C:\dev\fitruler_c\runs\C3\<견본 ID>\`(git 밖)입니다. 명령은 6절 "착장 1회"와 같고 `--spec`만 `data\samples\tee_gc_v1\<견본 ID>\specification.json`입니다.
+
+| 견본 | 가슴/기장/소매 cm | 착장 판정 | 실패 항목 | 최대 신장 (≤ 1.5) | 용접 전 최대 벌어짐 mm (≤ 10) | 침투 | 시뮬레이션 s | 전체 s | analyze |
+|---|---|---|---|---|---|---|---|---|---|
+| `tee_gc_slim_01` | 100 / 66 / 22 | **DRAPE_INVALID** | 신장, 봉제 닫힘 | **2.181** | **10.08** | 0 % | 79.6 | 246.6 | 정상, Blender와 일치 |
+| `tee_gc_slim_02` | 100 / 72 / 22 | **DRAPE_INVALID** | 신장 | **1.703** | 7.64 | 0 % | 212.2 | 630.6 | 정상, 일치 |
+| `tee_gc_slim_03` | 104 / 66 / 22 | **DRAPE_INVALID** | 신장 | **1.587** | 5.68 | 0 % | 173.1 | 371.6 | 정상, 일치 |
+| `tee_gc_slim_04` | 104 / 72 / 22 | 통과 | — | 1.474 | 6.50 | 0 % | 129.6 | 359.3 | 정상, 일치 |
+| `tee_gc_regular_05` | 108 / 66 / 22 | **DRAPE_INVALID** | 신장 | **1.804** | 7.90 | 0 % | 230.9 | 726.6 | 정상, 일치 |
+| `tee_gc_regular_06` | 108 / 72 / 22 | **DRAPE_INVALID** | 신장 | **1.554** | 8.90 | 0 % | 222.4 | 579.2 | 정상, 일치 |
+| `tee_gc_regular_07` | 112 / 66 / 22 | **DRAPE_INVALID** | 신장 | **1.630** | 8.24 | 0 % | 135.3 | 418.0 | 정상, 일치 |
+| `tee_gc_regular_08` | 112 / 72 / 22 | **DRAPE_INVALID** | 신장 | **1.560** | 8.04 | 0 % | 84.4 | 303.3 | 정상, 일치 |
+| `tee_gc_relaxed_09` | 118 / 66 / 22 | 통과 | — | 1.316 | 8.15 | 0 % | 66.6 | 120.6 | 예외 (아래) |
+| `tee_gc_relaxed_10` | 118 / 72 / 22 | **DRAPE_INVALID** | 봉제 닫힘 | 1.289 | **10.56** | 0 % | 39.9 | 96.7 | 예외 (아래) |
+| `tee_gc_oversized_11` | 126 / 72 / 24 | 통과 | — | 1.441 | 6.15 | 0 % | 200.8 | 378.4 | 예외 (아래) |
+| `tee_gc_oversized_12` | 126 / 78 / 24 | 통과 | — | 1.414 | 8.53 | 0 % | 188.4 | 341.9 | 예외 (아래) |
+
+- 치수는 `sample.json`의 패턴 실측(목표와 0.01 cm 안)입니다. 전체 s는 export·drape·analyze 세 단계의 합입니다.
+- 통과 4개, DRAPE_INVALID 8개(신장 7개, 봉제 닫힘 2개, slim_01은 둘 다)입니다. 모든 견본이 안정·침투·NaN 검사는 통과했습니다.
+- 봉제 닫힘 실패 2개는 용접 시점(프레임 80)의 벌어짐이 10 mm를 넘어 용접하지 않은 경우입니다(2절 견본 2와 같은 모양).
+- 기준 티셔츠의 검색 결과 견본(`docs/decisions.md` B3 기대 결과)은 둘 다 실패입니다. 티셔츠 1 → `tee_gc_regular_06`(신장 1.554), 티셔츠 2 → `tee_gc_relaxed_10`(봉제 닫힘 10.56 mm).
+
+관찰
+- **몸에 가까울수록 신장이 큰 경향은 있지만 단조롭지 않습니다.**
+  - 가슴별 최대 신장(기장 짧은 것/긴 것): 100 cm 2.181/1.703, 104 cm 1.587/1.474, 108 cm 1.804/1.554, 112 cm 1.630/1.560, 118 cm 1.316/1.289, 126 cm 1.441/1.414.
+  - 118 cm 이상은 모두 1.5 아래이고, 112 cm 이하는 104 cm 긴 기장(1.474) 하나만 1.5 아래입니다. 108 cm가 104 cm보다 큽니다.
+- **같은 가슴에서는 6쌍 모두 기장이 긴 쪽의 신장이 작습니다.** 원인은 확인하지 않았습니다.
+- **위치**: 1.5를 넘은 견본 7개 모두 가장 늘어난 변이 진동(소매와 앞판이 만나는 겨드랑이~어깨 꼭대기) 근처입니다.
+  - 가장 늘어난 변의 좌표가 |x| 0.175~0.202 m, z 1.297~1.429 m(Blender 좌표, Z 위)입니다.
+  - 1.5를 넘은 변이 있는 패널은 앞판(`*_ftorso`)과 소매(`*_sleeve_f`, `*_sleeve_b`)가 대부분이고, 뒤판은 slim_01에서만 넘었습니다.
+  - 2절 견본 1·3에서 본 부위와 같습니다.
+- 용접 전 벌어짐은 가슴과 뚜렷한 관계가 없습니다(5.68~10.56 mm).
+- 시뮬레이션 시간이 39.9~230.9 s로 크게 다릅니다. 착장은 한 번에 하나씩 돌렸고, 3절처럼 원인은 확인하지 않았습니다.
+
+analyze 예외 (고치지 않고 기록만 함)
+- 가슴 118·126 cm 견본 4개에서 Blender 없이 다시 계산하는 analyze 단계가 기존 착장 후 측정 코드(`drape_measure.measure_draped`)의 예외로 끝났습니다. `analysis.json`이 없습니다.
+  - 기장선의 점(패턴 좌표 x = 10.82 cm)이 앞판 메시 밖으로 판정됩니다: `ValueError: point [10.8188, y] is 1.002~1.060 cm outside panel left_ftorso`.
+  - relaxed_09 1.031, relaxed_10 1.025, oversized_11 1.002, oversized_12 1.060 cm. 112 cm 이하 8개는 예외가 없습니다.
+- 착장 판정은 Blender 단계의 `drape_metrics.json`으로 하므로 영향이 없습니다. 다만 이 4개는 오프라인 재계산이 Blender 지표와 같은지(`offline_matches_blender`) 확인하지 못했고, 착장 후 치수도 없습니다.
+
+재현 확인 (2026-11-15)
+- `tee_gc_slim_01`·`tee_gc_oversized_12`를 같은 설정(`config/samples/tee_gc_v1.yaml`, `pattern_fit_v0` 0.2.0, GarmentCode d449629)으로 임시 폴더에 다시 만들었습니다.
+  - `build_sample_catalog`가 견본 하나에 하는 단계(`fit_all` → `design.yaml` → 새 프로세스 `generate` → 측정)를 두 견본에만 돌렸습니다. 생성 명령은 ID 번호 검사 때문에 일부 견본만 고른 설정을 받지 않습니다.
+- 두 견본 모두 정규형 패턴 해시(`pattern_sha256`), 치수, 디자인 파라미터, `design.yaml` 바이트가 커밋된 것과 같았습니다. 임시 폴더는 지웠습니다.
