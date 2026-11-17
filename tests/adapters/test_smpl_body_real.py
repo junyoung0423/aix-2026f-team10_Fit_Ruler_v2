@@ -62,7 +62,10 @@ def test_reference_body_is_built_within_tolerance(builder, name):
 
     mesh = builder.artifacts_dir / f"{name}_body_mesh.obj"
     assert result.output_artifact_ids == [f"{name}_body_mesh"]
-    assert mesh.read_text(encoding="utf-8").count("\nv ") >= 6889  # SMPL 정점 6890개
+    text = mesh.read_text(encoding="utf-8")
+    assert text.count("\nv ") >= 6889  # SMPL 정점 6890개
+    ys = [float(line.split()[2]) for line in text.splitlines() if line.startswith("v ")]
+    assert min(ys) == pytest.approx(0.0, abs=1e-6)  # 발바닥이 y = 0 (착장 C4 기준)
     for field, target in zip(FIELDS, values, strict=True):
         assert abs(result.metrics[f"fitted_{field}"] - target) <= BODY_TOLERANCE_CM[field] + 1e-9
     # 명세서 5장 한도(시작점 3개 × 200회) 안

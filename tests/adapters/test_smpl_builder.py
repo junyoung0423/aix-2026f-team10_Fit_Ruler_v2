@@ -44,10 +44,13 @@ TETRA_FACES = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
 class FakePosedBody:
     """치수 = 크기 × (평균 + J·β)인 가짜 몸 모델 (`PosedBodyModel`)."""
 
-    def __init__(self, jacobian=J, num_betas: int = 4, nan_mesh: bool = False) -> None:
+    def __init__(
+        self, jacobian=J, num_betas: int = 4, nan_mesh: bool = False, floor: float = 0.0
+    ) -> None:
         self.jacobian = jacobian
         self._num_betas = num_betas
         self.nan_mesh = nan_mesh
+        self.floor = floor  # 메시 발바닥 높이(SMPL처럼 원점이 골반 근처면 음수)
 
     @property
     def num_betas(self) -> int:
@@ -61,7 +64,7 @@ class FakePosedBody:
         betas = np.asarray(betas)
         if betas.shape[0] > self._num_betas:
             raise ValueError("형상 계수가 너무 많다")
-        vertices = TETRA * scale
+        vertices = TETRA * scale + np.array([0.0, self.floor, 0.0])
         if self.nan_mesh:
             vertices = vertices.copy()
             vertices[0, 0] = np.nan
@@ -167,6 +170,21 @@ def test_success_record_has_inputs_outputs_errors_and_parameters(tmp_path):
     assert record["measurement_protocol_version"] == "measure_v1"
 
 
+def test_mesh_is_moved_so_the_feet_are_at_zero(tmp_path):
+    """착장(C4) 패널이 바닥 0 기준이라 발바닥(y 최솟값)을 0으로 옮겨 저장하고 옮긴 양을 남긴다."""
+    builder(tmp_path, FakePosedBody(floor=-1.2)).build_body(request(), body_input())
+
+    obj = (tmp_path / "artifacts" / "job_ok_body_mesh.obj").read_text(encoding="utf-8")
+    ys = [float(line.split()[2]) for line in obj.splitlines() if line.startswith("v ")]
+    assert min(ys) == pytest.approx(0.0, abs=1e-6)
+    record = read_record(tmp_path, "job_ok")
+    assert record["translation_m"] == pytest.approx([0.0, 1.2, 0.0])
+    # 기준점도 OBJ 좌표(옮긴 뒤)로 적는다
+    assert record["landmarks"]["chest_level_m"] == pytest.approx(1.3 + 1.2)
+    assert record["landmarks"]["left_shoulder_point_m"] == pytest.approx([0.2, 1.45 + 1.2, 0.0])
+    assert record["betas_at_bound"] == 0
+
+
 def test_betas_are_capped_to_what_the_model_has(tmp_path):
     model = FakePosedBody(num_betas=3)
     result = builder(tmp_path, model, settings=FitSettings(num_betas=10)).build_body(
@@ -180,6 +198,9 @@ def test_betas_are_capped_to_what_the_model_has(tmp_path):
 
 
 def test_out_of_tolerance_fails_without_a_mesh(tmp_path):
+    stale = tmp_path / "artifacts" / "job_arm_body_mesh.obj"  # 같은 작업의 예전 성공 결과
+    stale.parent.mkdir(parents=True)
+    stale.write_text("v 0 0 0", encoding="utf-8")
     with pytest.raises(PortFailure) as caught:
         builder(tmp_path, unreachable_arm()).build_body(
             request("job_arm"), body_input(arm_length_cm=70)
@@ -201,6 +222,8 @@ def test_out_of_tolerance_fails_without_a_mesh(tmp_path):
     assert "arm_length_cm" in record["failure"]["failed_fields"]
     assert len(record["optimization"]["starts"]) == 3  # 시작점 3개를 다 썼다
     assert record["input_cm"]["arm_length_cm"] == 70.0  # 입력을 고치지 않는다
+    assert record["removed_stale_mesh"] is True  # 예전 메시를 지웠다
+    assert isinstance(record["betas_at_bound"], int)
 
 
 def test_mesh_that_is_not_finite_fails(tmp_path):
@@ -216,8 +239,12 @@ def test_request_timeout_limits_the_search(tmp_path):
     ticks = iter(range(100_000))
     slow = builder(tmp_path, unreachable_arm(), clock=lambda: float(next(ticks)))
 
-    with pytest.raises(PortFailure):
+    with pytest.raises(PortFailure) as caught:
         slow.build_body(request("job_slow", timeout=30), body_input(arm_length_cm=70))
+
+    # 시간 초과는 "몸이 안 맞는다"가 아니라 시간 한도로 안내한다
+    assert "시간 한도" in caught.value.error.safe_message
+    assert "넘은 치수" not in caught.value.error.safe_message
 
     optimization = read_record(tmp_path, "job_slow")["optimization"]
     assert optimization["stopped_by"] == "time_limit"

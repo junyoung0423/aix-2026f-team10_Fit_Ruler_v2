@@ -162,6 +162,10 @@ class StartRecord:
     evaluations: int
     seconds: float
     stopped_by: str  # "converged"(최적화가 멈춤) · "max_evals"(횟수 한도) · "time_limit"
+    # 이 시작점에서 고른 점: "lowest_objective"(목적값이 가장 작은 점) 또는 "passing"(목적값이 가장
+    # 작은 점은 허용 오차를 넘었지만, 중간에 다섯 치수를 모두 통과한 점이 있어 그중 목적값이 가장
+    # 작은 점). 형상 사전분포 항 때문에 통과하는 점의 목적값이 더 클 수 있다.
+    picked: str = "lowest_objective"
 
     @property
     def passed(self) -> bool:
@@ -188,6 +192,7 @@ class StartRecord:
             "evaluations": self.evaluations,
             "seconds": round(self.seconds, 2),
             "stopped_by": self.stopped_by,
+            "picked": self.picked,
         }
 
 
@@ -287,6 +292,7 @@ def fit_body(
         x0 = np.r_[betas0, initial_scale]
         count = 0
         best: list[Any] = [math.inf, x0.copy(), None]  # 목적값, 값, 잰 결과
+        best_pass: list[Any] = [math.inf, x0.copy(), None]  # 다섯 치수를 통과한 점 중 가장 좋은 것
         start_time = clock()
 
         def residuals(params: np.ndarray) -> np.ndarray:
@@ -307,6 +313,8 @@ def fit_body(
             value = float(result @ result)
             if value < best[0]:
                 best[0], best[1], best[2] = value, params.copy(), measured
+            if value < best_pass[0] and judge(goal_cm, measured, settings.tolerance_cm).passed:
+                best_pass[0], best_pass[1], best_pass[2] = value, params.copy(), measured
             return result
 
         stopped_by = "converged"
@@ -328,19 +336,27 @@ def fit_body(
             if count >= settings.max_evals_per_start:
                 stopped_by = "max_evals"
 
-        params, measured = best[1], best[2]
+        chosen, picked = best, "lowest_objective"
+        if (
+            best[2] is not None
+            and best_pass[2] is not None
+            and not judge(goal_cm, best[2], settings.tolerance_cm).passed
+        ):
+            chosen, picked = best_pass, "passing"
+        params, measured = chosen[1], chosen[2]
         return StartRecord(
             index=index,
             initial_betas=tuple(float(b) for b in betas0),
             initial_scale=initial_scale,
             betas=tuple(float(b) for b in params[:k]),
             scale=float(params[k]),
-            objective=float(best[0]),
+            objective=float(chosen[0]),
             measurements=measured,
             judgement=None if measured is None else judge(goal_cm, measured, settings.tolerance_cm),
             evaluations=count,
             seconds=clock() - start_time,
             stopped_by=stopped_by,
+            picked=picked,
         )
 
     records: list[StartRecord] = []

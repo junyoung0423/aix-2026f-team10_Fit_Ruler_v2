@@ -12,8 +12,12 @@
   계수·크기·기준점(가슴·허리 높이, 어깨 끝점)·시작점별 결과·모델 파일 이름을 남긴다.
   `PortError.internal_details_ref`는 이 파일을 `work_dir` 기준 경로(`{job_id}/body_fit.json`)로
   가리킨다. 화면에는 `safe_message`만 보인다.
-- 메시: 단위는 미터, y가 위, z가 앞, x가 몸의 왼쪽이다(SMPL 그대로, D2 OBJ와 같다). 치수를 잰
-  바로 그 몸이다. 렌더용으로 자세를 바꾸는 일은 착장(C4)에서 하고 따로 기록한다.
+- 메시: 단위는 미터, y가 위, z가 앞, x가 몸의 왼쪽이다(SMPL 축, D2 OBJ와 같다). 치수를 잰 바로 그
+  몸을 **발바닥(정점 y 최솟값)이 y = 0이 되도록 위아래로만 옮겨** 저장한다. 착장(C4)의 GarmentCode
+  패널이 바닥 0인 몸 기준 위치에 놓이기 때문이다. 옮긴 양은 기록의 `translation_m`이고, 기록의
+  기준점(`landmarks`)도 옮긴 좌표로 적는다. 평행 이동이라 치수는 그대로다.
+- 실패하면 같은 작업의 이전 몸 메시(`{job_id}_body_mesh.obj`)가 남아 있어도 지운다. 실패한 작업에
+  예전 결과가 보이지 않게 하려는 것이다.
 """
 
 from __future__ import annotations
@@ -179,35 +183,44 @@ class SmplBodyBuilder:
         vertices, _ = self.body_model.mesh(fit.betas, fit.scale)
         judgement = judge(body, measured, settings.tolerance_cm)
         mesh_finite = bool(np.all(np.isfinite(vertices)))
+        # 발바닥을 y = 0으로 (착장 C4의 패널 좌표가 바닥 0 기준). 위아래로만 옮겨 치수는 그대로다
+        floor = float(np.min(vertices[:, 1])) if mesh_finite else 0.0
+        translation = np.array([0.0, -floor, 0.0])
+        mesh_path = Path(self.artifacts_dir) / f"{artifact_id}.obj"
 
         if not (judgement.passed and mesh_finite):
+            stale = mesh_path.is_file()
+            if stale:
+                mesh_path.unlink()  # 같은 작업의 예전 몸 메시가 실패한 작업에 남지 않게
             self._write_record(
-                request, body, fit, measured, debug, judgement, mesh_finite, settings, None
-            )
+                request, body, fit, measured, debug, judgement, mesh_finite, settings, None,
+                translation=translation, removed_stale_mesh=stale,
+            )  # fmt: skip
             raise PortFailure(
                 PortError(
                     code=ErrorCode.BODY_FIT_NOT_CONVERGED,
                     stage=Stage.BODY_FIT,
                     retryable=False,
-                    safe_message=self._failure_message(judgement, mesh_finite),
+                    safe_message=self._failure_message(judgement, mesh_finite, fit.stopped_by),
                     internal_details_ref=f"{request.job_id}/{BODY_FIT_RECORD}",
                 )
             )
 
-        mesh_path = Path(self.artifacts_dir) / f"{artifact_id}.obj"
         write_obj(
             mesh_path,
-            vertices,
+            vertices + translation,
             self.body_model.faces,
             comment=(
-                f"AIMAX body mesh ({self.model_name}, A-pose {A_POSE_DEG:g} deg, meters, y up)\n"
+                f"AIMAX body mesh ({self.model_name}, A-pose {A_POSE_DEG:g} deg, meters, y up, "
+                f"feet at y=0, translation_m 0 {translation[1]:.5f} 0)\n"
                 f"job {request.job_id}, scale {fit.scale:.5f}, "
                 f"betas {' '.join(f'{b:.4f}' for b in fit.betas)}"
             ),
         )
         self._write_record(
-            request, body, fit, measured, debug, judgement, mesh_finite, settings, artifact_id
-        )
+            request, body, fit, measured, debug, judgement, mesh_finite, settings, artifact_id,
+            translation=translation, removed_stale_mesh=False,
+        )  # fmt: skip
         metrics: dict[str, float | int | str] = {
             **measured.fitted_metrics(body),
             "fit_evaluations": fit.evaluations + 1,  # 마지막 재측정 포함
@@ -221,7 +234,12 @@ class SmplBodyBuilder:
         )
 
     @staticmethod
-    def _failure_message(judgement: Judgement, mesh_finite: bool) -> str:
+    def _failure_message(judgement: Judgement, mesh_finite: bool, stopped_by: str = "") -> str:
+        if stopped_by == "time_limit" and mesh_finite:
+            return (
+                "3D 몸을 만드는 데 시간 한도를 넘었습니다. 잠시 뒤 다시 시도해 주세요. "
+                "핏 리포트는 그대로 볼 수 있습니다."
+            )
         if judgement.failed_fields:
             names = ", ".join(FIELD_LABEL[name] for name in judgement.failed_fields)
             return (
@@ -243,8 +261,13 @@ class SmplBodyBuilder:
         mesh_finite: bool,
         settings: FitSettings,
         artifact_id: str | None,
+        *,
+        translation: np.ndarray,
+        removed_stale_mesh: bool,
     ) -> Path:
         passed = artifact_id is not None
+        dy = float(translation[1])
+        at_bound = sum(abs(b) >= settings.beta_bound - 1e-3 for b in fit.chosen.betas)
         record: dict[str, Any] = {
             "record_version": RECORD_VERSION,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -268,12 +291,18 @@ class SmplBodyBuilder:
             "max_abs_error_cm": _finite_or_none(judgement.max_abs_error_cm),
             "betas": list(fit.chosen.betas),  # 다시 만들 수 있게 반올림하지 않는다
             "scale": fit.scale,
+            # 형상 계수 중 경계(±beta_bound)에 닿은 개수. "비정상 변형"을 정할 때 쓴다(팀 결정 전)
+            "betas_at_bound": int(at_bound),
+            # OBJ = 모델 출력 + translation_m (발바닥을 y = 0으로). 아래 기준점도 OBJ 좌표다
+            "translation_m": [0.0, round(dy, 6), 0.0],
             "landmarks": {
-                "chest_level_m": round(float(debug.chest_level_m), 5),
-                "waist_level_m": round(float(debug.waist_level_m), 5),
-                "left_shoulder_point_m": _point(debug.left_shoulder_point),
-                "right_shoulder_point_m": _point(debug.right_shoulder_point),
+                "frame": "OBJ (y up, z front, meters, feet at y=0)",
+                "chest_level_m": round(float(debug.chest_level_m) + dy, 5),
+                "waist_level_m": round(float(debug.waist_level_m) + dy, 5),
+                "left_shoulder_point_m": _point(debug.left_shoulder_point + translation),
+                "right_shoulder_point_m": _point(debug.right_shoulder_point + translation),
             },
+            "removed_stale_mesh": removed_stale_mesh,
             "body_model": {"model_file": self.model_name, **self.body_model.describe()},
             "optimization": fit.to_record(),
             "tool_versions": self.tool_versions(),

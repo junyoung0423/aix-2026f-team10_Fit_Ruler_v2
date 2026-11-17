@@ -172,6 +172,24 @@ def test_unmeasurable_bodies_are_skipped_instead_of_crashing():
     assert fit_body(BODY_1, measure, SMALL).passed
 
 
+def test_a_passing_point_beats_a_lower_objective_that_fails():
+    """사전분포 항 때문에 목적값이 더 작은 점이 허용 오차를 넘으면, 중간에 통과한 점을 고른다."""
+    calls = {"n": 0}
+
+    def measure(betas, scale):
+        calls["n"] += 1
+        if calls["n"] <= 2:  # 평균 몸 1회 + 첫 점: 다섯 치수 모두 허용 오차 안(목적값 약 4.3)
+            return BodyMeasurementsCm(175.9, 101.9, 81.9, 40.9, 57.4)
+        return BodyMeasurementsCm(175.0, 100.0, 80.0, 40.0, 57.6)  # 팔만 넘음(목적값 약 1.1)
+
+    result = fit_body(BODY_1, measure, FitSettings(num_betas=4, num_starts=1))
+
+    assert result.passed
+    assert result.chosen.picked == "passing"
+    assert result.chosen.judgement.errors_cm["arm_length_cm"] == pytest.approx(1.4)
+    assert result.to_record()["starts"][0]["picked"] == "passing"
+
+
 def test_accepts_the_measurements_model():
     body = Measurements(**BODY_1)
     assert fit_body(body, linear_measure(), SMALL).target_cm == BODY_1
