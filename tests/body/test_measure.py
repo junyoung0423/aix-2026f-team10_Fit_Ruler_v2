@@ -106,6 +106,16 @@ def test_measure_synthetic_body() -> None:
     assert set(result.to_dict()) == set(Measurements.model_fields)
 
 
+def test_moving_the_body_up_or_down_does_not_change_measurements() -> None:
+    """D3가 발바닥을 y = 0으로 옮겨 저장해도 치수는 같다(평행 이동)."""
+    body = make_body()
+    shift = np.array([0.0, -1.2, 0.0])
+    moved, _ = measure_body(
+        body.vertices + shift, body.faces, body.joints + shift, body.weights, body.acromion_vertices
+    )
+    assert moved == measure(body)[0]
+
+
 def test_waist_is_the_narrowest_level_not_the_navel_height() -> None:
     """measure_v1: 허리는 자연 허리(가장 잘록한 곳). spine1(배꼽 높이 근사)에 고정하지 않는다."""
     body = make_body(belly_radius=0.15)  # spine1(1.05) 높이는 배(반지름 0.15)에 걸린다

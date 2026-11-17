@@ -93,7 +93,7 @@ models/smpl/basicmodel_f_lbs_10_207_0_v1.1.0.pkl         # 여성(선택)
 모델을 둔 뒤 실행한다.
 
 ```bash
-SMPL_MODEL_PATH=models/smpl/basicmodel_neutral_lbs_10_207_0_v1.1.0.pkl python -m pytest -m smpl
+SMPL_MODEL_DIR=models/smpl python -m pytest -m smpl   # D3부터 서버 설정(B4)과 같은 폴더 환경변수
 python -m tools.smpl_body --model models/smpl/basicmodel_neutral_lbs_10_207_0_v1.1.0.pkl
 ```
 

@@ -84,6 +84,8 @@ def make_xxx(settings: AdapterSettings) -> 포트 객체    # BodyBuilder / Drap
 
 다른 단계는 가짜로 두고 착장만 실제로 돌려 볼 수 있습니다. 파일을 따로 만들고 `FIT_ADAPTERS`나 `--adapters`로 고르세요(기본 설정을 건드리지 않습니다).
 
+- 몸만 실제 SMPL 어댑터(D3)로 돌리는 설정은 저장소에 있습니다: `--adapters smpl_body`(`config/adapters/smpl_body.yaml`). `SMPL_MODEL_DIR`이 필요합니다(docs/body-fit.md).
+
 ```yaml
 # 내 PC 전용 /경로/mixed.yaml
 version: adapters_v0

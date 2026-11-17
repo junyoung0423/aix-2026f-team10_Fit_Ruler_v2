@@ -202,7 +202,14 @@ def measure_body(
     joints: np.ndarray,
     weights: np.ndarray,
     acromion_vertices: tuple[int, int] = SMPL_ACROMION_VERTICES,
+    *,
+    round_cm: bool = True,
 ) -> tuple[BodyMeasurementsCm, MeasureDebug]:
+    """measure_v1로 다섯 치수를 잰다. 결과는 0.1 cm로 반올림한다.
+
+    `round_cm=False`는 반올림하지 않은 값을 돌려준다. 몸 맞추기(D3)가 최적화 중에 기울기를
+    수치로 구할 때만 쓰고, 통과 판정은 반올림한 값으로 한다.
+    """
     vertices = np.asarray(vertices, dtype=np.float64)
     faces = np.asarray(faces, dtype=np.int64)
     joints = np.asarray(joints, dtype=np.float64)
@@ -239,7 +246,7 @@ def measure_body(
     )
 
     def cm(meters: float) -> float:
-        return round(meters * 100, 1)
+        return round(meters * 100, 1) if round_cm else meters * 100
 
     measurements = BodyMeasurementsCm(
         height_cm=cm(height),

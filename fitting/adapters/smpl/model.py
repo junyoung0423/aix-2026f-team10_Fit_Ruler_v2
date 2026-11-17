@@ -106,6 +106,35 @@ def load_model_data(path: Path) -> dict[str, Any]:
         return _SafeUnpickler(file, encoding="latin1").load()
 
 
+MODEL_SUFFIXES = (".pkl", ".npz")
+
+
+def find_neutral_model(directory: Path) -> Path:
+    """폴더에서 중성 모델 파일(이름에 'neutral'이 들어간 .pkl·.npz)을 찾는다.
+
+    여러 개면 이름 순으로 첫 파일이다. 공식 파일 이름은
+    `basicmodel_neutral_lbs_10_207_0_v1.1.0.pkl`이다(models/README.md).
+
+    Raises:
+        FileNotFoundError: 폴더가 없거나 중성 모델 파일이 없다.
+    """
+    directory = Path(directory)
+    if not directory.is_dir():
+        raise FileNotFoundError(f"SMPL 모델 폴더가 없습니다: {directory}")
+    candidates = sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file()
+        and path.suffix.lower() in MODEL_SUFFIXES
+        and "neutral" in path.name.lower()
+    )
+    if not candidates:
+        raise FileNotFoundError(
+            f"SMPL 중성 모델 파일(이름에 neutral이 들어간 .pkl·.npz)이 없습니다: {directory}"
+        )
+    return candidates[0]
+
+
 def rodrigues(rotvecs: np.ndarray) -> np.ndarray:
     """축-각 벡터 (K, 3) → 회전 행렬 (K, 3, 3)."""
     rotvecs = np.asarray(rotvecs, dtype=np.float64).reshape(-1, 3)
