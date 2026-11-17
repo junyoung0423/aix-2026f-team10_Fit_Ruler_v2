@@ -135,9 +135,13 @@ class DrapeCheckResult:
         return None if self.passed else DRAPE_INVALID
 
     def metrics(self) -> dict[str, float | int | str]:
-        """포트 지표(`PortResult.metrics`)에 넣을 수 있는 값. C4 착장 어댑터가 쓴다."""
+        """포트 지표(`PortResult.metrics`)에 넣을 수 있는 값.
+
+        **관통만** 본 판정이다(신장·안정·봉제선은 보지 않는다). 그래서 착장 검사 전체 통과와
+        헷갈리지 않게 `penetration_check_status`라고 부른다.
+        """
         return {
-            "drape_check_status": self.status,
+            "penetration_check_status": self.status,
             "penetration_area_ratio": round(self.penetration.area_ratio, 6),
             "max_penetration_mm": round(self.penetration.max_depth_m * 1000, 2),
         }

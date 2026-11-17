@@ -1,6 +1,6 @@
 # 착장 점검 (D4)
 
-작성 2026-11-12 · 관련 이슈 #8 · 상태: 코드·합성 메시 테스트·D3 몸으로 확인 완료, **C의 실제 착장 결과로는 아직 확인 못 함**(C4 전)
+작성 2026-11-12 · 관련 이슈 #8 · 상태: 코드·합성 메시 테스트·D3 몸으로 확인 완료. C4 실제 착장 결과 14개로 C가 확인(PR 리뷰, 6절)
 
 착장 결과(옷 메시)가 몸을 파고들었는지 재고, 기준으로 판정하고, 결과를 JSON으로 남긴다. 명세서 6장 착장 검사의 "충돌" 항목이다. 판정이 통과가 아니면 `DRAPE_INVALID`다.
 
@@ -13,9 +13,9 @@
 | `fitting/adapters/meshcheck/check.py` | 점검 실행 `check_drape(몸, 옷, 기준)`, 기준 읽기, C2 실행 폴더 읽기, 기록 쓰기 |
 | `tools/check_drape.py` | OBJ 두 개(또는 C2 실행 폴더)로 점검하고 기록·확인 그림을 남기는 명령 |
 
-**C4에서 쓰는 법**: 착장이 끝난 뒤 `check_drape(MeshInput(몸), MeshInput(착장된 옷), 기준)`을 부른다.
-- 통과가 아니면 `PortFailure(DRAPE_INVALID)`로 실패한다.
-- `result.metrics()`(`drape_check_status`, `penetration_area_ratio`, `max_penetration_mm`)는 포트 지표에 넣는다.
+**쓰는 곳**: 머지된 C4 착장 어댑터는 Blender 안에서 같은 관통 정의(C2 `metrics.evaluate`)로 이미 판정한다. 그래서 MVP에서는 C4 안에서 이 점검을 다시 부르지 않고, **Blender가 없는 PC·CI에서 착장 결과를 다시 확인하는 도구**로 쓴다(`tools.check_drape --c2-run`, 리뷰에서 C 의견).
+- 착장 흐름 안에서 부를 때는 `check_drape(MeshInput(몸), MeshInput(착장된 옷), 기준)`을 부르고, 통과가 아니면 `PortFailure(DRAPE_INVALID)`로 실패한다.
+- `result.metrics()`(`penetration_check_status`, `penetration_area_ratio`, `max_penetration_mm`)는 **관통만** 본 판정이다. 신장·안정·봉제선은 보지 않으므로 착장 검사 전체 통과(C4 `drape_ok`)와 다르다.
 - `result.to_record()`는 작업 기록에 넣는다.
 
 ## 2. 기준과 판정
@@ -53,7 +53,7 @@ C2는 부호 거리를 Blender BVH로 구했다. 그래서 Blender가 없는 PC�
 
 ## 4. D3 몸으로 확인 (SMPL 신체 1)
 
-C4 전이라 실제 착장 결과가 없다. 그래서 D3의 신체 1 몸(175/100/80/40/56)으로 합성 "옷"을 만들어 확인했다. 몸통(키의 52~80 % 높이, 팔 제외) 표면을 정점 법선 방향으로 밀어낸 열린 메시다(정점 1141개, 면 2165개).
+처음 작성할 때는 C4 전이라 실제 착장 결과가 없어서, D3의 신체 1 몸(175/100/80/40/56)으로 합성 "옷"을 만들어 확인했다. 몸통(키의 52~80 % 높이, 팔 제외) 표면을 정점 법선 방향으로 밀어낸 열린 메시다(정점 1141개, 면 2165개).
 
 | 합성 옷 | 판정 | 관통(>3 mm) 면적 | 가장 깊은 곳 | 몸 밖 거리 중앙값 |
 |---|---|---|---|---|
@@ -83,6 +83,6 @@ python -m tools.check_drape --body body.obj --garment g.obj --config config/drap
 
 ## 6. 남은 것
 
-- **C의 실제 착장 결과로 확인:** C2 실행 폴더가 있으면 `--c2-run`으로 Blender 결과와 비교한다. 지금 이 PC에는 Blender와 C2 실행 결과가 없다.
-- **C4 연결:** C4 착장 어댑터가 `check_drape`를 부르게 한다. 어느 몸 메시(D3 산출물)와 비교할지는 C4가 정한다.
+- **관통이 있는 실제 사례:** C가 C4 착장 결과 14개(시연 2벌, AI Hub 4개, 서버 2개, 설정 실험 6개)를 `--c2-run`으로 돌렸더니 모두 관통 면적 0 %였고 Blender 값과 같았다(몸 메시 닫힘도 모두 True, PR #30 리뷰). 0이 아닌 값은 아직 비교하지 못했다.
+- **C4 안에서 부를지:** MVP에서는 부르지 않기로 했다(C 의견, 확정은 팀 단톡방). Blender 없이 다시 확인하는 도구로 쓴다.
 - **몸이 열린 메시인 경우:** 지금은 검증 불가로 실패시킨다. SMPL 몸은 닫혀 있어서 해당하지 않는다.

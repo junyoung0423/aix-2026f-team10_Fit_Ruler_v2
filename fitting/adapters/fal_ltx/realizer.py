@@ -5,11 +5,20 @@ D1 스파이크(`render_to_real.py`)의 설정·가격·내려받기를 그대�
 
 - 흐름: 렌더 클립 업로드 → 생성 요청 제출 → 상태 조회로 대기 → 결과 받기 → 영상 내려받기
   → `artifacts_dir/{job_id}_video.mp4`. 오디오는 끈다(`generate_audio: false`).
-- 재시도 1회: 외부 호출(업로드·제출·상태 조회·결과·내려받기)마다 일시 오류(연결 실패, 429·5xx)면
-  한 번 더 시도한다. **제출은 요청이 fal에 닿지 않았다고 확실할 때만**(연결 실패, 서버가 429·5xx로
-  거절) 다시 보낸다. 응답을 못 받은 제출을 다시 보내면 생성 비용이 두 번 나갈 수 있어서다.
+- 재시도: 이 어댑터는 외부 호출(업로드·상태 조회·결과·내려받기)마다 일시 오류(연결 실패·시간
+  초과, 429·5xx)면 한 번 더 시도한다. **fal_client 1.0.3도 안에서 따로 재시도한다**
+  (`_maybe_retry_request`, 최대 10회: 408·409·429·502·503·504, 시간 초과·전송 오류).
+  그래서 업로드·조회는 일시 오류 한 번에 최대 20번까지 시도될 수 있다. 같은 요청을 다시 보내도
+  생성 비용이 들지 않는 호출이라 그대로 둔다.
+- **제출은 한 번만 보낸다.** 팩토리가 넣는 클라이언트(`factory.FalQueueClient`)는 제출할 때만
+  fal_client 내부 재시도를 끈다. 이 어댑터는 요청이 fal에 닿지 않았다고 확실할 때만(연결 실패,
+  서버가 429·503으로 거절) 한 번 더 보낸다. 500·502·504나 응답을 못 받은 경우는 이미 접수됐을 수
+  있어 다시 보내지 않는다(생성 비용이 두 번 나가지 않게).
 - 같은 요청 ID 재조회: 제출에 성공한 뒤에는 다시 제출하지 않는다(B1 `Realizer` 약속). 같은 작업으로
   다시 부르면 `work_dir/{job_id}/realize/realize.json`의 요청 ID로 상태·결과만 다시 받는다.
+  생성은 끝났는데 영상 파일이 없으면(기록은 성공) 기록의 결과 주소로 내려받기만 다시 한다.
+- 접수 여부를 모르는 제출(요청 ID 없음) 뒤에 같은 작업으로 다시 부르면 **다시 제출하지 않고 실패로
+  알린다.** 다시 보내려면 `RealizeOptions.allow_resubmit`(명령 `--resubmit`)을 명시해야 한다.
 - 타임아웃: 대기 한도(기본 `PortRequest.timeout_seconds`)를 넘으면 `REALIZE_TIMEOUT`.
   요청 ID를 남기고 요청은 취소하지 않는다(나중에 같은 ID로 결과를 받을 수 있게).
 - 비용: 제출 전에 예상 비용(출력 크기 상한 기준)이 `max_cost_usd`를 넘으면 `BUDGET_LIMIT`.
@@ -19,19 +28,23 @@ D1 스파이크(`render_to_real.py`)의 설정·가격·내려받기를 그대�
   남긴다.
   FAL_KEY 값은 어디에도 쓰지 않는다.
 
-오류 코드
-| 상황 | 코드 | retryable | external_request_id |
+오류 코드. `retryable=true`는 B1 계약대로 **같은 요청 ID 재조회**만 뜻한다. 요청 ID가 없는 실패는
+모두 `retryable=false`이고, 다시 하려면 새 작업으로 한다.
+(U = `EXTERNAL_SUBMIT_UNKNOWN`, R = retryable, ID = `external_request_id`)
+| 상황 | 코드 | R | ID |
 |---|---|---|---|
-| 렌더 클립이 없다 | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음 |
+| 렌더 클립이 없다 | U | false | 없음 |
 | 예상 비용이 상한을 넘는다 | `BUDGET_LIMIT` | false | 없음 |
-| 제출 전(업로드·제출 거절)에 두 번 실패 | `EXTERNAL_SUBMIT_UNKNOWN` | true(처음부터 다시) | 없음 |
-| 제출 응답을 못 받음(접수 여부 모름) | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음(모름) |
-| 대기 한도 초과 | `REALIZE_TIMEOUT` | true(같은 ID 재조회) | 있음 |
-| 접수 뒤 상태·결과·내려받기 실패 | `EXTERNAL_SUBMIT_UNKNOWN` | true(같은 ID 재조회) | 있음 |
-| fal이 생성 실패를 알림 | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음(기록에만 남김) |
+| 업로드 두 번 실패, 제출 거절(429·503 두 번 또는 4xx) | U | false | 없음 |
+| 제출 결과를 모름(응답 없음, 500·502·504 등) | U | false | 없음(모름) |
+| 위 상태 뒤 같은 작업으로 다시 부름(`allow_resubmit` 없이) | U | false | 없음 |
+| 대기 한도 초과 | `REALIZE_TIMEOUT` | true | 있음 |
+| 접수 뒤 상태·결과·내려받기가 두 번 실패 | U | true | 있음 |
+| fal이 생성 실패를 알림 | U | false | 없음(기록에만) |
 
 마지막 줄은 계약에 "외부 생성 실패" 코드가 없어서 임시로 쓴다. 재조회하면 안 되므로 요청 ID를
-`PortError`에 넣지 않는다(PR에서 코드 추가를 제안한다).
+`PortError`에 넣지 않는다. `REALIZE_FAILED` 추가는 B가 따로 계약 PR로 하고, 들어오면 이 줄만
+바꾼다.
 """
 
 from __future__ import annotations
@@ -135,13 +148,34 @@ def is_transient(error: BaseException) -> bool:
     )
 
 
+# 서버가 받지 않았다고 볼 수 있는 응답 코드 (다시 보내도 되는 거절)
+_RESEND_STATUS = {429, 503}
+# 응답은 왔지만 처리됐는지 알 수 없는 코드 (408 요청 시간 초과, 409 충돌)
+_AMBIGUOUS_STATUS = {408, 409}
+
+
 def submit_not_sent(error: BaseException) -> bool:
-    """제출이 fal에 접수되지 않았다고 확실한지(연결 실패, 또는 서버가 429·5xx로 거절)."""
+    """제출이 fal에 접수되지 않았다고 확실해서 다시 보내도 되는지.
+
+    연결 실패(요청이 서버에 닿지 않음)와 서버가 429·503으로 거절한 경우만이다. 500·502·504는
+    서버가 요청을 받은 뒤 실패했을 수 있어(접수됐을 수 있음) 넣지 않는다.
+    """
     status = getattr(error, "status_code", None)
     if isinstance(status, int):
-        return status == 429 or status >= 500
+        return status in _RESEND_STATUS
     return bool(_error_names(error) & _NOT_SENT_ERROR_NAMES) or isinstance(
         error, ConnectionRefusedError
+    )
+
+
+def submit_rejected(error: BaseException) -> bool:
+    """서버가 제출을 받아들이지 않았다고 확실한지(4xx, 429·408·409 제외). 다시 보내지 않는다."""
+    status = getattr(error, "status_code", None)
+    return (
+        isinstance(status, int)
+        and 400 <= status < 500
+        and status not in _RESEND_STATUS
+        and status not in _AMBIGUOUS_STATUS
     )
 
 
@@ -164,6 +198,10 @@ class RealizeOptions:
     poll_interval_s: float = 2.0
     wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
     garment_text: str | None = None  # 프롬프트 옷 설명(시험용). 없으면 의류에서 만든다
+    # 접수 여부를 모르는 이전 제출(요청 ID 없음)이 있어도 다시 제출한다. 비용이 두 번 나갈 수 있어
+    # 기본은 끔이다. 사람이 fal 대시보드를 확인한 뒤 명시적으로만 켠다
+    # (`tools.realize_clip --resubmit`).
+    allow_resubmit: bool = False
 
 
 @dataclass
@@ -285,13 +323,26 @@ class FalRealizer:
         output = Path(self.artifacts_dir) / f"{request.job_id}_{REALIZE_OUTPUTS[0]}.mp4"
         artifact_id = output.stem
 
+        state = record.data.get("state")
+        request_id = record.data.get("request_id")
         # 이미 끝난 작업: 다시 부르지 않고 같은 결과를 돌려준다(비용 없음)
-        if record.data.get("state") == SUCCEEDED and output.is_file():
+        if state == SUCCEEDED and output.is_file():
             return self._result(artifact_id, record.data)
+        # 접수 여부를 모르는 제출 뒤: 다시 보내면 비용이 두 번 나갈 수 있어 명시할 때만 보낸다
+        if state == UNKNOWN and not request_id and not self.options.allow_resubmit:
+            raise self._fail(
+                record,
+                record_dir,
+                code=ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                retryable=False,
+                message="이전 실사화 요청이 접수됐는지 알 수 없어 다시 보내지 않았습니다.",
+                state=UNKNOWN,
+                stage="resubmit_guard",
+            )
 
         started = self.clock()
-        request_id = record.data.get("request_id")
-        resumed = bool(request_id) and record.data.get("state") in _RESUMABLE
+        # 생성은 끝났는데 영상 파일만 없으면(기록은 성공) 내려받기만 다시 한다
+        resumed = bool(request_id) and (state in _RESUMABLE or state == SUCCEEDED)
         record.save(
             job_id=request.job_id,
             attempt_id=request.attempt_id,
@@ -306,7 +357,7 @@ class FalRealizer:
             request_id = self._upload_and_submit(request, garment, record, record_dir)
             record.save(state=SUBMITTED, request_id=request_id)
 
-        response = record.data.get("response") if record.data.get("state") == COMPLETED else None
+        response = record.data.get("response") if state in (COMPLETED, SUCCEEDED) else None
         if response is None:
             self._wait(request, request_id, record, record_dir, started)
             response = self._fetch_result(request_id, record, record_dir)
@@ -423,7 +474,7 @@ class FalRealizer:
                 record,
                 record_dir,
                 code=ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
-                retryable=is_transient(video_url),  # 아무것도 제출되지 않았다
+                retryable=False,  # 요청 ID가 없다(B1: retryable은 같은 ID 재조회만)
                 message="렌더 클립을 실사화 서비스에 올리지 못했습니다.",
                 state=FAILED,
                 error=video_url,
@@ -441,16 +492,17 @@ class FalRealizer:
                 if submit_not_sent(error) and attempt < MAX_ATTEMPTS:
                     self._retry_note(record, "submit", error)
                     continue
-                not_sent = submit_not_sent(error)
+                # 거절이 확실하면(연결 실패·429·503을 두 번, 또는 4xx) 실패, 아니면 접수 여부를 모름
+                refused = submit_not_sent(error) or submit_rejected(error)
                 raise self._fail(
                     record,
                     record_dir,
                     code=ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
-                    retryable=not_sent,
+                    retryable=False,  # 요청 ID가 없다(B1: retryable은 같은 ID 재조회만)
                     message="실사화 요청을 접수하지 못했습니다."
-                    if not_sent
+                    if refused
                     else "실사화 요청이 접수됐는지 확인하지 못했습니다.",
-                    state=FAILED if not_sent else UNKNOWN,
+                    state=FAILED if refused else UNKNOWN,
                     error=error,
                     stage="submit",
                 ) from error

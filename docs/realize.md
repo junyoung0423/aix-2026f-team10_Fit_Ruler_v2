@@ -28,33 +28,57 @@
 
 ## 3. 재시도·재조회·실패
 
-**재시도 1회**: 업로드·제출·상태 조회·결과·내려받기마다 일시 오류(연결 실패·시간 초과, 429·5xx)면 한 번 더 시도한다.
+**fal_client도 안에서 재시도한다 (리뷰 반영)**: fal_client 1.0.3의 요청은 모두 `_maybe_retry_request`를 거친다. 아래 경우 최대 10번(`MAX_ATTEMPTS`)까지 다시 보낸다.
+- 408·409·429·502·503·504
+- 시간 초과, 전송 오류
 
-**제출은 조심한다**: 제출을 다시 보내면 생성 비용이 두 번 나갈 수 있다. 그래서 요청이 fal에 닿지 않았다고 확실할 때만 다시 보낸다.
-- 다시 보내는 경우: 연결 실패(`ConnectError`·`ConnectTimeout`), 서버가 429·5xx로 거절
-- 보내지 않는 경우: 보냈는데 응답을 못 받음(`ReadTimeout` 등)
-  - 접수 여부를 모르므로 `EXTERNAL_SUBMIT_UNKNOWN`(retryable false)으로 멈춘다.
+**업로드·상태 조회·결과·내려받기**
+- 이 어댑터가 일시 오류(연결 실패·시간 초과, 429·5xx)면 한 번 더 시도한다.
+- fal_client 내부 재시도까지 더하면 일시 오류 한 번에 최대 20번 시도될 수 있다.
+- 같은 요청을 다시 보내도 생성 비용이 들지 않는 호출이라 그대로 둔다.
+
+**제출은 한 번만 보낸다**: 제출을 다시 보내면 생성 비용이 두 번 나갈 수 있다.
+- **내부 재시도 끔:** 팩토리가 넣는 `FalQueueClient`가 제출하는 동안만 `fal_client.client.MAX_ATTEMPTS`를 1로 두고 끝나면 되돌린다.
+  - 다른 제출과 겹치지 않게 잠금을 건다. 서버는 영상 작업을 한 번에 하나만 돌린다.
+  - fal_client 내부 구조가 바뀌어 이 값이 없으면 그냥 부른다. 이때는 도구 버전 기록에 `submit_retry_guard=off`가 남는다.
+- **다시 보내는 경우(1번만):** 요청이 fal에 닿지 않았다고 확실할 때다.
+  - 연결 실패(`ConnectError`·`ConnectTimeout`)
+  - 서버가 429·503으로 거절
+- **다시 보내지 않는 경우**
+  - 500·502·504, 408·409: 서버가 받은 뒤 실패했을 수 있다(접수됐을 수 있음).
+  - 응답을 못 받음(`ReadTimeout` 등)
+  - 이때는 접수 여부를 모르므로 `EXTERNAL_SUBMIT_UNKNOWN`으로 멈추고 기록 상태는 `unknown`이다.
+- **그 밖의 4xx:** 서버가 거절한 것이 확실하므로 실패(`failed`)로 멈춘다.
+
+**접수 여부를 모르는 제출 뒤에 다시 부르면 (리뷰 반영)**: 같은 작업으로 다시 불러도 **다시 제출하지 않고 실패로 알린다.**
+- 요청 ID가 없어서 이어 받을 수 없고, 다시 보내면 비용이 두 번 나갈 수 있기 때문이다.
+- fal 대시보드에서 확인한 뒤에도 다시 보내려면 `RealizeOptions.allow_resubmit`(명령 `--resubmit`)을 명시한다.
 
 **같은 요청 ID 재조회**: B1 `Realizer` 약속이다.
 - 제출에 성공한 뒤 실패하면 `work_dir/{job_id}/realize/realize.json`에 요청 ID와 상태가 남는다.
 - 같은 작업으로 다시 부르면 다시 제출하지 않는다. 그 ID로 상태·결과만 받는다.
 - 생성은 끝났는데 내려받기만 실패했으면, 다시 부를 때 내려받기만 한다.
+- 기록은 성공인데 영상 파일이 없으면, 기록의 결과 주소로 내려받기만 다시 한다(리뷰 반영).
 - 이미 성공한 작업을 다시 부르면 fal을 부르지 않고 같은 결과를 돌려준다.
+
+**`retryable`의 뜻 (리뷰 반영)**: B1 계약대로 `retryable=true`는 **같은 요청 ID 재조회**만 뜻한다. 요청 ID가 없는 실패는 모두 `false`이고, 다시 하려면 새 작업으로 한다.
 
 | 상황 | 코드 | retryable | `external_request_id` |
 |---|---|---|---|
 | 렌더 클립이 없다 | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음 |
 | 예상 비용이 상한 초과 | `BUDGET_LIMIT` | false | 없음 |
-| 업로드·제출 거절이 두 번 | `EXTERNAL_SUBMIT_UNKNOWN` | true(아무것도 제출되지 않음) | 없음 |
-| 제출 응답을 못 받음 | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음(모름) |
-| 대기 한도 초과 | `REALIZE_TIMEOUT` | true(같은 ID 재조회) | 있음 |
-| 접수 뒤 상태·결과·내려받기가 두 번 실패 | `EXTERNAL_SUBMIT_UNKNOWN` | true(같은 ID 재조회) | 있음 |
+| 업로드가 두 번 실패, 제출 거절(429·503 두 번, 또는 4xx) | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음 |
+| 제출 결과를 모름(응답 없음, 500·502·504 등) | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음(모름) |
+| 위 상태 뒤 같은 작업으로 다시 부름(`--resubmit` 없이) | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음 |
+| 대기 한도 초과 | `REALIZE_TIMEOUT` | true | 있음 |
+| 접수 뒤 상태·결과·내려받기가 두 번 실패 | `EXTERNAL_SUBMIT_UNKNOWN` | true | 있음 |
 | fal이 생성 실패를 알림(`Completed.error`) | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음(기록에만) |
 
 - 대기 한도를 넘어도 fal 요청은 취소하지 않는다. 나중에 같은 ID로 결과를 받을 수 있게 하려는 것이다.
 - 마지막 줄은 계약에 "외부 생성 실패" 코드가 없어서 임시로 쓴 것이다.
   - 재조회하면 안 되므로 `PortError`에 요청 ID를 넣지 않고, ID는 기록에만 남긴다.
-  - B에게 `REALIZE_FAILED` 추가를 제안한다.
+  - `REALIZE_FAILED` 추가는 B가 따로 계약 PR로 하기로 했다(리뷰). 들어오면 이 줄만 새 코드로 바꾼다.
+- 같은 ID 재조회가 끝없이 돌지 않게 하는 횟수 상한은 B5에서 둔다(리뷰).
 
 ## 4. 기록과 지표
 
@@ -87,6 +111,7 @@ python -m tools.realize_clip --input artifacts/spikes/fal_ltx/real-1/input_test_
 python -m tools.realize_clip --name d4_try --yes \
   --garment-text "plain black short-sleeve crew-neck cotton T-shirt"
 # 끊긴 작업 이어 받기: 같은 --name으로 다시 실행하면 기록의 요청 ID로 이어 받는다(다시 제출하지 않음)
+# 접수 여부를 모르는 요청 뒤에는 멈춘다. fal 대시보드를 확인한 뒤에도 다시 보내려면 --resubmit (비용 발생)
 ```
 
 드라이런 결과(D1 시험 클립 540×720, 3초)는 다음과 같다.
@@ -124,4 +149,4 @@ python -m tools.realize_clip --name d4_try --yes \
 
 - **C5 렌더 클립으로 확인:** 실제 3D 렌더 클립의 크기·fps에 따라 비용이 달라진다. `light`와 `strong-v2` 비교도 이때 한다(D1 열린 질문).
 - **`default.yaml` 전환:** C5가 실제 렌더 클립을 만들고 팀원 PC에 FAL_KEY가 준비되면 `realize` 줄을 바꾼다.
-- **오류 코드:** 외부 생성 실패용 코드(`REALIZE_FAILED` 제안)는 B가 계약에 넣을지 정한다.
+- **오류 코드:** 외부 생성 실패용 코드 `REALIZE_FAILED`는 B가 따로 계약 PR로 넣기로 했다(리뷰). 들어오면 어댑터의 한 줄을 바꾼다.

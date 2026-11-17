@@ -12,6 +12,7 @@ from .realizer import (
     garment_description,
     is_transient,
     submit_not_sent,
+    submit_rejected,
 )
 from .render_to_real import (
     ENDPOINT,
@@ -50,5 +51,6 @@ __all__ = [
     "port_metrics",
     "run_render_to_real",
     "submit_not_sent",
+    "submit_rejected",
     "with_trigger",
 ]

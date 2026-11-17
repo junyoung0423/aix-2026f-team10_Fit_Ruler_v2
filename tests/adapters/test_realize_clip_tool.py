@@ -74,6 +74,37 @@ def test_real_call_with_a_fake_client_saves_the_video(tmp_path, clip, monkeypatc
     assert "req-123" in capsys.readouterr().out
 
 
+def test_unknown_submit_is_blocked_until_resubmit_is_given(tmp_path, clip, monkeypatch, capsys):
+    """응답 없는 제출 뒤 같은 --name으로 다시 실행하면 멈추고, --resubmit일 때만 다시 보낸다."""
+    from tests.adapters.test_fal_realizer import ReadTimeout
+
+    monkeypatch.setenv("FAL_KEY", "dummy")
+    output = write_test_clip(tmp_path / "output.mp4", seconds=0.4, size=(96, 128))
+    client = FakeQueue(submit_errors=[ReadTimeout("응답 없음")])
+    clock = FakeClock()
+
+    def fake_factory(settings):
+        return FalRealizer(
+            client=client,
+            artifacts_dir=settings.artifacts_dir,
+            work_dir=settings.work_dir,
+            downloader=Downloader(output),
+            clock=clock,
+            wall=clock,
+            sleep=clock.sleep,
+        )
+
+    monkeypatch.setattr(tool, "make_realizer", fake_factory)
+    base = ["--name", "t4", "--out-dir", str(tmp_path / "out"), "--yes"]
+    assert tool.main(["--input", str(clip), *base]) == tool.EXIT_FAILED
+    assert tool.main(base) == tool.EXIT_FAILED  # 다시 제출하지 않고 멈춘다
+    assert client.calls["submit"] == 1
+    assert "--resubmit" in capsys.readouterr().out
+
+    assert tool.main([*base, "--resubmit"]) == tool.EXIT_OK
+    assert client.calls["submit"] == 2
+
+
 def test_resume_needs_an_existing_clip(tmp_path, capsys):
     assert tool.main(["--name", "none", "--out-dir", str(tmp_path)]) == tool.EXIT_SETUP
     assert tool.main(["--name", "../bad", "--out-dir", str(tmp_path)]) == tool.EXIT_SETUP

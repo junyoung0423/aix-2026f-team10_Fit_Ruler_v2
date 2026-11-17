@@ -1,7 +1,9 @@
 """착장 점검 실행 (D4, #8): 몸·옷 메시 → 관통 측정 → 판정 → 기록 JSON.
 
-C4 착장 어댑터는 착장이 끝난 뒤 `check_drape(...)`를 부르고, 결과가 통과가 아니면
-`DRAPE_INVALID`로 실패한다. 결과의 `metrics()`는 포트 지표에, `to_record()`는 기록에 쓴다.
+C4 착장 어댑터는 Blender 안에서 같은 관통 정의(C2 `metrics`)로 이미 판정한다. 이 점검은 그 결과를
+Blender 없는 PC·CI에서 다시 확인할 때 쓴다(`tools.check_drape --c2-run`). 착장 흐름 안에서 부를 때는
+결과가 통과가 아니면 `DRAPE_INVALID`로 실패한다. `metrics()`는 포트 지표에, `to_record()`는
+기록에 쓴다.
 """
 
 from __future__ import annotations

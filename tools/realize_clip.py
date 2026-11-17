@@ -74,6 +74,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--timeout", type=int, default=600, help="대기 상한(초)")
     parser.add_argument("--out-dir", type=Path, help="결과 상위 폴더 (기본 artifacts/realize)")
     parser.add_argument("--yes", action="store_true", help="실제로 fal을 호출한다 (비용 발생)")
+    parser.add_argument(
+        "--resubmit",
+        action="store_true",
+        help="접수 여부를 모르는 이전 요청이 있어도 다시 제출한다 (비용이 다시 들 수 있음)",
+    )
     return parser.parse_args(argv)
 
 
@@ -113,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         resolution=args.resolution,
         max_cost_usd=args.max_cost_usd,
         garment_text=args.garment_text,
+        allow_resubmit=args.resubmit,
     )
     request = PortRequest(
         job_id=name,
@@ -173,6 +179,15 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"요청 ID {error.external_request_id} — 같은 --name으로 다시 실행하면 이어 받습니다"
             )
+        elif (work / name / "realize" / "realize.json").is_file():
+            state = json.loads(
+                (work / name / "realize" / "realize.json").read_text(encoding="utf-8")
+            ).get("state")
+            if state == "unknown":
+                print(
+                    "이전 요청이 접수됐는지 알 수 없습니다. fal 대시보드에서 확인한 뒤에도 다시 "
+                    "보내려면 --resubmit을 붙이세요(비용이 다시 들 수 있음)."
+                )
         print(f"기록: {work / name / 'realize'}", file=sys.stderr)
         return EXIT_FAILED
 

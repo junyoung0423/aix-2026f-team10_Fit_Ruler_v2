@@ -109,7 +109,7 @@ def test_record_and_metrics_are_json():
     assert record["thresholds"]["penetration_area_ratio_max"] == 0.01
     assert record["details"] == {"x": 1}
     assert result.metrics() == {
-        "drape_check_status": FAIL,
+        "penetration_check_status": FAIL,
         "penetration_area_ratio": 0.02,
         "max_penetration_mm": 10.0,
     }

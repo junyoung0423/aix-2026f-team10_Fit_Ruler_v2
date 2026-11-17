@@ -17,7 +17,7 @@ import pytest
 pytest.importorskip("cv2")  # 선택 의존성 realize가 없으면 건너뛴다
 
 from fitting.adapters.fal_ltx import ENDPOINT, FalRealizer, RealizeOptions  # noqa: E402
-from fitting.adapters.fal_ltx.factory import make_realizer  # noqa: E402
+from fitting.adapters.fal_ltx.factory import FalQueueClient, make_realizer  # noqa: E402
 from fitting.domain import ErrorCode, GarmentVariant, Stage  # noqa: E402
 from fitting.ports import PortFailure, PortRequest, Realizer  # noqa: E402
 from server.wiring import AdapterConfigError, AdapterSettings  # noqa: E402
@@ -272,7 +272,7 @@ def test_upload_failing_twice_fails_before_anything_is_submitted(tmp_path, clips
     error = caught.value.error
     assert error.code == ErrorCode.EXTERNAL_SUBMIT_UNKNOWN
     assert error.stage == Stage.REALIZE
-    assert error.retryable is True  # 제출 전이라 처음부터 다시 해도 된다
+    assert error.retryable is False  # 요청 ID가 없다(B1: retryable은 같은 ID 재조회만)
     assert error.external_request_id is None
     assert client.calls["submit"] == 0
 
@@ -303,6 +303,55 @@ def test_bad_request_is_not_retried(tmp_path, clips):
     assert client.calls["submit"] == 1
     assert caught.value.error.retryable is False
     assert record(tmp_path, "error.json")["status_code"] == 422
+    assert record(tmp_path)["state"] == "failed"  # 서버가 거절했다(접수 안 됨)
+
+
+@pytest.mark.parametrize("status", [500, 502, 504])
+def test_server_error_on_submit_may_be_accepted_so_it_is_not_sent_again(tmp_path, clips, status):
+    """500·502·504는 서버가 받은 뒤 실패했을 수 있어 다시 보내지 않고 '모름'으로 둔다."""
+    client = FakeQueue(submit_errors=[HTTPError(status)])
+    with pytest.raises(PortFailure) as caught:
+        make(tmp_path, clips, client).realize(request(), GARMENT)
+    assert client.calls["submit"] == 1
+    assert caught.value.error.retryable is False
+    assert record(tmp_path)["state"] == "unknown"
+
+
+def test_unknown_submit_is_not_sent_again_on_the_next_call(tmp_path, clips):
+    """접수 여부를 모르는 제출 뒤 같은 작업으로 다시 부르면 제출하지 않고 실패로 알린다."""
+    client = FakeQueue(submit_errors=[ReadTimeout("응답 없음")])
+    realizer = make(tmp_path, clips, client)
+    with pytest.raises(PortFailure):
+        realizer.realize(request(), GARMENT)
+
+    with pytest.raises(PortFailure) as caught:
+        realizer.realize(request(), GARMENT)
+    error = caught.value.error
+    assert error.retryable is False
+    assert "다시 보내지 않았습니다" in error.safe_message
+    assert client.calls == {"upload": 1, "submit": 1, "status": 0, "result": 0}
+    assert record(tmp_path, "error.json")["stage"] == "resubmit_guard"
+
+    # 사람이 확인한 뒤 명시적으로 켜면 다시 보낸다
+    realizer.options = RealizeOptions(poll_interval_s=2.0, allow_resubmit=True)
+    result = realizer.realize(request(), GARMENT)
+    assert result.output_artifact_ids == ["job1_video"]
+    assert client.calls["submit"] == 2
+
+
+def test_succeeded_record_without_the_video_downloads_again_without_submitting(tmp_path, clips):
+    client = FakeQueue()
+    realizer = make(tmp_path, clips, client)
+    realizer.realize(request(), GARMENT)
+    (tmp_path / "artifacts" / "job1_video.mp4").unlink()
+
+    result = realizer.realize(request(), GARMENT)
+
+    assert (tmp_path / "artifacts" / "job1_video.mp4").is_file()
+    assert result.metrics["external_request_id"] == "req-123"
+    assert client.calls["submit"] == 1  # 다시 제출하지 않았다
+    assert client.calls["result"] == 1  # 기록의 결과 주소로 내려받기만 다시 했다
+    assert realizer.downloader.calls == 2
 
 
 # --- 같은 요청 ID 재조회와 타임아웃 -------------------------------------------------------------
@@ -427,3 +476,81 @@ def test_factory_builds_the_realizer_with_fal_client(tmp_path):
     assert isinstance(adapter, FalRealizer)
     assert adapter.artifacts_dir == tmp_path / "artifacts"
     assert callable(getattr(adapter, "realize", None))
+    # 설치된 fal_client에서 제출할 때 내부 재시도를 끌 수 있어야 한다(내부 구조가 바뀌면 알 수 있게)
+    assert isinstance(adapter.client, FalQueueClient)
+    assert adapter.client.retry_guard is True
+    assert "submit_retry_guard=on" in adapter.tool_versions()["fal_client"]
+
+
+class FakeFalModule:
+    """fal_client 모듈 모양의 가짜. 제출할 때 내부 재시도 횟수(client.MAX_ATTEMPTS)를 적어 둔다."""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.client = SimpleNamespace(MAX_ATTEMPTS=10)
+        self.fail = fail
+        self.seen: list[int] = []
+
+    def submit(self, application, arguments):
+        self.seen.append(self.client.MAX_ATTEMPTS)
+        if self.fail:
+            raise ReadTimeout("응답 없음")
+        return SimpleNamespace(request_id="req-1")
+
+    def status(self, application, request_id, *, with_logs=False):
+        self.seen.append(self.client.MAX_ATTEMPTS)
+        return Completed()
+
+
+def test_queue_client_turns_off_internal_retries_only_while_submitting():
+    module = FakeFalModule()
+    queue = FalQueueClient(module)
+
+    assert queue.submit(ENDPOINT, {}).request_id == "req-1"
+    queue.status(ENDPOINT, "req-1")
+
+    assert module.seen == [1, 10]  # 제출만 1번, 조회는 fal_client 내부 재시도 그대로
+    assert module.client.MAX_ATTEMPTS == 10  # 되돌렸다
+
+
+def test_queue_client_restores_retries_after_a_failed_submit():
+    module = FakeFalModule(fail=True)
+    with pytest.raises(ReadTimeout):
+        FalQueueClient(module).submit(ENDPOINT, {})
+    assert module.seen == [1]
+    assert module.client.MAX_ATTEMPTS == 10
+
+
+def test_queue_client_without_the_internal_setting_still_submits():
+    module = SimpleNamespace(submit=lambda application, arguments: "ok")
+    queue = FalQueueClient(module)
+    assert queue.retry_guard is False
+    assert queue.submit(ENDPOINT, {}) == "ok"
+
+
+def test_guard_really_sends_one_submit_with_the_installed_fal_client(monkeypatch):
+    """설치된 fal_client로 확인: 응답 없는 제출을 그냥 부르면 10번, 래퍼로 부르면 1번 나간다.
+
+    네트워크는 쓰지 않는다. fal_client 내부 요청 함수를 가짜(항상 ReadTimeout)로 바꾼다.
+    """
+    fal_client = pytest.importorskip("fal_client")
+    httpx = pytest.importorskip("httpx")
+    inner = fal_client.client
+    monkeypatch.setenv("FAL_KEY", "dummy-not-a-real-key")
+    calls = {"n": 0}
+
+    def no_network(client, method, url, **kwargs):
+        calls["n"] += 1
+        raise httpx.ReadTimeout("가짜 시간 초과", request=httpx.Request(method, url))
+
+    monkeypatch.setattr(inner, "_request", no_network)
+    monkeypatch.setattr(inner.time, "sleep", lambda seconds: None)
+
+    with pytest.raises(httpx.ReadTimeout):
+        FalQueueClient(fal_client).submit("fal-ai/test/app", {"a": 1})
+    assert calls["n"] == 1
+    assert inner.MAX_ATTEMPTS == 10
+
+    calls["n"] = 0
+    with pytest.raises(httpx.ReadTimeout):
+        fal_client.submit("fal-ai/test/app", {"a": 1})
+    assert calls["n"] == 10  # 래퍼 없이 부르면 내부에서 10번 보낸다
