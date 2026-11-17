@@ -59,6 +59,7 @@ export const ERROR_LABEL: Partial<Record<ErrorCode, string>> = {
   RENDER_FAILED: '정면 렌더를 만들지 못했습니다.',
   REALIZE_TIMEOUT: '실사화 응답이 제시간에 오지 않았습니다.',
   EXTERNAL_SUBMIT_UNKNOWN: '실사화 요청 결과를 확인하지 못했습니다.',
+  REALIZE_FAILED: '실사화 서비스가 영상을 만들지 못했습니다.',
   VALIDATION_FAILED: '실사 영상이 렌더와 색·실루엣이 달라 검증을 통과하지 못했습니다.',
   VALIDATION_UNVERIFIABLE: '실사 영상을 검증할 수 없었습니다.',
   BUDGET_LIMIT: '실사화 사용 한도에 도달했습니다.',

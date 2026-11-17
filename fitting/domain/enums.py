@@ -74,6 +74,9 @@ class ErrorCode(str, Enum):
     # 외부 제출 결과를 알 수 없다. PortError.external_request_id가 있으면 다시 제출하지 말고 같은
     # 요청 ID로 결과를 다시 조회한다. 이때 retryable=true는 같은 요청 ID 재조회를 뜻한다(B5·D4).
     EXTERNAL_SUBMIT_UNKNOWN = "EXTERNAL_SUBMIT_UNKNOWN"
+    # [제안] 외부 생성 요청은 접수됐지만 외부 서비스가 생성 실패를 알려 왔다. 다시 조회하거나
+    # 제출해도 같은 결과이므로 retryable=false이고, 요청 ID는 PortError가 아니라 기록에만 남긴다.
+    REALIZE_FAILED = "REALIZE_FAILED"
     VALIDATION_FAILED = "VALIDATION_FAILED"
     VALIDATION_UNVERIFIABLE = "VALIDATION_UNVERIFIABLE"
     BUDGET_LIMIT = "BUDGET_LIMIT"
