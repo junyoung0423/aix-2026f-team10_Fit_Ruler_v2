@@ -1,0 +1,12 @@
+# 착장(C4)과 정면 렌더(C5)를 실제 Blender 어댑터로, 나머지 영상 단계는 가짜로 돌리는 설정.
+#
+# 사용: FIT_ADAPTERS=drape_render_blender (또는 --adapters drape_render_blender)
+# 필요한 환경변수와 개발용 몸(FIT_DRAPE_BODY_OBJ)은 docs/adapters.md "착장 어댑터 (C4)"·
+# "렌더 어댑터 (C5)" 절. default.yaml과 drape_blender.yaml은 바꾸지 않는다.
+version: adapters_v0
+ports:
+  body: fake
+  drape: "fitting.adapters.blender.draper:make_draper"
+  render: "fitting.adapters.blender.renderer:make_renderer"
+  realize: fake
+  validate: fake

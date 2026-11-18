@@ -101,7 +101,18 @@ class Draper(Protocol):
 class Renderer(Protocol):
     """정면 고정 카메라 클립을 렌더한다 (C5). 산출물은 `RENDER_OUTPUTS`.
 
-    지표 키는 C5에서 정한다.
+    지표: `width`, `height`, `fps`, `frames`, `duration_s`, `codec`, `static_clip`(정지 클립 1),
+    `render_seconds`(Blender 전체 초), `still_seconds`(정지 프레임 렌더 초), `engine`, `samples`,
+    `garment_mask_ratio`(옷 마스크 흰 픽셀 비율), `head_vertices_in_frame`(화면 안 머리 정점, 0),
+    `garment_vertices_out_of_frame`(화면 밖 옷 정점), `top_limited_by`(위쪽 경계를 정한 것),
+    `garment_color_hex`·`garment_color_source`(쓴 옷 색과 출처: color_hex, color_table, default)·
+    `garment_color_warnings`, `garment_median_hex`·`garment_delta_e00`(마스크 안 렌더 색 중앙값과
+    그 색의 color_hex 대비 CIEDE2000, 기록용), `still_pixel_sha256`(재현성 확인),
+    `render_config`·`render_config_sha256`(쓴 렌더 설정), `render_mask_artifact_id`·
+    `render_still_artifact_id`(계약 출력이 아닌 옷 마스크·정지 프레임 산출물 ID).
+
+    실패는 모두 `RENDER_FAILED`(retryable=false)다. 구현과 자세한 뜻은
+    `fitting/adapters/blender/renderer.py`, `docs/adapters.md`, `docs/render.md`.
     """
 
     def render(self, request: PortRequest, garment: GarmentVariant) -> PortResult: ...
