@@ -7,7 +7,12 @@ import yaml
 
 import tools.run_fitting_once as tool
 from fitting.domain import Stage
-from fitting.services.fitting import DEFAULT_STAGE_TIMEOUTS_S, VISUAL_STAGES, RunSettings
+from fitting.services.fitting import (
+    DEFAULT_STAGE_TIMEOUTS_S,
+    DEFAULT_WATCHDOG_GRACE_S,
+    VISUAL_STAGES,
+    RunSettings,
+)
 from fitting.services.pipeline import (
     DEFAULT_PIPELINE_PATH,
     PIPELINE_CONFIG_ENV,
@@ -26,7 +31,13 @@ GOOD = {
         "REALIZE": 600,
         "VALIDATE": 120,
     },
-    "watchdog_grace_s": 60,
+    "watchdog_grace_s": {
+        "BODY_FIT": 60,
+        "DRAPE": 660,
+        "RENDER": 60,
+        "REALIZE": 120,
+        "VALIDATE": 60,
+    },
     "requery": {"max_attempts": 2, "delay_s": 5},
 }
 
@@ -57,7 +68,7 @@ def test_the_committed_file_loads_and_matches_the_defaults_in_code():
     assert {s: settings.stage_timeouts_s[s] for s in VISUAL_STAGES} == dict(
         DEFAULT_STAGE_TIMEOUTS_S
     )
-    assert settings.watchdog_grace_s == 60
+    assert settings.watchdog_grace_s == dict(DEFAULT_WATCHDOG_GRACE_S)  # 숫자 60 → 단계별
     assert (settings.requery_max_attempts, settings.requery_delay_s) == (2, 5)
 
 
@@ -163,3 +174,64 @@ def test_run_fitting_once_stops_with_exit_code_1_on_a_wrong_pipeline_file(
     assert code == 1
     assert "실패 처리 설정 파일을 읽을 수 없습니다" in captured.err
     assert "피팅 시작" not in captured.out
+
+
+# --- 단계별 감시 여유 ---------------------------------------------------------------------------
+
+
+def test_the_committed_file_has_the_per_stage_grace_from_the_work_order():
+    settings = load_run_settings(DEFAULT_PIPELINE_PATH)
+
+    assert {s.value: settings.grace_for(s) for s in VISUAL_STAGES} == {
+        "BODY_FIT": 60,
+        "DRAPE": 660,
+        "RENDER": 60,
+        "REALIZE": 120,
+        "VALIDATE": 60,
+    }
+
+
+def test_run_settings_defaults_and_the_loaded_file_give_the_same_grace():
+    loaded = load_run_settings()
+
+    assert {s: RunSettings().grace_for(s) for s in VISUAL_STAGES} == {
+        s: loaded.grace_for(s) for s in VISUAL_STAGES
+    }
+
+
+def test_a_single_number_applies_to_every_stage(tmp_path):
+    settings = load_run_settings(write(tmp_path, changed(watchdog_grace_s=45)))
+
+    assert {settings.grace_for(s) for s in VISUAL_STAGES} == {45.0}
+
+
+def test_a_mapping_may_use_zero_and_missing_stages_fall_back_to_the_default():
+    settings = RunSettings(watchdog_grace_s={Stage.RENDER: 0.0})
+
+    assert settings.grace_for(Stage.RENDER) == 0
+    assert settings.grace_for(Stage.DRAPE) == DEFAULT_WATCHDOG_GRACE_S[Stage.DRAPE]
+
+
+BAD_GRACE = {
+    "단계 누락": (changed(watchdog_grace_s__RENDER=KeyError), "RENDER"),
+    "모르는 단계": (changed(watchdog_grace_s__FIT_REPORT=5), "FIT_REPORT"),
+    "음수": (changed(watchdog_grace_s__DRAPE=-1), "watchdog_grace_s.DRAPE"),
+    "불리언": (changed(watchdog_grace_s__DRAPE=True), "watchdog_grace_s.DRAPE"),
+    "문자열": (changed(watchdog_grace_s__REALIZE="120"), "watchdog_grace_s.REALIZE"),
+}
+
+
+@pytest.mark.parametrize("case", BAD_GRACE)
+def test_a_wrong_per_stage_grace_is_rejected_with_the_stage_name(tmp_path, case):
+    data, expected = BAD_GRACE[case]
+
+    with pytest.raises(PipelineConfigError) as caught:
+        load_run_settings(write(tmp_path, data))
+
+    assert expected in str(caught.value)
+
+
+def test_a_zero_in_the_mapping_is_accepted(tmp_path):
+    settings = load_run_settings(write(tmp_path, changed(watchdog_grace_s__RENDER=0)))
+
+    assert settings.grace_for(Stage.RENDER) == 0

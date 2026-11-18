@@ -399,9 +399,8 @@ def main(argv: list[str] | None = None) -> int:
             settings=run_settings,
             on_progress=_ProgressPrinter(),
         )
-    except (
-        Exception
-    ) as error:  # 영상 경로 밖의 예상 밖 예외. 영상 단계의 예외는 run_fitting이 바꾼다
+    # 영상 경로 밖의 예상 밖 예외. 영상 단계의 예외는 run_fitting이 바꾼다
+    except Exception as error:
         traceback.print_exc()
         print(
             f"오류: 피팅 실행 중 예상하지 못한 예외가 났습니다 ({type(error).__name__}: {error})",

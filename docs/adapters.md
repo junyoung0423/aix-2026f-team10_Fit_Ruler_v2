@@ -65,7 +65,8 @@ def make_xxx(settings: AdapterSettings) -> 포트 객체    # BodyBuilder / Drap
 - 실패하면 `PortFailure(PortError(code=…, stage=…, retryable=…, safe_message=…))`를 던집니다. 화면에는 `safe_message`와 오류 코드만 보이고 내부 경로·원문은 `internal_details_ref`가 가리키는 기록에만 둡니다.
 - **대체 결과를 성공으로 돌려주지 않습니다.** 못 만들었으면 실패를 던집니다(실사화 대신 렌더 영상을 돌려주는 식으로 성공 처리하지 않기).
 - `PortFailure`가 아닌 예상 밖 예외는 서버가 그 단계의 실패(`FAILED`)로 바꿔 주지만 원인이 로그에만 남습니다. 예상되는 실패는 `PortFailure`로 던지세요.
-- **시간 제한 (B5)**: `PortRequest.timeout_seconds`가 그 단계의 시간 제한입니다(`config/pipeline_v0.yaml`). 어댑터는 이 안에서 **스스로 끝내고**, Blender 같은 외부 프로그램은 어댑터가 정리합니다. 제한 + 60초가 지나도 돌아오지 않으면 서비스가 그 단계를 실패로 끝내고 늦게 온 결과는 버리지만, 멈춘 호출 자체는 끝내지 못합니다(파이썬은 스레드를 강제로 끝낼 수 없습니다).
+- **시간 제한 (B5)**: `PortRequest.timeout_seconds`가 그 단계의 시간 제한입니다(`config/pipeline_v0.yaml`). 어댑터는 이 안에서 **스스로 끝내고**, Blender 같은 외부 프로그램은 어댑터가 정리합니다. 제한 + 그 단계의 감시 여유(`watchdog_grace_s`, 기본 60초·착장 660초·실사화 120초)가 지나도 돌아오지 않으면 서비스가 그 단계를 실패로 끝내고 늦게 온 결과는 버리지만, 멈춘 호출 자체는 끝내지 못합니다(파이썬은 스레드를 강제로 끝낼 수 없습니다).
+- **정상적으로 `timeout_seconds`를 넘길 수 있는 단계**(예: 착장의 분석)는 B에게 알려 `config/pipeline_v0.yaml`의 그 단계 `watchdog_grace_s`를 키웁니다. 안 그러면 서비스가 정상 실행을 실패로 끊습니다.
 - **`retryable=true`는 `external_request_id`가 있을 때만** 씁니다. 서비스는 이 둘이 모두 있는 실패만 같은 요청 ID로 다시 조회합니다(`config/pipeline_v0.yaml`의 `requery`, 최대 2번). 요청 ID가 없는 실패는 `retryable=false`입니다.
 - **같은 `job_id`로 다시 불리면 재조회로 처리합니다.** 외부 생성 요청을 이미 접수했다면 다시 제출하지 말고 기록의 요청 ID로 상태·결과만 받으세요(생성 비용이 다시 나가지 않게). 다시 부르는 쪽은 `attempt_id`만 바꿉니다.
 

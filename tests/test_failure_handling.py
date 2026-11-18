@@ -40,7 +40,7 @@ from fitting.services.fitting import (
 from fitting.services.jobs import JobRunner
 from server.app import create_app
 
-from .conftest import EXAMPLES
+from .conftest import EXAMPLES, REPO_ROOT
 
 JOB = "job_b5"
 NOW = datetime(2026, 11, 18, tzinfo=timezone.utc)
@@ -504,7 +504,7 @@ def test_default_settings_match_the_pipeline_file(request_for, make_garment):
 
     assert RunSettings().stage_timeouts_s == {}  # 비어 있으면 아래 기본값을 쓴다
     assert {s: RunSettings().timeout_for(s) for s in VISUAL_STAGES} == dict(loaded.stage_timeouts_s)
-    assert RunSettings().watchdog_grace_s == loaded.watchdog_grace_s
+    assert dict(RunSettings().watchdog_grace_s) == dict(loaded.watchdog_grace_s)
     assert RunSettings().requery_max_attempts == loaded.requery_max_attempts
     assert RunSettings().requery_delay_s == loaded.requery_delay_s
     assert ports.body.calls[0].timeout_seconds == 180
@@ -563,3 +563,45 @@ def test_api_shows_attempt_no_for_a_requeried_stage(request_for, make_garment, t
     attempts = {item["stage"]: item["attempt_no"] for item in data["stages"]}
     assert attempts["REALIZE"] == 2
     assert attempts["RENDER"] == 1
+
+
+# --- 단계별 감시 여유 ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("stage", VISUAL_STAGES)
+def test_the_watchdog_waits_for_the_stage_limit_plus_that_stages_grace(
+    stage, request_for, make_garment
+):
+    waited: dict[str, float] = {}
+    hang = Hang()
+    ports, _ = scripted_ports(stage, [hang])
+    settings = RunSettings(requery_delay_s=0.0)  # 시간 제한·감시 여유 모두 기본값
+
+    def wait(done: threading.Event, seconds: float) -> bool:
+        waited.setdefault(f"{len(waited)}", seconds)
+        return fast_wait(hang)(done, seconds)
+
+    run(request_for(), make_garment(), ports, settings=settings, wait=wait)
+    hang.release.set()
+
+    expected = {s: settings.timeout_for(s) + settings.grace_for(s) for s in VISUAL_STAGES}
+    assert list(waited.values()) == [expected[s] for s in VISUAL_STAGES[: len(waited)]]
+    assert expected[Stage.DRAPE] == 1260  # 착장: 600 + 660
+
+
+def test_drape_grace_covers_the_adapters_fresh_analysis_limit():
+    """착장 어댑터(`blender/draper.py`)는 Blender 착장에 시간 제한을 주고, 착장이 끝나면 분석 단계에
+    같은 길이의 한도를 새로 준다. 정상 착장이 최대 2 × 한도까지 걸리므로 감시 시간이 그보다 커야
+    정상 실행을 실패로 끊지 않는다. 어댑터 코드는 import하지 않고 설정 파일만 읽는다.
+    """
+    drape_json = json.loads((REPO_ROOT / "config" / "drape" / "drape_v1.json").read_text("utf-8"))
+    adapter_limit = float(drape_json["time_limits_s"]["drape"])
+    settings = RunSettings()
+    stage_limit = settings.timeout_for(Stage.DRAPE)
+    watchdog = stage_limit + settings.grace_for(Stage.DRAPE)
+
+    longest_normal_run = 2 * min(stage_limit, adapter_limit)
+    assert watchdog >= longest_normal_run + 60, (
+        f"착장 어댑터는 분석 단계에 한도를 새로 준다. 둘 중 하나를 바꾸면 이 값도 맞춘다: "
+        f"감시 시간 {watchdog:g}초 < 2 × min({stage_limit:g}, {adapter_limit:g}) + 60"
+    )

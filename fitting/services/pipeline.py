@@ -90,7 +90,7 @@ def _parse(data: Any, problems: list[str], config_version: str) -> RunSettings |
         problems.append(f"version은 {SUPPORTED_VERSION}이어야 합니다: {data.get('version')!r}")
 
     timeouts = _stage_timeouts(data.get("stage_timeouts_s"), problems)
-    grace = _positive_number(data.get("watchdog_grace_s"), "watchdog_grace_s", problems)
+    grace = _watchdog_grace(data.get("watchdog_grace_s"), problems)
     attempts, delay = _requery(data.get("requery"), problems)
     if problems:
         return None
@@ -124,6 +124,29 @@ def _stage_timeouts(raw: Any, problems: list[str]) -> dict[Stage, float]:
         if stage.value in raw:
             value = _positive_number(raw[stage.value], f"stage_timeouts_s.{stage.value}", problems)
             result[stage] = value
+    return result
+
+
+def _watchdog_grace(raw: Any, problems: list[str]) -> float | dict[Stage, float]:
+    """숫자 하나(모든 단계에 같은 값)나 단계별 묶음. 묶음의 값은 0 이상이다."""
+    if not isinstance(raw, Mapping):
+        return _positive_number(raw, "watchdog_grace_s", problems)
+    names = [stage.value for stage in VISUAL_STAGES]
+    missing = [name for name in names if name not in raw]
+    if missing:
+        problems.append(f"watchdog_grace_s에 필요한 단계가 없습니다: {', '.join(missing)}")
+    unknown = sorted(str(key) for key in set(raw) - set(names))
+    if unknown:
+        problems.append(
+            f"watchdog_grace_s에 모르는 단계가 있습니다: {', '.join(unknown)} "
+            f"(가능: {', '.join(names)})"
+        )
+    result: dict[Stage, float] = {}
+    for stage in VISUAL_STAGES:
+        if stage.value in raw:
+            result[stage] = _non_negative_number(
+                raw[stage.value], f"watchdog_grace_s.{stage.value}", problems
+            )
     return result
 
 

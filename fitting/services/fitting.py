@@ -84,6 +84,16 @@ DEFAULT_STAGE_TIMEOUTS_S: Mapping[Stage, float] = {
     Stage.REALIZE: 600.0,
     Stage.VALIDATE: 120.0,
 }
+# 단계별 감시 여유(초) 기본값 = `config/pipeline_v0.yaml`의 `watchdog_grace_s` ([제안]).
+# 착장은 Blender 착장(최대 600초) 뒤 분석 단계에 같은 한도를 새로 주므로 600 + 60을 둔다.
+# 실사화는 fal 대기 한도가 업로드·제출 뒤부터 세고 결과 받기·내려받기가 더 붙어서 120이다.
+DEFAULT_WATCHDOG_GRACE_S: Mapping[Stage, float] = {
+    Stage.BODY_FIT: 60.0,
+    Stage.DRAPE: 660.0,
+    Stage.RENDER: 60.0,
+    Stage.REALIZE: 120.0,
+    Stage.VALIDATE: 60.0,
+}
 
 
 def report_part_of(report: FitReport) -> ReportPart:
@@ -168,8 +178,10 @@ class RunSettings:
 
     - 단계 시간 제한: `stage_timeouts_s`에 있으면 그 값, 없고 `timeout_seconds`를 주었으면
       모든 단계에 그 값(B3·B4 호환), 둘 다 없으면 `DEFAULT_STAGE_TIMEOUTS_S`.
-    - 감시 시간: 어댑터가 시간 제한을 넘기고도 돌아오지 않으면, 제한 + `watchdog_grace_s`초 뒤
-      서비스가 그 단계를 실패로 끝낸다(`fitting.services.watchdog`).
+    - 감시 시간: 어댑터가 시간 제한을 넘기고도 돌아오지 않으면, 제한 + 그 단계의 감시 여유
+      (`grace_for`) 뒤 서비스가 그 단계를 실패로 끝낸다(`fitting.services.watchdog`).
+      `watchdog_grace_s`는 숫자 하나(모든 단계에 같은 값)나 단계별 묶음이다. 어댑터가 정상적으로
+      시간 제한을 넘길 수 있으면 그 단계 여유를 키운다(착장: 분석 단계).
     - 재조회: `retryable=true`이고 `external_request_id`가 있는 실패만, `requery_delay_s`초 쉬고
       같은 포트를 다시 부른다. 최대 `requery_max_attempts`번 더(0이면 안 한다).
     """
@@ -177,7 +189,9 @@ class RunSettings:
     config_version: str = "cfg_v1"
     timeout_seconds: int | None = None
     stage_timeouts_s: Mapping[Stage, float] = field(default_factory=dict)
-    watchdog_grace_s: float = 60.0
+    watchdog_grace_s: float | Mapping[Stage, float] = field(
+        default_factory=lambda: dict(DEFAULT_WATCHDOG_GRACE_S)
+    )
     requery_max_attempts: int = 2
     requery_delay_s: float = 5.0
 
@@ -187,6 +201,12 @@ class RunSettings:
         if self.timeout_seconds is not None:
             return float(self.timeout_seconds)
         return DEFAULT_STAGE_TIMEOUTS_S[stage]
+
+    def grace_for(self, stage: Stage) -> float:
+        """그 단계의 감시 여유(초). 숫자면 그 값, 묶음에 없는 단계는 기본값."""
+        if isinstance(self.watchdog_grace_s, Mapping):
+            return float(self.watchdog_grace_s.get(stage, DEFAULT_WATCHDOG_GRACE_S[stage]))
+        return float(self.watchdog_grace_s)
 
 
 class _VisualFailed(Exception):
@@ -372,7 +392,7 @@ def _run_visual(
             try:
                 called = call_with_watchdog(
                     lambda request=port_request: call(request),
-                    limit_s=limit + settings.watchdog_grace_s,
+                    limit_s=limit + settings.grace_for(stage),
                     label=f"{job_id}:{stage.value}",
                     wait=wait,
                 )
@@ -384,7 +404,7 @@ def _run_visual(
                     "(job_id=%s, %g초 기다림)",
                     stage.value,
                     limit,
-                    settings.watchdog_grace_s,
+                    settings.grace_for(stage),
                     job_id,
                     expired.waited_s,
                 )
