@@ -100,8 +100,9 @@ def test_job_not_found_example_is_an_api_error():
     assert error.fields is None
 
 
-def test_error_codes_only_grew_by_the_two_job_api_codes():
-    """계약 변경은 값 추가뿐이다: 기존 코드는 그대로고 JOB_NOT_FOUND·ARTIFACT_NOT_FOUND가 늘었다."""
+def test_error_codes_only_grew_by_added_values():
+    """계약 변경은 값 추가뿐이다: 기존 코드는 그대로고 JOB_NOT_FOUND·ARTIFACT_NOT_FOUND·
+    REALIZE_FAILED가 늘었다."""
     assert {code.value for code in ErrorCode} == {
         "INPUT_INVALID",
         "GARMENT_NOT_READY",
@@ -113,9 +114,11 @@ def test_error_codes_only_grew_by_the_two_job_api_codes():
         "RENDER_FAILED",
         "REALIZE_TIMEOUT",
         "EXTERNAL_SUBMIT_UNKNOWN",
+        "REALIZE_FAILED",
         "VALIDATION_FAILED",
         "VALIDATION_UNVERIFIABLE",
         "BUDGET_LIMIT",
     }
     schema = json.loads((REPO_ROOT / "docs/api/schemas/api_error.schema.json").read_text("utf-8"))
-    assert {"JOB_NOT_FOUND", "ARTIFACT_NOT_FOUND"} <= set(schema["$defs"]["ErrorCode"]["enum"])
+    added = {"JOB_NOT_FOUND", "ARTIFACT_NOT_FOUND", "REALIZE_FAILED"}
+    assert added <= set(schema["$defs"]["ErrorCode"]["enum"])

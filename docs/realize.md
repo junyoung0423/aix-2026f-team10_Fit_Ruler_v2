@@ -72,12 +72,10 @@
 | 위 상태 뒤 같은 작업으로 다시 부름(`--resubmit` 없이) | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음 |
 | 대기 한도 초과 | `REALIZE_TIMEOUT` | true | 있음 |
 | 접수 뒤 상태·결과·내려받기가 두 번 실패 | `EXTERNAL_SUBMIT_UNKNOWN` | true | 있음 |
-| fal이 생성 실패를 알림(`Completed.error`) | `EXTERNAL_SUBMIT_UNKNOWN` | false | 없음(기록에만) |
+| fal이 생성 실패를 알림(`Completed.error`) | `REALIZE_FAILED` | false | 없음(기록에만) |
 
 - 대기 한도를 넘어도 fal 요청은 취소하지 않는다. 나중에 같은 ID로 결과를 받을 수 있게 하려는 것이다.
-- 마지막 줄은 계약에 "외부 생성 실패" 코드가 없어서 임시로 쓴 것이다.
-  - 재조회하면 안 되므로 `PortError`에 요청 ID를 넣지 않고, ID는 기록에만 남긴다.
-  - `REALIZE_FAILED` 추가는 B가 따로 계약 PR로 하기로 했다(리뷰). 들어오면 이 줄만 새 코드로 바꾼다.
+- 마지막 줄(`REALIZE_FAILED`)은 재조회하면 안 되므로 `PortError`에 요청 ID를 넣지 않고, ID는 기록에만 남긴다.
 - 같은 ID 재조회가 끝없이 돌지 않게 하는 횟수 상한은 `config/pipeline_v0.yaml`의 `requery.max_attempts`다(B5, 기본 2번).
 
 ## 4. 기록과 지표
@@ -149,4 +147,3 @@ python -m tools.realize_clip --name d4_try --yes \
 
 - **C5 렌더 클립으로 확인:** 실제 3D 렌더 클립의 크기·fps에 따라 비용이 달라진다. `light`와 `strong-v2` 비교도 이때 한다(D1 열린 질문).
 - **`default.yaml` 전환:** C5가 실제 렌더 클립을 만들고 팀원 PC에 FAL_KEY가 준비되면 `realize` 줄을 바꾼다.
-- **오류 코드:** 외부 생성 실패용 코드 `REALIZE_FAILED`는 B가 따로 계약 PR로 넣기로 했다(리뷰). 들어오면 어댑터의 한 줄을 바꾼다.

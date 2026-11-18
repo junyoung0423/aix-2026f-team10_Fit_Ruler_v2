@@ -40,11 +40,9 @@ D1 스파이크(`render_to_real.py`)의 설정·가격·내려받기를 그대�
 | 위 상태 뒤 같은 작업으로 다시 부름(`allow_resubmit` 없이) | U | false | 없음 |
 | 대기 한도 초과 | `REALIZE_TIMEOUT` | true | 있음 |
 | 접수 뒤 상태·결과·내려받기가 두 번 실패 | U | true | 있음 |
-| fal이 생성 실패를 알림 | U | false | 없음(기록에만) |
+| fal이 생성 실패를 알림 | `REALIZE_FAILED` | false | 없음(기록에만) |
 
-마지막 줄은 계약에 "외부 생성 실패" 코드가 없어서 임시로 쓴다. 재조회하면 안 되므로 요청 ID를
-`PortError`에 넣지 않는다. `REALIZE_FAILED` 추가는 B가 따로 계약 PR로 하고, 들어오면 이 줄만
-바꾼다.
+마지막 줄은 재조회하면 안 되므로 요청 ID를 `PortError`에 넣지 않고 기록에만 남긴다.
 """
 
 from __future__ import annotations
@@ -576,7 +574,7 @@ class FalRealizer:
                     raise self._fail(
                         record,
                         record_dir,
-                        code=ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                        code=ErrorCode.REALIZE_FAILED,
                         retryable=False,
                         message="실사화 서비스가 영상을 만들지 못했습니다.",
                         state=FAILED,
