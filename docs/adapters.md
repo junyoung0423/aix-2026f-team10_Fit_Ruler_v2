@@ -166,6 +166,69 @@ python -m tools.run_fitting_once --adapters drape_blender
 | 비정상 종료(결과 기록 없음) / 결과 파일 없음 | `DRAPE_INVALID` |
 | 몸 메시 파일 없음(개발용 몸도 없음) | `DRAPE_INVALID` [제안: 전용 코드가 없어 단계 실패 코드를 쓴다] |
 
+## 렌더 어댑터 (C5, `fitting.adapters.blender.renderer:make_renderer`)
+
+착장과 렌더를 실제로 돌리는 설정은 `config/adapters/drape_render_blender.yaml`입니다(몸·실사화·검증은 가짜). `default.yaml`과 `drape_blender.yaml`은 그대로 둡니다. 렌더 설정 값과 근거·실측은 `docs/render.md`에 있습니다.
+
+```powershell
+$env:FIT_ADAPTERS = "drape_render_blender"
+$env:BLENDER_PATH = "C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
+$env:FIT_DRAPE_BODY_OBJ = "C:\dev\GarmentCode\assets\bodies\mean_all.obj"   # 착장 어댑터의 개발용 몸
+python -m tools.run_fitting_once --adapters drape_render_blender
+
+# 서버 없이 이미 있는 착장 결과 하나만 렌더 (D에게 넘길 클립 만들기)
+python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_regular_m_navy_v1
+```
+
+| 환경변수 | 기본값 | 뜻 |
+|---|---|---|
+| `BLENDER_PATH` (없으면 `BLENDER_EXE`) | 없음 → 시작 멈춤 | Blender 5.2 실행 파일 |
+
+렌더 설정은 `config/render/render_v1.json` 하나입니다. Blender 경로가 없거나 파일이 없으면, 또는 렌더 설정을 읽지 못하면 팩토리가 `AdapterConfigError`로 시작을 멈춥니다.
+
+**입력**: `request.input_artifact_ids[0]`의 `artifacts_dir/{id}.blend`(착장 결과). 옷 색은 `garment.color_hex` > 색 키 `garment.color`로 찾은 `COLOR_HEX`(AI Hub 색 표) > 중립 회색(경고를 지표·기록에 남김).
+
+**실행**: Blender를 `--background --factory-startup <착장 .blend> --python fitting/adapters/blender/blender_render.py`로 하위 프로세스로 돌립니다. 작업 폴더는 `FIT_WORK_DIR/{job_id}/render/`, 기록은 `FIT_WORK_DIR/{job_id}/render_record.json`(`internal_details_ref`), 로그는 `FIT_WORK_DIR/{job_id}/render_log.txt`입니다. 시간 제한은 `request.timeout_seconds`와 설정 `time_limits_s.render`(300초) 중 작은 값이고, 넘으면 프로세스 트리를 끝냅니다. 이 PC 실측 40~62초입니다. 같은 작업을 다시 부르면 그 작업의 예전 렌더 산출물을 먼저 지웁니다.
+
+**출력**
+- `{job_id}_render_clip.mp4` (`RENDER_OUTPUTS`): 768 × 1024, 24 fps, 121프레임, H264, 무음. **정지 클립**(한 번 렌더한 프레임을 반복, 모든 프레임 동일).
+- 계약 출력이 아닌 산출물(같은 `artifacts_dir`, ID는 지표로 알림)
+  - `{job_id}_render_mask.png`: 옷 마스크. 클립과 같은 크기, 8비트 흑백 PNG, 보이는 옷 255·나머지 0
+  - `{job_id}_render_still.png`: 정지 프레임(무손실 PNG, 클립의 원본 프레임)
+- 작업 폴더의 `render_settings.json`: 쓴 카메라·조명·재질 색·엔진·색 관리 설정
+
+**지표** (`PortResult.metrics`, 숫자 또는 문자열)
+
+| 키 | 뜻 |
+|---|---|
+| `width`, `height`, `fps`, `frames`, `duration_s`, `codec` | 클립 (설정 값과 같은지 Blender가 MP4를 다시 열어 확인한 뒤 성공) |
+| `static_clip` | 정지 클립 1 |
+| `render_seconds`, `still_seconds` | Blender 프로세스 전체 시간, 정지 프레임 렌더 시간(초) |
+| `engine`, `samples` | 렌더 엔진(`CYCLES`), 샘플 수 |
+| `garment_mask_ratio` | 마스크 흰 픽셀 비율 |
+| `head_vertices_in_frame` | 화면 안에 투영되는 머리 정점 수(옷 맨 위보다 높은 몸 정점). 성공이면 0 |
+| `garment_vertices_out_of_frame`, `top_limited_by` | 화면 밖 옷 정점 수(판정 안 함), 위쪽 경계를 정한 것(`head`·`collar_margin`) |
+| `garment_color_hex`, `garment_color_source`, `garment_color_warnings` | 쓴 옷 색, 출처(color_hex·color_table·default), 경고 |
+| `garment_median_hex`, `garment_delta_e00` | 마스크 안쪽(5 px 줄임) 렌더 색 중앙값과 `color_hex` 대비 CIEDE2000(기록용, D6 기준점) |
+| `still_pixel_sha256` | 정지 프레임 픽셀 해시(재현성 확인) |
+| `render_config`, `render_config_sha256` | 쓴 렌더 설정 `이름@버전`과 sha256 |
+| `render_mask_artifact_id`, `render_still_artifact_id` | 옷 마스크·정지 프레임 산출물 ID |
+
+**실패** (`PortFailure`, 모두 `RENDER_FAILED`, `stage=RENDER`, `retryable=false`. `safe_message`에 경로·로그 없음)
+
+| 경우 | 화면 문장 |
+|---|---|
+| 입력 ID 없음 / 착장 결과 파일 없음 | 렌더에 쓸 착장 결과가 없습니다. |
+| `.blend`에서 몸·옷 객체를 못 찾음 | 착장 결과에서 몸이나 옷을 찾지 못했습니다. |
+| 시간 초과(프로세스 트리 종료) | 렌더가 시간 제한(N초) 안에 끝나지 않았습니다. |
+| 하위 프로세스 비정상 종료(종료 코드 ≠ 0, 지표 없음) | 렌더 프로그램이 비정상 종료했습니다. |
+| 클립·마스크·정지 프레임 파일 없음 | 렌더 결과 파일이 없습니다. |
+| 클립 크기·fps·프레임 수가 설정과 다름 | 렌더 클립의 크기·fps·프레임 수가 설정과 다릅니다. |
+| 옷 마스크가 비었음 / 비율이 설정 범위(0.05~0.6, [제안]) 밖 | 옷 마스크가 비었습니다. / 옷 마스크 비율이 기준 범위 밖입니다. |
+| 머리 정점이 화면 안에 있음 | 머리가 화면 안에 들어와 얼굴 처리 기준을 지키지 못했습니다. |
+
+`retryable=false`는 착장 어댑터와 같은 기준입니다(같은 입력이면 같은 결과: 같은 입력 두 번 렌더에서 파일 해시가 같았다).
+
 ## 실사화 어댑터 (D4, `fitting.adapters.fal_ltx.factory:make_realizer`)
 
 `realize: "fitting.adapters.fal_ltx.factory:make_realizer"`로 연결합니다. `FAL_KEY`가 필요하고 호출마다 비용이 듭니다(`run_fitting_once`는 `--consent`로 돌릴 때 `--yes`를 요구합니다). 렌더 클립 파일이 있어야 하므로 C5 전에는 `python -m tools.realize_clip`으로 클립 하나씩 시험합니다. 재시도·같은 요청 ID 재조회·오류 코드·기록은 docs/realize.md에 있습니다.
