@@ -353,16 +353,23 @@ def test_a_validation_fail_verdict_is_also_a_video_path_failure(tmp_path, capsys
     assert "VALIDATION_FAILED" in stdout
 
 
-def test_an_unexpected_exception_from_an_adapter_is_exit_code_2(tmp_path, capsys):
+def test_an_unexpected_exception_from_an_adapter_fails_that_stage_with_exit_code_3(
+    tmp_path, capsys
+):
+    """B5: 예상 밖 예외는 `run_fitting`이 그 단계의 실패로 바꾼다. 서버와 같은 결과다."""
     out = tmp_path / "run"
     adapters = _config(tmp_path, {**ALL_STUBS, "render": f"{STUB}:make_exploding_render"})
 
     code, stdout, stderr = _run(capsys, "--adapters", adapters, "--out", out)
 
-    assert code == 2
-    assert "예상하지 못한 예외" in stderr and "RuntimeError" in stderr
-    assert (out / "request.json").is_file()  # 입력은 남는다
-    assert not (out / "status.json").exists()  # 끝나지 않았으니 성공처럼 보이는 결과는 없다
+    assert code == 3
+    assert stdout.splitlines()[-1] != ""  # 요약이 있다
+    assert "영상 경로 실패 — RENDER 단계, 오류 코드 RENDER_FAILED" in stdout
+    assert "RuntimeError" not in stdout and "RuntimeError" not in stderr  # 예외 내용은 화면에 없다
+    status = json.loads((out / "status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "PARTIAL_SUCCEEDED"
+    assert {s["stage"]: s["status"] for s in status["stages"]}["RENDER"] == "FAILED"
+    assert (out / "report.json").is_file()  # 핏 리포트는 그대로
     assert "결과: 성공" not in stdout
 
 
@@ -630,3 +637,40 @@ def test_module_exit_code_3_when_the_video_path_fails(tmp_path):
     assert done.returncode == 3
     assert done.stdout.count("영상 경로 실패") == 1
     assert "영상 경로 실패" in (tmp_path / "run" / "summary.txt").read_text(encoding="utf-8")
+
+
+def test_progress_prints_a_line_when_a_stage_is_requeried(capsys, body, make_garment):
+    """B5: 같은 요청 ID로 다시 조회하면 단계는 RUNNING 그대로고 시도 횟수만 오른다."""
+    from datetime import datetime, timezone
+
+    from fitting.adapters.fake import FakeFitCalculator
+    from fitting.domain import StageProgress
+    from fitting.services.fitting import in_flight_status, pending_progress, report_part_of
+
+    report = FakeFitCalculator().calculate(
+        body, make_garment(), job_id="job", created_at=datetime.now(timezone.utc)
+    )
+    printer = tool._ProgressPrinter()
+    progress = pending_progress(realize_consent=True)
+    progress[Stage.REALIZE] = StageStatus.RUNNING
+    first = in_flight_status(
+        "job", report_part_of(report), progress, realize_consent=True, stage=Stage.REALIZE
+    )
+    second = first.model_copy(
+        update={
+            "stages": [
+                StageProgress(stage=p.stage, status=p.status, attempt_no=2)
+                if p.stage is Stage.REALIZE
+                else p
+                for p in first.stages
+            ]
+        }
+    )
+
+    printer(first)
+    printer(second)
+    printer(second)  # 같은 시도는 다시 찍지 않는다
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines.count("[REALIZE] RUNNING") == 1
+    assert lines.count("[REALIZE] 다시 조회 2번째 시도") == 1

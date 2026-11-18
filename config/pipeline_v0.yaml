@@ -1,0 +1,25 @@
+# 영상 경로 실패 처리 설정 (B5, #12). 값은 모두 [제안]이고 B가 정했다.
+# C5(렌더)·D5·D6(검증)의 값은 가정이라 담당자가 실측한 뒤 고친다.
+version: pipeline_v0
+
+# 단계별 시간 제한(초). PortRequest.timeout_seconds로 어댑터에 넘긴다. 어댑터가 이 안에서 스스로 끝낸다.
+stage_timeouts_s:
+  BODY_FIT: 180      # D3 실측 12~62초(docs/body-fit.md)
+  DRAPE: 600         # config/drape time_limits_s.drape와 같다(명세서 12장 착장 10분)
+  RENDER: 300        # C5 전이라 가정값
+  REALIZE: 600       # D1 실측 전체 73초, fal 대기열 변동을 넉넉히
+  VALIDATE: 120      # D5·D6 전이라 가정값
+
+# 감시 시간 = 단계 시간 제한 + 이 값. 어댑터가 시간 제한을 넘기고도 돌아오지 않으면 그 단계를 실패로 끝낸다.
+# 어댑터가 정상적으로 시간 제한을 넘길 수 있는 단계는 그만큼 크게 둔다.
+watchdog_grace_s:
+  BODY_FIT: 60
+  DRAPE: 660        # 착장 어댑터는 Blender 착장(최대 600초) 뒤 분석에 같은 한도를 새로 준다 → 600 + 600 + 60
+  RENDER: 60
+  REALIZE: 120      # fal 대기 한도는 업로드·제출 뒤부터 세고, 결과 받기·내려받기가 더 붙는다
+  VALIDATE: 60
+
+# 같은 요청 ID 재조회. retryable=true이고 external_request_id가 있는 실패만 해당한다.
+requery:
+  max_attempts: 2    # 첫 호출 뒤 최대 2번 더 (단계당 총 3번)
+  delay_s: 5         # 재조회 사이 쉬는 초

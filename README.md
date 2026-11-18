@@ -76,6 +76,7 @@ uvicorn server.app:app --reload   # http://127.0.0.1:8000/docs 에서 OpenAPI �
 | `FIT_WORK_DIR` | `artifacts/work/` | 어댑터의 중간 파일(.blend, 메시 등) 폴더 |
 | `FIT_ARTIFACTS_DIR` | `artifacts/files/` | 산출물 폴더 |
 | `FIT_MAX_WORKERS` | 1 | 동시에 도는 영상 경로 수 |
+| `FIT_PIPELINE_CONFIG` | `config/pipeline_v0.yaml` | 실패 처리 설정(단계별 시간 제한·감시 시간·같은 ID 재조회 횟수·간격). 파일이 틀리면 서버·`run_fitting_once`가 시작하지 않는다 |
 | `FIT_FAKE_STAGE_DELAY_S` | 0 | 가짜 영상 단계마다 쉬는 초 (화면에서 진행 상태를 볼 때). 영상 포트가 모두 가짜일 때만 |
 | `FIT_FAKE_PLACEHOLDERS` | 꺼짐 (`1`이면 켬) | 가짜 모드에서 이미지 산출물에 단색 자리표시 PNG를 쓴다. 영상 포트가 모두 가짜일 때만 |
 | `FIT_GARMENTS_DIR` | `data/garments/` | 등록 의류 폴더 |
