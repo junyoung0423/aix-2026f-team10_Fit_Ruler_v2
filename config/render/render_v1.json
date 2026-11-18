@@ -1,0 +1,103 @@
+{
+  "name": "render_v1",
+  "version": "1.0.0",
+  "status": "draft",
+  "description": "C5 정면 렌더 클립·옷 마스크 설정. 값은 모두 [제안]이고 근거는 각 블록의 _basis와 docs/render.md에 적는다. 초안: 사람 검수 전",
+  "objects": {
+    "_basis": "C4 착장 결과 .blend(blender_drape.py)가 저장하는 객체 이름. 용접하면 garment_welded, 안 하면 garment",
+    "body": "body",
+    "garment": ["garment_welded", "garment"]
+  },
+  "clip": {
+    "_basis": "명세서 6장 렌더 항목: 768 x 1024 px, 24 fps, 121프레임(약 5초), 무음 MP4 H264. 121 = 8 x 15 + 1(실사화 프레임 수 규칙), 720p 길이 상한(약 6초, 137프레임) 안",
+    "width": 768,
+    "height": 1024,
+    "fps": 24,
+    "frames": 121,
+    "static": true,
+    "container": "MPEG4",
+    "codec": "H264",
+    "audio": false,
+    "constant_rate_factor": "PERC_LOSSLESS",
+    "ffmpeg_preset": "GOOD",
+    "gop_size": 24,
+    "_basis_encoding": "[제안] Blender 내장 FFmpeg. PERC_LOSSLESS(CRF 17)는 근거 없음: 눈으로 구분 어려운 화질에서 가장 작은 값을 골랐다. LOSSLESS는 4:4:4 프로필이라 재생기·외부 서비스 호환이 불확실해 쓰지 않는다"
+  },
+  "camera": {
+    "_basis": "[제안] 정면 고정 원근 카메라, 렌즈 고정. 50 mm는 C4 미리보기(drape_v1 preview)와 같은 값이고 근거 없음. 카메라는 수평(+Y 방향)으로 보고 기울이지 않는다. 높이는 옷 경계 상자 가운데, 거리는 framing 규칙을 만족하는 가장 가까운 거리, 상하좌우 맞춤은 렌즈 시프트로 한다(세로선이 기울지 않게)",
+    "lens_mm": 50.0,
+    "sensor_fit": "VERTICAL",
+    "sensor_height_mm": 36.0,
+    "clip_start_m": 0.1,
+    "clip_end_m": 100.0,
+    "distance_search_m": [1.0, 20.0],
+    "distance_search_iterations": 60
+  },
+  "framing": {
+    "_basis": "docs/decisions.md 2(얼굴 처리): 턱 아래로 잘라 머리를 프레임 밖에 둔다. 위쪽 = min(옷 깃 맨 위 + top_margin_cm, 머리 정점 중 가장 낮게 투영되는 점 - head_clearance_px). 머리 정점 = 몸 정점 중 옷 맨 위 + head_min_above_collar_cm 보다 높은 것. 여유 값은 근거 없음",
+    "top_margin_cm": 3.0,
+    "bottom_margin_cm": 5.0,
+    "side_margin_cm": 5.0,
+    "head_min_above_collar_cm": 0.0,
+    "head_clearance_px": 4
+  },
+  "world": {
+    "_basis": "[제안] 중립 회색 배경. 카메라에 보이는 배경색과 주변광을 따로 둔다(Light Path: Is Camera Ray). 값은 근거 없음",
+    "background_srgb_hex": "#808080",
+    "ambient_srgb_hex": "#ffffff",
+    "ambient_strength": 0.3
+  },
+  "lights": {
+    "_basis": "[제안] 고정 3점 조명(키·필·림). 위치는 옷 경계 상자 가운데 기준 상대 좌표(m, x 오른쪽·y 뒤·z 위), 빛은 그 가운데를 향한다. 세기는 근거 없음: 시연 티셔츠 1(navy #24324f)에서 마스크 안 색 중앙값이 color_hex와 CIEDE2000 3 안쪽이 되도록 맞췄다(docs/render.md 5절)",
+    "items": [
+      {"name": "key", "type": "AREA", "offset_m": [-1.6, -2.4, 1.4], "size_m": 1.5, "energy_w": 45.0, "color_srgb_hex": "#ffffff"},
+      {"name": "fill", "type": "AREA", "offset_m": [1.8, -2.2, 0.4], "size_m": 2.0, "energy_w": 20.0, "color_srgb_hex": "#ffffff"},
+      {"name": "rim", "type": "AREA", "offset_m": [0.0, 2.0, 1.6], "size_m": 1.5, "energy_w": 25.0, "color_srgb_hex": "#ffffff"}
+    ]
+  },
+  "color_management": {
+    "_basis": "D6 색 비교가 쉽도록 Standard(AgX·Filmic은 색을 바꾼다). 노출 0, 감마 1, Look 없음, 표시 sRGB",
+    "display_device": "sRGB",
+    "view_transform": "Standard",
+    "look": "None",
+    "exposure": 0.0,
+    "gamma": 1.0,
+    "sequencer_colorspace": "sRGB"
+  },
+  "garment_material": {
+    "_basis": "[제안] Principled BSDF, 기본 색 = 의류 color_hex(sRGB -> 선형), 무늬 없음. 거칠기·반사는 면 저지처럼 무광에 가깝게 고른 값이고 근거 없음",
+    "roughness": 0.85,
+    "specular_ior_level": 0.3,
+    "sheen_weight": 0.0,
+    "default_srgb_hex": "#808080"
+  },
+  "body_material": {
+    "_basis": "[제안] 중립 회색 마네킹(피부색 없음). 실사화 프롬프트(D5)와 맞춰야 한다(결정 필요)",
+    "base_srgb_hex": "#9a9a9a",
+    "roughness": 0.6,
+    "specular_ior_level": 0.3,
+    "shade_smooth": true
+  },
+  "engine": {
+    "_basis": "[제안] Cycles CPU, 샘플·시드·노이즈 제거 고정. 이 PC 실측으로 골랐다(docs/render.md 4절): 두 엔진 모두 같은 입력에서 같은 픽셀, Eevee는 GPU·드라이버에 따라 결과가 달라질 수 있고 시간이 더 흔들렸다. 32샘플 + OIDN은 64샘플과 평균 0.11/255 차이",
+    "name": "CYCLES",
+    "device": "CPU",
+    "samples": 32,
+    "seed": 0,
+    "use_adaptive_sampling": false,
+    "denoise": true,
+    "denoiser": "OPENIMAGEDENOISE",
+    "max_bounces": 6,
+    "filter_width_px": 1.5,
+    "eevee_taa_render_samples": 64
+  },
+  "mask": {
+    "_basis": "옷 마스크: 같은 카메라로 Cycles CPU 발광 패스(옷 흰색·몸 검정·배경 검정, 1샘플, 픽셀 필터 0.01 px = 픽셀 가운데 한 점), 임계값 0.5, 8비트 흑백 PNG(무손실). Workbench(GPU)는 이 PC에서 종료 때 드라이버 오류가 나서 쓰지 않는다. 몸에 가려진 옷은 빠진다. 비율 범위는 [제안]이고 근거 없음(시연 티셔츠 2벌 실측 비율의 앞뒤를 넉넉히)",
+    "ratio_min": 0.05,
+    "ratio_max": 0.6
+  },
+  "time_limits_s": {
+    "_note": "명세서 12장 단계 시간 제한(렌더 5분). request.timeout_seconds와 작은 값을 쓴다",
+    "render": 300
+  }
+}
