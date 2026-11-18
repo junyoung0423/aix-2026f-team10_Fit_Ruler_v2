@@ -84,6 +84,8 @@ def make_xxx(settings: AdapterSettings) -> 포트 객체    # BodyBuilder / Drap
 
 다른 단계는 가짜로 두고 착장만 실제로 돌려 볼 수 있습니다. 파일을 따로 만들고 `FIT_ADAPTERS`나 `--adapters`로 고르세요(기본 설정을 건드리지 않습니다).
 
+- 몸만 실제 SMPL 어댑터(D3)로 돌리는 설정은 저장소에 있습니다: `--adapters smpl_body`(`config/adapters/smpl_body.yaml`). `SMPL_MODEL_DIR`이 필요합니다(docs/body-fit.md).
+
 ```yaml
 # 내 PC 전용 /경로/mixed.yaml
 version: adapters_v0
@@ -160,6 +162,10 @@ python -m tools.run_fitting_once --adapters drape_blender
 | 시간 초과 | `DRAPE_INVALID` |
 | 비정상 종료(결과 기록 없음) / 결과 파일 없음 | `DRAPE_INVALID` |
 | 몸 메시 파일 없음(개발용 몸도 없음) | `DRAPE_INVALID` [제안: 전용 코드가 없어 단계 실패 코드를 쓴다] |
+
+## 실사화 어댑터 (D4, `fitting.adapters.fal_ltx.factory:make_realizer`)
+
+`realize: "fitting.adapters.fal_ltx.factory:make_realizer"`로 연결합니다. `FAL_KEY`가 필요하고 호출마다 비용이 듭니다(`run_fitting_once`는 `--consent`로 돌릴 때 `--yes`를 요구합니다). 렌더 클립 파일이 있어야 하므로 C5 전에는 `python -m tools.realize_clip`으로 클립 하나씩 시험합니다. 재시도·같은 요청 ID 재조회·오류 코드·기록은 docs/realize.md에 있습니다.
 
 ## 막혔을 때
 

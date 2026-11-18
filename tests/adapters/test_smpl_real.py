@@ -1,6 +1,9 @@
-"""실제 SMPL 모델로 도는 확인. 환경변수 SMPL_MODEL_PATH에 모델 파일 경로가 있을 때만 돈다.
+"""실제 SMPL 모델로 도는 확인. 환경변수 SMPL_MODEL_DIR에 모델 폴더가 있을 때만 돈다.
 
-SMPL_MODEL_PATH=models/smpl/basicmodel_neutral_lbs_10_207_0_v1.1.0.pkl python -m pytest -m smpl
+SMPL_MODEL_DIR=models/smpl python -m pytest -m smpl
+
+폴더 안의 중성 모델(이름에 neutral이 들어간 .pkl·.npz)을 쓴다. 서버·어댑터 설정(B4)과 같은
+환경변수다.
 """
 
 import os
@@ -10,20 +13,20 @@ import pytest
 
 np = pytest.importorskip("numpy")  # 선택 의존성 body가 없으면 건너뛴다
 
-from fitting.adapters.smpl import JOINT, SmplModel, a_pose  # noqa: E402
+from fitting.adapters.smpl import JOINT, SmplModel, a_pose, find_neutral_model  # noqa: E402
 from fitting.body.measure import measure_body  # noqa: E402
 
-MODEL_PATH = os.environ.get("SMPL_MODEL_PATH")
+MODEL_DIR = (os.environ.get("SMPL_MODEL_DIR") or "").strip()
 
 pytestmark = [
     pytest.mark.smpl,
-    pytest.mark.skipif(not MODEL_PATH, reason="SMPL_MODEL_PATH가 없어 실제 모델 확인을 건너뜀"),
+    pytest.mark.skipif(not MODEL_DIR, reason="SMPL_MODEL_DIR가 없어 실제 모델 확인을 건너뜀"),
 ]
 
 
 @pytest.fixture(scope="module")
 def model() -> SmplModel:
-    return SmplModel.load(Path(MODEL_PATH or ""))
+    return SmplModel.load(find_neutral_model(Path(MODEL_DIR)))
 
 
 def test_model_shapes(model: SmplModel) -> None:

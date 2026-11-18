@@ -1,0 +1,16 @@
+# 몸 단계만 실제 SMPL 어댑터(D3)로, 나머지 영상 단계는 가짜로 돌리는 설정.
+#
+# SMPL 중성 모델이 있는 PC에서 몸 생성을 확인할 때 쓴다. SMPL_MODEL_DIR에 모델 폴더가 있어야 한다
+# (models/README.md). 모델이 없는 PC에서 고르면 서버·실행 스크립트가 시작하지 않고 이유를 알려 준다.
+#
+#   python -m tools.run_fitting_once --adapters smpl_body
+#   FIT_ADAPTERS=smpl_body uvicorn server.app:app --port 8000
+#
+# default.yaml의 body는 아직 fake다. 팀원 PC에 SMPL 모델이 모두 준비되면 그 줄을 바꾼다.
+version: adapters_v0
+ports:
+  body: "fitting.adapters.smpl.factory:make_body_builder"   # D3 SMPL 몸 생성 (D)
+  drape: fake       # C4 Blender 착장 (C)
+  render: fake      # C5 정면 렌더 클립 (C)
+  realize: fake     # D4 fal/LTX 실사화 (D)
+  validate: fake    # D5·D6 대표 프레임·색·실루엣 검증 (D)
