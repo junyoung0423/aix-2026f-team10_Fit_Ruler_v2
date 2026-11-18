@@ -410,10 +410,100 @@ def test_generation_error_is_final_and_does_not_ask_for_requery(tmp_path, clips)
         make(tmp_path, clips, client).realize(request(), GARMENT)
 
     error = caught.value.error
+    assert error.code == ErrorCode.REALIZE_FAILED
     assert error.retryable is False
     assert error.external_request_id is None  # 재조회하지 말라는 뜻
     assert record(tmp_path)["request_id"] == "req-123"  # 기록에는 남긴다
     assert "NSFW" in record(tmp_path, "error.json")["message"]
+
+
+def _fail_upload_twice(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(upload_errors=[ConnectError("x"), ConnectError("y")]))
+
+
+def _fail_submit_rejected(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(submit_errors=[HTTPError(503), HTTPError(503)]))
+
+
+def _fail_submit_bad_request(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(submit_errors=[HTTPError(422)]))
+
+
+def _fail_submit_without_response(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(submit_errors=[ReadTimeout("응답 없음")]))
+
+
+def _fail_status_twice(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(status_errors=[HTTPError(502), HTTPError(502)]))
+
+
+def _fail_result_twice(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(result_errors=[HTTPError(502), HTTPError(502)]))
+
+
+def _fail_download_twice(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(), failures=2)
+
+
+def _fail_generation(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(statuses=[Completed(error="NSFW", error_type="x")]))
+
+
+def _fail_without_video_url(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(response={"seed": 1}))
+
+
+def _fail_over_budget(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(), max_cost_usd=0.01)
+
+
+def _fail_missing_clip(tmp_path, clips):
+    realizer = make(tmp_path, clips, FakeQueue())
+    (tmp_path / "artifacts" / "job1_render_clip.mp4").unlink()
+    return realizer
+
+
+def _fail_timeout(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(statuses=[Queued(5)]))
+
+
+def _fail_resubmit_guard(tmp_path, clips):
+    realizer = _fail_submit_without_response(tmp_path, clips)
+    with pytest.raises(PortFailure):
+        realizer.realize(request(), GARMENT)
+    return realizer  # 다음 호출이 "접수 여부를 모르는 제출을 다시 보내지 않음"으로 실패한다
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        _fail_upload_twice,
+        _fail_submit_rejected,
+        _fail_submit_bad_request,
+        _fail_submit_without_response,
+        _fail_status_twice,
+        _fail_result_twice,
+        _fail_download_twice,
+        _fail_generation,
+        _fail_without_video_url,
+        _fail_over_budget,
+        _fail_missing_clip,
+        _fail_timeout,
+        _fail_resubmit_guard,
+    ],
+)
+def test_retryable_failures_always_carry_the_request_id(tmp_path, clips, scenario):
+    """11/17 결정: `retryable=true`는 같은 요청 ID 재조회만 뜻한다. ID 없는 실패는 false다."""
+    realizer = scenario(tmp_path, clips)
+    with pytest.raises(PortFailure) as caught:
+        realizer.realize(request(timeout=10), GARMENT)
+
+    error = caught.value.error
+    assert error.stage == Stage.REALIZE
+    if error.retryable:
+        assert error.external_request_id == "req-123"
+    else:
+        assert error.external_request_id is None
 
 
 def test_garment_text_overrides_the_prompt(tmp_path, clips):
