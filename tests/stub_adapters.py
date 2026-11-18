@@ -8,6 +8,7 @@
 실패·설정 오류·엉뚱한 반환을 내는 팩토리도 있다.
 """
 
+import threading
 from pathlib import Path
 
 from fitting.domain import SCHEMA_VERSION, ErrorCode, Stage
@@ -135,6 +136,17 @@ class ExplodingRenderer(StubRenderer):
         raise RuntimeError("스텁 렌더가 터졌다")
 
 
+class HangingDraper(StubDraper):
+    """시간 제한을 넘기고도 돌아오지 않는다 (B5 감시 시간 확인용). 풀어 주기 전까지 멈춘다."""
+
+    release = threading.Event()  # 테스트가 끝에 set()해서 남은 스레드를 정리한다
+
+    def drape(self, request, garment):
+        CALLS.append((self.port, self.method))
+        self.release.wait()
+        return self._run(request)
+
+
 def _remember(settings: AdapterSettings) -> AdapterSettings:
     SEEN_SETTINGS.append(settings)
     return settings
@@ -177,6 +189,11 @@ def make_failing_body(settings: AdapterSettings) -> StubBody:
 
 def make_exploding_render(settings: AdapterSettings) -> ExplodingRenderer:
     return ExplodingRenderer(_remember(settings))
+
+
+def make_hanging_drape(settings: AdapterSettings) -> HangingDraper:
+    """착장 단계가 영원히 돌아오지 않는다."""
+    return HangingDraper(_remember(settings))
 
 
 def make_config_error(settings: AdapterSettings):

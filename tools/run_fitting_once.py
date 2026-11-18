@@ -47,6 +47,7 @@ from fitting.domain import (
 )
 from fitting.fit import RuleFitCalculator
 from fitting.services.fitting import run_fitting
+from fitting.services.pipeline import PipelineConfigError, load_run_settings
 from server.app import DEFAULT_GARMENTS_DIR, GARMENTS_DIR_ENV
 from server.artifacts import ArtifactDirectory
 from server.errors import input_invalid_error
@@ -198,10 +199,15 @@ class _ProgressPrinter:
     def __init__(self) -> None:
         self._seen = {stage: StageStatus.WAITING for stage in _ALL_STAGES}
         self._started: dict[Stage, float] = {}
+        self._attempt = {stage: 1 for stage in _ALL_STAGES}
 
     def __call__(self, status: FittingStatus) -> None:
         now = time.monotonic()
         for item in status.stages:
+            if item.attempt_no > self._attempt[item.stage]:
+                # 같은 요청 ID로 다시 조회하는 중이다(B5). 단계 상태는 RUNNING 그대로다
+                self._attempt[item.stage] = item.attempt_no
+                print(f"[{item.stage.value}] 다시 조회 {item.attempt_no}번째 시도", flush=True)
             if item.status is self._seen[item.stage]:
                 continue
             self._seen[item.stage] = item.status
@@ -322,7 +328,11 @@ def build_summary(
     else:
         lines.append("[핏 리포트] 없음")
     lines += ["", "[단계]"]
-    lines += [f"  {item.stage.value:<14} {item.status.value}" for item in status.stages]
+    lines += [
+        f"  {item.stage.value:<14} {item.status.value}"
+        + (f" (시도 {item.attempt_no}번)" if item.attempt_no >= 2 else "")
+        for item in status.stages
+    ]
     lines += ["", f"[영상 경로] {_visual_line(status.visual)}", "", "[산출물]"]
     lines += _artifact_lines(status.visual, config, artifacts_dir)
     return "\n".join(lines) + "\n"
@@ -371,7 +381,8 @@ def main(argv: list[str] | None = None) -> int:
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         settings = AdapterSettings.from_environ(artifacts_dir=artifacts_dir)
         ports = build_ports(config, settings, fit=RuleFitCalculator())
-    except (_InputError, AdapterConfigError) as error:
+        run_settings = load_run_settings()  # FIT_PIPELINE_CONFIG. 틀리면 시작하지 않는다
+    except (_InputError, AdapterConfigError, PipelineConfigError) as error:
         print(f"오류: {error}", file=sys.stderr)
         return EXIT_INPUT_ERROR
 
@@ -385,9 +396,12 @@ def main(argv: list[str] | None = None) -> int:
             ports,
             job_id=job_id,
             created_at=datetime.now(timezone.utc),
+            settings=run_settings,
             on_progress=_ProgressPrinter(),
         )
-    except Exception as error:  # 어댑터가 PortFailure 대신 예상 밖 예외를 던졌다 (처리 완성은 B5)
+    except (
+        Exception
+    ) as error:  # 영상 경로 밖의 예상 밖 예외. 영상 단계의 예외는 run_fitting이 바꾼다
         traceback.print_exc()
         print(
             f"오류: 피팅 실행 중 예상하지 못한 예외가 났습니다 ({type(error).__name__}: {error})",
