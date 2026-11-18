@@ -10,13 +10,16 @@
   보관하는 작업이 `max_jobs`를 넘으면 끝난 작업을 오래된 것부터 지운다.
   진행 중 작업은 지우지 않는다.
 - 작업 스레드는 daemon이다. 서버를 끌 때 영상 경로가 한창이어도 프로세스가 끝나기를 기다리지 않는다.
-- 타임아웃·재시도는 B5 범위다. 여기서 하지 않는다.
+- 단계별 시간 제한·감시 시간·같은 ID 재조회·예상 밖 예외 처리는 `run_fitting`이 한다
+  (`fitting.services.fitting`, 설정은 `RunSettings`). 여기서는 그 바깥의 마지막 안전망
+  (`_failed_in_place`)만 둔다.
 """
 
 import logging
 import queue
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
@@ -30,12 +33,10 @@ from fitting.domain import (
     GarmentVariant,
     JobStatus,
     Mode,
-    Stage,
     StageProgress,
     StageStatus,
 )
 from fitting.fit import FitEngineError
-from fitting.ports import PortError, PortFailure, PortResultInvalid
 from fitting.services.fitting import (
     INVALID_RESULT_CODE,
     VISUAL_STAGES,
@@ -46,10 +47,9 @@ from fitting.services.fitting import (
     report_part_of,
     run_fitting,
 )
+from fitting.services.watchdog import Wait
 
 logger = logging.getLogger(__name__)
-
-_UNEXPECTED_MESSAGE = "처리 중 예상하지 못한 오류가 났습니다."
 
 
 class IdempotencyConflict(Exception):
@@ -90,53 +90,6 @@ class _FixedReport:
         return self._report
 
 
-class _Guarded:
-    """영상 경로 포트를 감싸, `PortFailure`가 아닌 예상 밖 예외를 그 단계의 실패로 바꾼다.
-
-    예외 내용은 로그에만 남기고, 상태에는 단계별 `INVALID_RESULT_CODE`만 나간다. 이렇게 하면
-    `run_fitting`이 정해 둔 실패 처리(그 단계 FAILED, 남은 단계 SKIPPED, 핏 리포트 유지)를
-    그대로 탄다.
-    """
-
-    def __init__(self, port: Any, stage: Stage) -> None:
-        self._port = port
-        self._stage = stage
-
-    def __getattr__(self, name: str) -> Any:
-        attribute = getattr(self._port, name)
-        if not callable(attribute):
-            return attribute
-
-        def guarded(*args: Any, **kwargs: Any) -> Any:
-            try:
-                return attribute(*args, **kwargs)
-            except (PortFailure, PortResultInvalid):
-                raise
-            except Exception as error:
-                logger.exception("%s 단계에서 예상하지 못한 예외가 났습니다", self._stage.value)
-                raise PortFailure(
-                    PortError(
-                        code=INVALID_RESULT_CODE[self._stage],
-                        stage=self._stage,
-                        retryable=False,
-                        safe_message=_UNEXPECTED_MESSAGE,
-                    )
-                ) from error
-
-        return guarded
-
-
-def _guard(ports: FittingPorts) -> FittingPorts:
-    return replace(
-        ports,
-        body=_Guarded(ports.body, Stage.BODY_FIT),
-        drape=_Guarded(ports.drape, Stage.DRAPE),
-        render=_Guarded(ports.render, Stage.RENDER),
-        realize=_Guarded(ports.realize, Stage.REALIZE),
-        validate=_Guarded(ports.validate, Stage.VALIDATE),
-    )
-
-
 class JobRunner:
     """피팅 작업을 받아 영상 경로를 백그라운드에서 돌리고, 작업 ID로 상태를 돌려준다."""
 
@@ -147,6 +100,8 @@ class JobRunner:
         max_workers: int = 1,
         max_jobs: int = 200,
         settings: RunSettings | None = None,
+        sleep: Callable[[float], None] | None = None,
+        wait: Wait | None = None,
     ) -> None:
         if max_workers < 1:
             raise ValueError(f"max_workers는 1 이상이어야 합니다: {max_workers}")
@@ -156,6 +111,11 @@ class JobRunner:
         self._max_workers = max_workers
         self._max_jobs = max_jobs
         self._settings = settings
+        # 재조회 사이 쉬기와 감시 시간 기다리기. 테스트가 실제 시간을 기다리지 않게 바꿔 끼운다.
+        # 주지 않으면 `run_fitting`의 기본(실제 시간)을 쓴다.
+        self._run_options: dict[str, Any] = {
+            key: value for key, value in (("sleep", sleep), ("wait", wait)) if value is not None
+        }
         self._lock = threading.Lock()
         self._jobs: dict[str, _Job] = {}  # 들어온 순서 = 오래된 순서
         self._keys: dict[str, str] = {}  # Idempotency-Key → 작업 ID
@@ -362,7 +322,7 @@ class JobRunner:
             job = self._jobs.get(job_id)
             if job is None or job.done.is_set():
                 return
-        ports = _guard(replace(self._ports, fit=_FixedReport(job.report)))
+        ports = replace(self._ports, fit=_FixedReport(job.report))
         try:
             outcome = run_fitting(
                 job.request,
@@ -372,6 +332,7 @@ class JobRunner:
                 created_at=job.created_at,
                 settings=self._settings,
                 on_progress=lambda status: self._publish(job, status),
+                **self._run_options,
             )
             final = outcome.status
         except Exception:  # 포트 밖의 예상 밖 오류라도 화면이 영원히 진행 중으로 남지 않게 한다

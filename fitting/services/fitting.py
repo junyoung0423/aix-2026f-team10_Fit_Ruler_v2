@@ -9,8 +9,10 @@
 """
 
 import logging
-from collections.abc import Callable
-from dataclasses import dataclass
+import math
+import time
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -51,6 +53,7 @@ from fitting.ports import (
     output_artifact,
     require_output_artifacts,
 )
+from fitting.services.watchdog import Wait, WatchdogExpired, call_with_watchdog, real_wait
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,18 @@ INVALID_RESULT_CODE = {
     Stage.RENDER: ErrorCode.RENDER_FAILED,
     Stage.REALIZE: ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
     Stage.VALIDATE: ErrorCode.VALIDATION_UNVERIFIABLE,
+}
+# 어댑터가 시간 제한 + 감시 여유를 넘기고도 돌아오지 않아 서비스가 단계를 끝낼 때의 오류 코드.
+# [제안] 새 코드를 만들지 않는다. 실사화만 타임아웃 코드가 있고 나머지는 위 코드를 쓴다.
+WATCHDOG_CODE = {**INVALID_RESULT_CODE, Stage.REALIZE: ErrorCode.REALIZE_TIMEOUT}
+
+# 단계별 시간 제한(초) 기본값 = `config/pipeline_v0.yaml`의 `stage_timeouts_s` ([제안])
+DEFAULT_STAGE_TIMEOUTS_S: Mapping[Stage, float] = {
+    Stage.BODY_FIT: 180.0,
+    Stage.DRAPE: 600.0,
+    Stage.RENDER: 300.0,
+    Stage.REALIZE: 600.0,
+    Stage.VALIDATE: 120.0,
 }
 
 
@@ -104,6 +119,7 @@ def in_flight_status(
     stage: Stage | None = None,
     artifacts: dict[str, Any] | None = None,
     queued: bool = False,
+    attempts: Mapping[Stage, int] | None = None,
 ) -> FittingStatus:
     """영상 경로가 끝나기 전의 상태 (명세서 11장 진행 중 예시와 같은 모양).
 
@@ -124,7 +140,7 @@ def in_flight_status(
             skip_reason=None if realize_consent else VisualSkipReason.CONSENT_NOT_GIVEN,
             **(artifacts or {}),
         ),
-        stages=_stages(progress),
+        stages=_stages(progress, attempts),
     )
 
 
@@ -148,8 +164,29 @@ class FittingOutcome:
 
 @dataclass(frozen=True)
 class RunSettings:
+    """피팅 실행 설정. 기본값은 `config/pipeline_v0.yaml`과 같다(`fitting.services.pipeline`).
+
+    - 단계 시간 제한: `stage_timeouts_s`에 있으면 그 값, 없고 `timeout_seconds`를 주었으면
+      모든 단계에 그 값(B3·B4 호환), 둘 다 없으면 `DEFAULT_STAGE_TIMEOUTS_S`.
+    - 감시 시간: 어댑터가 시간 제한을 넘기고도 돌아오지 않으면, 제한 + `watchdog_grace_s`초 뒤
+      서비스가 그 단계를 실패로 끝낸다(`fitting.services.watchdog`).
+    - 재조회: `retryable=true`이고 `external_request_id`가 있는 실패만, `requery_delay_s`초 쉬고
+      같은 포트를 다시 부른다. 최대 `requery_max_attempts`번 더(0이면 안 한다).
+    """
+
     config_version: str = "cfg_v1"
-    timeout_seconds: int = 600
+    timeout_seconds: int | None = None
+    stage_timeouts_s: Mapping[Stage, float] = field(default_factory=dict)
+    watchdog_grace_s: float = 60.0
+    requery_max_attempts: int = 2
+    requery_delay_s: float = 5.0
+
+    def timeout_for(self, stage: Stage) -> float:
+        if stage in self.stage_timeouts_s:
+            return float(self.stage_timeouts_s[stage])
+        if self.timeout_seconds is not None:
+            return float(self.timeout_seconds)
+        return DEFAULT_STAGE_TIMEOUTS_S[stage]
 
 
 class _VisualFailed(Exception):
@@ -168,6 +205,8 @@ def run_fitting(
     created_at: datetime,
     settings: RunSettings | None = None,
     on_progress: ProgressCallback | None = None,
+    sleep: Callable[[float], None] | None = None,
+    wait: Wait | None = None,
 ) -> FittingOutcome:
     """피팅 한 번을 실행하고 최종 상태를 돌려준다.
 
@@ -179,14 +218,26 @@ def run_fitting(
     - 마지막 호출은 항상 반환하는 최종 상태와 같다. 실패(건너뜀 포함)와 마지막 단계의 끝은 이 최종
       상태로 알린다. 리포트를 만들 수 없는 경우(의류 미준비, 계산 불가)도 최종 상태 1번이다.
     - `on_progress`가 예외를 던져도 로그만 남기고 피팅은 계속한다.
+
+    영상 경로 단계 하나는 이렇게 처리한다(`_run_visual`의 `step`).
+    - 단계별 시간 제한을 `PortRequest.timeout_seconds`로 넘긴다. 어댑터가 그 안에 스스로 끝낸다.
+    - 시간 제한 + 감시 여유 안에 호출이 돌아오지 않으면 그 단계를 실패로 끝낸다(재조회 안 함).
+    - `PortFailure`·`PortResultInvalid`가 아닌 예상 밖 예외는 그 단계의 실패로 바꾸고 내용은
+      로그에만 남긴다.
+    - `retryable=true`이고 `external_request_id`가 있는 실패는 같은 요청 ID로 다시 조회한다.
+      오류 코드 이름으로 판단하지 않는다.
+    `sleep`·`wait`은 테스트가 실제 시간을 기다리지 않게 바꿔 끼우는 자리다.
     """
     if request.garment_variant_id != garment.id:
         raise ValueError(
             f"요청한 의류({request.garment_variant_id})와 넘긴 의류({garment.id})가 다릅니다"
         )
     settings = settings or RunSettings()
+    sleep = sleep or time.sleep
+    wait = wait or real_wait
     progress: dict[Stage, StageStatus] = {s: StageStatus.WAITING for s in REPORT_STAGES}
     progress.update({s: StageStatus.WAITING for s in VISUAL_STAGES})
+    attempts: dict[Stage, int] = {}  # 단계별로 지금까지 부른 횟수 (StageProgress.attempt_no)
 
     def finish(status: FittingStatus, report: FitReport | None) -> FittingOutcome:
         _notify(on_progress, status)
@@ -248,11 +299,14 @@ def run_fitting(
                 realize_consent=request.realize_consent,
                 stage=stage,
                 artifacts=artifacts,
+                attempts=attempts,
             )
             _notify(on_progress, running)
 
         announce(None, {})
-        visual = _run_visual(request, garment, ports, job_id, settings, progress, announce)
+        visual = _run_visual(
+            request, garment, ports, job_id, settings, progress, attempts, announce, sleep, wait
+        )
 
     job_status = JobStatus.SUCCEEDED
     if visual.status is StageStatus.FAILED:
@@ -262,7 +316,7 @@ def run_fitting(
         status=job_status,
         report=report_part,
         visual=visual,
-        stages=_stages(progress),
+        stages=_stages(progress, attempts),
     )
     return finish(status, report)
 
@@ -285,7 +339,10 @@ def _run_visual(
     job_id: str,
     settings: RunSettings,
     progress: dict[Stage, StageStatus],
+    attempts: dict[Stage, int],
     announce: Callable[[Stage | None, dict[str, Any]], None],
+    sleep: Callable[[float], None],
+    wait: Wait,
 ) -> VisualPart:
     found: dict[str, Any] = {
         "drape_preview_artifact_id": None,
@@ -299,29 +356,75 @@ def _run_visual(
     quality: QualityStatus | None = None
 
     def step(stage: Stage, inputs: list[str], call) -> PortResult:
-        progress[stage] = StageStatus.RUNNING
-        announce(stage, found)
-        port_request = PortRequest(
-            job_id=job_id,
-            attempt_id=f"{job_id}_{stage.value.lower()}_1",
-            input_artifact_ids=inputs,
-            config_version=settings.config_version,
-            timeout_seconds=settings.timeout_seconds,
-            trace_id=job_id,
-        )
-        try:
-            result = require_output_artifacts(call(port_request), stage)
-        except PortFailure as failure:
-            raise _VisualFailed(stage, failure.error.code) from failure
-        except PortResultInvalid as invalid:
-            raise _VisualFailed(stage, INVALID_RESULT_CODE[stage]) from invalid
-        progress[stage] = StageStatus.SUCCEEDED
-        return result
+        limit = settings.timeout_for(stage)
+        for attempt in range(1, settings.requery_max_attempts + 2):
+            attempts[stage] = attempt
+            progress[stage] = StageStatus.RUNNING
+            announce(stage, found)
+            port_request = PortRequest(
+                job_id=job_id,
+                attempt_id=f"{job_id}_{stage.value.lower()}_{attempt}",
+                input_artifact_ids=inputs,
+                config_version=settings.config_version,
+                timeout_seconds=math.ceil(limit),
+                trace_id=job_id,
+            )
+            try:
+                called = call_with_watchdog(
+                    lambda request=port_request: call(request),
+                    limit_s=limit + settings.watchdog_grace_s,
+                    label=f"{job_id}:{stage.value}",
+                    wait=wait,
+                )
+                result = require_output_artifacts(called, stage)
+            except WatchdogExpired as expired:
+                # 어댑터가 아직 돌고 있을 수 있어 같은 기록을 두 번 건드리지 않게 다시 부르지 않는다
+                logger.warning(
+                    "%s 단계가 시간 제한(%g초)과 감시 여유(%g초)를 넘겨 실패로 끝냅니다 "
+                    "(job_id=%s, %g초 기다림)",
+                    stage.value,
+                    limit,
+                    settings.watchdog_grace_s,
+                    job_id,
+                    expired.waited_s,
+                )
+                raise _VisualFailed(stage, WATCHDOG_CODE[stage]) from expired
+            except PortFailure as failure:
+                error = failure.error
+                if error.retryable and error.external_request_id is None:
+                    logger.warning(
+                        "%s 단계가 retryable=true인데 external_request_id가 없습니다(계약 위반). "
+                        "다시 부르지 않습니다 (job_id=%s, 오류 코드 %s)",
+                        stage.value,
+                        job_id,
+                        error.code.value,
+                    )
+                elif error.retryable and attempt <= settings.requery_max_attempts:
+                    logger.info(
+                        "%s 단계를 같은 요청 ID로 다시 조회합니다 (job_id=%s, %d번째 시도 실패, "
+                        "오류 코드 %s)",
+                        stage.value,
+                        job_id,
+                        attempt,
+                        error.code.value,
+                    )
+                    sleep(settings.requery_delay_s)
+                    continue
+                raise _VisualFailed(stage, error.code) from failure
+            except PortResultInvalid as invalid:
+                raise _VisualFailed(stage, INVALID_RESULT_CODE[stage]) from invalid
+            except Exception as error:  # 어댑터가 PortFailure 대신 던진 예상 밖 예외
+                logger.exception(
+                    "%s 단계에서 예상하지 못한 예외가 났습니다 (job_id=%s)", stage.value, job_id
+                )
+                raise _VisualFailed(stage, INVALID_RESULT_CODE[stage]) from error
+            progress[stage] = StageStatus.SUCCEEDED
+            return result
+        # 마지막 시도의 실패는 위에서 _VisualFailed로 끝난다
+        raise AssertionError("도달하지 않는다")
 
     try:
-        body = step(
-            Stage.BODY_FIT, [], lambda r: ports.body.build_body(r, request.to_body_input())
-        )
+        body = step(Stage.BODY_FIT, [], lambda r: ports.body.build_body(r, request.to_body_input()))
         body_mesh = output_artifact(body.output_artifact_ids, BODY_OUTPUTS, "body_mesh")
         announce(Stage.BODY_FIT, found)
         drape = step(Stage.DRAPE, [body_mesh], lambda r: ports.drape.drape(r, garment))
@@ -404,5 +507,11 @@ def _numeric_metrics(result: PortResult) -> dict[str, float]:
     }
 
 
-def _stages(progress: dict[Stage, StageStatus]) -> list[StageProgress]:
-    return [StageProgress(stage=s, status=st, attempt_no=1) for s, st in progress.items()]
+def _stages(
+    progress: dict[Stage, StageStatus], attempts: Mapping[Stage, int] | None = None
+) -> list[StageProgress]:
+    """단계 상태 목록. `attempt_no`는 그 단계를 부른 횟수(부르지 않았으면 1)다."""
+    counts = attempts or {}
+    return [
+        StageProgress(stage=s, status=st, attempt_no=counts.get(s, 1)) for s, st in progress.items()
+    ]

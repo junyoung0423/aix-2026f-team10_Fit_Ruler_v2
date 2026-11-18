@@ -23,6 +23,9 @@
   `docs/adapters.md`). 핏 계산기는 항상 실제 `RuleFitCalculator`다.
   **설정이 틀리면 가짜로 대신하지 않고 `AdapterConfigError`로 서버가 뜨지 않는다.**
 - 작업 실행기: 인자 `runner`. 없으면 위 포트로 만든다.
+- 실패 처리 설정: 환경변수 `FIT_PIPELINE_CONFIG` > `config/pipeline_v0.yaml`
+  (단계별 시간 제한, 감시 시간 여유, 같은 요청 ID 재조회 횟수·간격). 파일이 틀리면
+  `PipelineConfigError`로 서버가 뜨지 않는다(`fitting/services/pipeline.py`).
 - 어댑터에 넘기는 환경: `FIT_WORK_DIR`(중간 파일, 기본 `artifacts/work/`),
   `BLENDER_PATH`/`BLENDER_EXE`, `SMPL_MODEL_DIR`, `FAL_KEY`(값은 읽지 않고 있는지만 본다)
 
@@ -62,6 +65,7 @@ from fitting.domain import (
 from fitting.fit import FitRules, RuleFitCalculator
 from fitting.services.fitting import FittingPorts
 from fitting.services.jobs import JobRunner
+from fitting.services.pipeline import load_run_settings
 from server.artifacts import DEFAULT_ARTIFACTS_SUBDIR, ArtifactDirectory, media_type
 from server.errors import (
     GARMENT_NOT_READY_STATUS,
@@ -202,6 +206,8 @@ def create_app(
 
     Raises:
         AdapterConfigError: 어댑터 설정이 틀렸다. 서버가 뜨지 않게 그대로 올린다.
+        PipelineConfigError: 실패 처리 설정(`FIT_PIPELINE_CONFIG`)이 틀렸다. 마찬가지로 그대로
+            올린다.
     """
     garments = GarmentDirectory(_garments_dir(garments_dir))
     calculator = RuleFitCalculator(rules)
@@ -211,7 +217,7 @@ def create_app(
         workers = int(_env_number(MAX_WORKERS_ENV, 1, minimum=1, integer=True))
         if ports is None:
             ports, adapter_summary = _adapter_ports(calculator, artifacts.path, adapters)
-        runner = JobRunner(ports, max_workers=workers)
+        runner = JobRunner(ports, max_workers=workers, settings=load_run_settings())
     jobs = runner
 
     @asynccontextmanager
