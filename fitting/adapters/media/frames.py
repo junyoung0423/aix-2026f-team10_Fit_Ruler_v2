@@ -4,11 +4,13 @@
 - D5: 실사 영상의 대표 프레임과, 그 시각에 대응하는 렌더 클립 프레임을 함께 저장한다
   (`save_frame_pair`). 대응 계산(길이·fps 차이 보정)은 순수 로직 `fitting.verify.frame_match`가
   한다.
+- D6: 11프레임을 한 번에 읽는다(`read_frames`). 색·실루엣 측정은 `visual_measure`.
 """
 
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -90,6 +92,49 @@ def read_frame(path: Path, index: int) -> np.ndarray:
     if not ok or frame is None:
         raise ValueError(f"{index}번 프레임이 없습니다: {path}")
     return frame
+
+
+def read_frames(path: Path, indices: Iterable[int]) -> dict[int, np.ndarray]:
+    """여러 프레임을 한 번에 앞에서부터 읽는다(`read_frame`과 같은 방식, D6 11프레임용).
+
+    Raises:
+        ValueError: 영상을 열 수 없거나 없는 번호가 있다.
+    """
+    wanted = sorted(set(indices))
+    if not wanted:
+        return {}
+    if wanted[0] < 0:
+        raise ValueError(f"프레임 번호는 0 이상이어야 합니다: {wanted[0]}")
+    frames: dict[int, np.ndarray] = {}
+    capture = _open(path)
+    try:
+        position = 0
+        for index in wanted:
+            while position < index:
+                if not capture.grab():
+                    raise ValueError(f"{index}번 프레임이 없습니다: {path}")
+                position += 1
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                raise ValueError(f"{index}번 프레임이 없습니다: {path}")
+            frames[index] = frame
+            position += 1
+    finally:
+        capture.release()
+    return frames
+
+
+def read_image(path: Path, flags: int = cv2.IMREAD_COLOR) -> np.ndarray:
+    """이미지 파일을 읽는다. 한글 경로 때문에 `cv2.imread` 대신 바이트로 읽어 디코딩한다.
+
+    Raises:
+        OSError: 파일을 읽을 수 없다.
+        ValueError: 이미지로 디코딩할 수 없다.
+    """
+    image = cv2.imdecode(np.frombuffer(Path(path).read_bytes(), np.uint8), flags)
+    if image is None:
+        raise ValueError(f"이미지를 읽지 못했습니다: {path}")
+    return image
 
 
 def read_video_info(path: Path) -> VideoInfo:

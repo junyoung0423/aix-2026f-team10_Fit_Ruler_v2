@@ -20,6 +20,18 @@ from .frame_match import (
     coverage,
     match_render_frame,
 )
+from .visual_check import CHECK_VERSION as VISUAL_CHECK_VERSION
+from .visual_check import (
+    FrameMeasure,
+    FrameResult,
+    VisualCheckResult,
+    VisualCriteria,
+    delta_e_2000,
+    judge_frame,
+    judge_video,
+    mask_iou,
+    srgb_to_lab,
+)
 
 __all__ = [
     "CHECK_VERSION",
@@ -28,14 +40,24 @@ __all__ = [
     "MATCH_MODES",
     "PASS",
     "UNVERIFIABLE",
+    "VISUAL_CHECK_VERSION",
     "ClipTiming",
     "DrapeCheckResult",
     "DrapeCheckThresholds",
     "FrameMatch",
+    "FrameMeasure",
+    "FrameResult",
     "MatchMode",
     "PenetrationSummary",
+    "VisualCheckResult",
+    "VisualCriteria",
     "coverage",
+    "delta_e_2000",
     "judge_drape",
+    "judge_frame",
+    "judge_video",
+    "mask_iou",
     "match_render_frame",
+    "srgb_to_lab",
     "summarize_penetration",
 ]
