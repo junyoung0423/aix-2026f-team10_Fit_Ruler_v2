@@ -400,6 +400,16 @@ def test_factory_stops_when_something_is_missing(tmp_path, change, fragment):
         dr.make_draper(settings, environ)
 
 
+def test_factory_skips_analyze_unless_turned_on(tmp_path):
+    settings, environ = _factory_env(tmp_path)
+    assert dr.make_draper(settings, environ).analyze is False
+    environ["FIT_DRAPE_ANALYZE"] = "ON"
+    assert dr.make_draper(settings, environ).analyze is True
+    environ["FIT_DRAPE_ANALYZE"] = "maybe"
+    with pytest.raises(AdapterConfigError, match="FIT_DRAPE_ANALYZE"):
+        dr.make_draper(settings, environ)
+
+
 def test_factory_dev_body_and_fabric_off(tmp_path):
     settings, environ = _factory_env(tmp_path)
     body = tmp_path / "mean_all.obj"
@@ -438,6 +448,27 @@ def test_drape_blender_yaml_builds_with_the_wiring(tmp_path, monkeypatch):
 
 def test_default_yaml_still_uses_the_fake_draper():
     assert load_adapter_config("default").ports["drape"] == "fake"
+
+
+# --- analyze 건너뛰기 ---
+
+
+def test_skips_analyze_by_default_and_records_it(env):
+    g = _garment()
+    _prepare(env["prepared"], g)
+    runner = FakeRunDrape()
+    _draper(env, runner).drape(_request(), g)
+    assert runner.calls[0]["cmd"][-1] == "--skip-analyze"
+    record = json.loads((env["work"] / JOB / "drape_record.json").read_text("utf-8"))
+    assert record["analyze"] is False
+
+
+def test_analyze_on_runs_run_drape_without_the_flag(env):
+    g = _garment()
+    _prepare(env["prepared"], g)
+    runner = FakeRunDrape()
+    _draper(env, runner, analyze=True).drape(_request(), g)
+    assert "--skip-analyze" not in runner.calls[0]["cmd"]
 
 
 # --- 시간 제한 (analyze는 따로) ---
