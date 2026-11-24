@@ -10,7 +10,7 @@ D4 실사화 어댑터(`docs/realize.md`) 위에 세 가지를 더했다.
 | 파이프라인에서 실사화 실행·저장 | `run_fitting` 안의 `FalRealizer` 연동 테스트, 영상 경로 전부 실제 설정 `config/adapters/visual_real.yaml` |
 | 대표 프레임 추출·대응 렌더 프레임 매칭(길이·fps 차이 보정) | 순수 계산 `fitting/verify/frame_match.py`, 파일 저장 `fitting/adapters/media/frames.py`, 검증 어댑터 프레임 부분 `fitting/adapters/media/validator.py`, 명령 `tools/match_frames.py` |
 
-색·실루엣 판정과 통과 기준은 D6이다. 그래서 D5의 검증 어댑터는 프레임만 저장하고 `quality_status`를 `UNVERIFIABLE`로 둔다(4절).
+색·실루엣 판정과 통과 기준은 D6이다(`docs/visual-check.md`). D5에서는 검증 어댑터가 프레임만 저장하고 `quality_status`를 `UNVERIFIABLE`로 두었고, D6에서 같은 어댑터에 판정을 더했다(4절).
 
 ## 1. 프롬프트 템플릿 (`realize_prompt_v1`)
 
@@ -82,7 +82,7 @@ soft even lighting, natural fabric folds. Keep the garment color, shape, length 
 - 실사화 대기 한도를 넘기면(`REALIZE_TIMEOUT`, 요청 ID 있음) 서비스(B5)가 같은 포트를 다시 부른다. 이때 어댑터는 **다시 제출하지 않고** 같은 요청 ID로 결과만 받는다(제출 1번, 실사화 `attempt_no` 2).
 - 실사화에 동의하지 않으면 fal을 전혀 부르지 않는다.
 
-**영상 경로 전부 실제로 돌리는 설정**: `config/adapters/visual_real.yaml`(몸 D3 · 착장 C4 · 렌더 C5 · 실사화 D4 · 검증 D5). `default.yaml`은 바꾸지 않았다.
+**영상 경로 전부 실제로 돌리는 설정**: `config/adapters/visual_real.yaml`(몸 D3 · 착장 C4 · 렌더 C5 · 실사화 D4 · 검증 D5, D6에서 판정 추가). `default.yaml`은 바꾸지 않았다.
 
 ```powershell
 $env:BLENDER_PATH = "C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
@@ -93,7 +93,7 @@ python -m tools.run_fitting_once --adapters visual_real --consent --yes
 
 - Blender·GarmentCode·SMPL 모델·FAL_KEY가 모두 있는 PC에서만 시작한다. 없으면 어느 포트가 왜 안 되는지 알리고 멈춘다(검증 어댑터는 OpenCV만 있으면 된다. 테스트로 확인).
 - **이 PC에는 Blender가 없어 실제로 끝까지 돌리지 못했다.** C의 PC에서 확인해야 한다.
-- D6 전에는 검증 단계에서 `VALIDATION_UNVERIFIABLE`로 끝난다(4절). 실사 영상과 두 프레임 파일은 남는다.
+- D5 때는 검증 단계에서 늘 `VALIDATION_UNVERIFIABLE`로 끝났다(4절). D6부터는 색·실루엣 판정에 따라 PASS면 성공, 아니면 `VALIDATION_FAILED`·`VALIDATION_UNVERIFIABLE`로 끝난다. 어느 쪽이든 실사 영상과 두 프레임 파일은 남는다.
 
 **C5 클립 기준 실사화 설정** (드라이런, 비용 없음): C5 사양(768×1024, 24fps, 121프레임 정지 클립)과 같은 클립으로 계획만 세웠다.
 - 출력 121프레임(5.04초, 720p 상한 6초 안), 예상 크기 720×960
@@ -149,6 +149,8 @@ python -m tools.match_frames --real <실사.mp4> --render <렌더.mp4> --mode st
 
 ## 4. 검증 어댑터 — 프레임 부분 (`fitting.adapters.media.factory:make_validator`)
 
+> **D6 뒤 바뀐 점**: 이 절은 D5 때의 프레임 부분이다. D6에서 같은 어댑터(`VisualValidator`)가 명세서 7장대로 11프레임을 비교해 PASS·FAIL·UNVERIFIABLE을 낸다. 대표 프레임은 "가장 선명한 프레임" 대신 "통과 프레임 중 시간상 가운데"로 고르고, 기록은 `validate/validate.json`, 지표에는 `color_delta_e`·`silhouette_iou` 등 숫자가 들어간다. 지금 내용은 `docs/visual-check.md` 2·5절에 있다. 아래 표는 D5 기록으로 남긴다. `tools.match_frames`·`tools.realize_clip`의 대표 프레임(가장 선명한 프레임)은 그대로다.
+
 | 항목 | 내용 |
 |---|---|
 | 입력 | `input_artifact_ids` = [렌더 클립, 실사 영상] → `artifacts_dir/{id}.mp4` |
@@ -172,8 +174,8 @@ python -m tools.match_frames --real <실사.mp4> --render <렌더.mp4> --mode st
 | 검증 어댑터 | 임시 영상으로 출력·기록·실패 확인. C5 크기 시간 측정 |
 | **못 한 것** | 새 프롬프트로 실제 fal 호출(유료 약 $0.2, C5 클립 필요). `visual_real` 끝까지 실행(Blender 필요, C의 PC) |
 
-## 6. 같이 정할 것 · D6로 넘길 것
+## 6. 같이 정할 것 · D6로 넘긴 것
 
 - **대상 `person`과 `mannequin` (C·D)**: 렌더 몸 재질(회색 마네킹)과 같이 정한다. C5 실제 클립으로 두 문구를 한 번씩 비교하는 것을 제안한다(약 $0.2 × 2).
 - **옷 마스크 (C·D, D6)**: C5의 `{job_id}_render_mask.png`는 계약 밖 산출물이다. 렌더 지표 `render_mask_artifact_id`로만 알려진다. 검증 어댑터는 렌더 클립·실사 영상 ID만 받으므로, D6 실루엣 비교는 `{job_id}_render_mask.png` 이름 규칙으로 찾아야 한다. 계약 출력으로 올릴지 정한다.
-- **D6**: 색 차이·실루엣 겹침 지표, 통과 기준, 얼굴·머리가 생겼는지 검사(decisions.md 2절)를 이 어댑터에 더한다. 크기 맞춤(실사 720×960 ↔ 렌더 768×1024)도 D6에서 한다.
+- **D6 (반영함)**: 색 차이·실루엣 겹침 지표, 통과 기준, 크기 맞춤(같은 비율로만)을 이 어댑터에 더했다(`docs/visual-check.md`). 옷 마스크는 이름 규칙으로 찾는다. 얼굴·머리는 자동으로 찾지 않고 사람 확인 표시로 남긴다(`docs/visual-check.md` 6절).
