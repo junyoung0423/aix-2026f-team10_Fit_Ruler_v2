@@ -12,6 +12,7 @@ from .drape_check import (
     judge_drape,
     summarize_penetration,
 )
+from .silhouette import SHAPE_VERSION, EmptyMaskError, compare_masks, mask_shape
 
 __all__ = [
     "CHECK_VERSION",
@@ -22,6 +23,10 @@ __all__ = [
     "DrapeCheckResult",
     "DrapeCheckThresholds",
     "PenetrationSummary",
+    "SHAPE_VERSION",
+    "EmptyMaskError",
+    "compare_masks",
     "judge_drape",
+    "mask_shape",
     "summarize_penetration",
 ]
