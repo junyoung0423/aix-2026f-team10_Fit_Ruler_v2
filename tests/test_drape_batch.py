@@ -162,6 +162,19 @@ def test_skip_done_and_force(setup):
     assert draper.calls == ["g1", "g2", "g1"]
 
 
+def test_rerun_clears_previous_work_and_artifacts(setup):
+    out, draper = setup
+    db.run_batch([garment("g1")], draper, None, out, keep_blend=True, log=lambda _: None)
+    stale = out / "work" / "g1" / "drape" / "stale.txt"  # 어댑터는 남은 폴더를 덮어쓰지 않는다
+    stale.write_text("old", "utf-8")
+    other = out / "artifacts" / "g10_drape_result.blend"  # 다른 의류 산출물은 지우지 않는다
+    other.write_bytes(b"x")
+    db.run_batch([garment("g1")], draper, None, out, force=True, keep_blend=True, log=print)
+    assert not stale.exists()
+    assert (out / "artifacts" / "g1_drape_result.blend").is_file()
+    assert other.is_file()
+
+
 def test_resume_after_interrupt(setup):
     out, draper = setup
     gs = [garment("g1"), garment("g2"), garment("g3")]

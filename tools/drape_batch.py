@@ -34,6 +34,7 @@ import dataclasses
 import hashlib
 import json
 import os
+import shutil
 import statistics
 import sys
 import time
@@ -227,6 +228,16 @@ def _drop_blends(gid: str, artifacts: Path, work: Path) -> list[str]:
     return removed
 
 
+def _clear_previous(gid: str, artifacts: Path, work: Path) -> None:
+    """다시 돌리기 전에 이 의류의 이전 작업 폴더와 착장·렌더 산출물을 지운다."""
+    shutil.rmtree(work / gid, ignore_errors=True)
+    if artifacts.is_dir():
+        for pattern in (f"{gid}_drape_*", f"{gid}_render_*"):
+            for p in artifacts.glob(pattern):
+                if p.is_file():
+                    p.unlink()
+
+
 def run_one(
     garment: GarmentVariant,
     draper,
@@ -305,6 +316,8 @@ def run_batch(
             log(f"[{i}/{len(garments)}] {g.id}: 이미 끝남, 건너뜀")
             continue
         result_path.unlink(missing_ok=True)
+        # 어댑터는 남아 있는 작업 폴더를 덮어쓰지 않으므로(중단된 벌·--force) 먼저 비운다
+        _clear_previous(g.id, out / "artifacts", out / "work")
         log(f"[{i}/{len(garments)}] {g.id}: 착장 중…")
         rec = run_one(g, draper, renderer, out, timeout=timeout, keep_blend=keep_blend)
         folder.mkdir(parents=True, exist_ok=True)
