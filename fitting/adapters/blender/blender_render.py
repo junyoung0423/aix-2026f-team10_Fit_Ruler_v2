@@ -22,6 +22,8 @@ status FAILED(failure=objects_not_found)를 쓰고 종료 코드 3으로 끝난�
         --python fitting/adapters/blender/blender_render.py -- <render_job.json>
 
 render_job.json: {"out_dir", "config", "garment_color_hex",
+                  "background_srgb_hex"·"body_srgb_hex"(선택: 어댑터가 옷 색으로 고른
+                  배경·마네킹 색, 없으면 설정 값),
                   "engine_override"(선택: "CYCLES"·"BLENDER_EEVEE", 엔진 비교용)}
 """
 
@@ -136,8 +138,9 @@ def set_material(obj, mat):
         poly.material_index = 0
 
 
-def setup_world(cfg):
+def setup_world(cfg, background_hex=None):
     w = cfg["world"]
+    background_hex = background_hex or w["background_srgb_hex"]
     world = bpy.data.worlds.new("render_world")
     world.use_nodes = True
     nt = world.node_tree
@@ -147,7 +150,7 @@ def setup_world(cfg):
     bg_cam = nt.nodes.new("ShaderNodeBackground")
     bg_amb = nt.nodes.new("ShaderNodeBackground")
     mix = nt.nodes.new("ShaderNodeMixShader")
-    bg_cam.inputs["Color"].default_value = (*rc.hex_to_linear(w["background_srgb_hex"]), 1.0)
+    bg_cam.inputs["Color"].default_value = (*rc.hex_to_linear(background_hex), 1.0)
     bg_cam.inputs["Strength"].default_value = 1.0
     bg_amb.inputs["Color"].default_value = (*rc.hex_to_linear(w["ambient_srgb_hex"]), 1.0)
     bg_amb.inputs["Strength"].default_value = w["ambient_strength"]
@@ -453,9 +456,8 @@ def main():
     )
     set_material(garment_obj, g_mat)
     bm = cfg["body_material"]
-    b_mat, _ = principled(
-        "body_render", bm["base_srgb_hex"], bm["roughness"], bm["specular_ior_level"]
-    )
+    body_hex = job.get("body_srgb_hex") or bm["base_srgb_hex"]
+    b_mat, _ = principled("body_render", body_hex, bm["roughness"], bm["specular_ior_level"])
     set_material(body, b_mat)
     if bm.get("shade_smooth"):
         for poly in body.data.polygons:  # 보기만 바꾼다(정점은 그대로)
@@ -466,7 +468,8 @@ def main():
         (g_co[:, 1].min() + g_co[:, 1].max()) / 2,
         (g_co[:, 2].min() + g_co[:, 2].max()) / 2,
     )
-    setup_world(cfg)
+    background_hex = job.get("background_srgb_hex") or cfg["world"]["background_srgb_hex"]
+    setup_world(cfg, background_hex)
     lights = setup_lights(cfg, center)
     color_management(scene, cfg["color_management"])
     no_metadata(scene)
@@ -572,13 +575,13 @@ def main():
             "framing_rule": cfg["framing"],
         },
         "lights": lights,
-        "world": cfg["world"],
+        "world": {**cfg["world"], "used_background_srgb_hex": background_hex},
         "garment_material": {
             "base_srgb_hex": g_hex,
             "base_linear": [round(v, 6) for v in g_lin],
             **gm,
         },
-        "body_material": bm,
+        "body_material": {**bm, "used_base_srgb_hex": body_hex},
         "engine": {
             "name": engine,
             "samples": samples,
