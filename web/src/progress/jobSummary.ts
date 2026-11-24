@@ -43,8 +43,15 @@ export function realizeMessage(job: FittingStatus): string {
   return '렌더가 끝나면 실사화를 시작합니다.';
 }
 
-/** attempt_no가 2 이상이면 "재시도 2회째" */
-export const attemptText = (stage: StageProgress) => (stage.attempt_no >= 2 ? `재시도 ${stage.attempt_no}회째` : null);
+/**
+ * 같은 요청 ID 재조회(B5) 표시. 서버는 다시 조회하는 동안 단계를 RUNNING 그대로 두고 attempt_no만 2, 3으로 올린다
+ * (docs/api/README.md). attempt_no는 그 단계를 부른 횟수라 2가 "두 번째 조회"다.
+ * 진행 중이면 "다시 조회 중(2번째)", 끝난 단계면 "조회 2번". 1이면 null
+ */
+export function attemptText(stage: StageProgress): string | null {
+  if (stage.attempt_no < 2) return null;
+  return stage.status === 'RUNNING' ? `다시 조회 중(${stage.attempt_no}번째)` : `조회 ${stage.attempt_no}번`;
+}
 
 export type HeadlineTone = 'running' | 'done' | 'partial' | 'failed';
 
@@ -57,7 +64,11 @@ export function jobHeadline(job: FittingStatus): { text: string; tone: HeadlineT
     case 'ACCEPTED':
     case 'RUNNING': {
       const running = stages.findIndex((stage) => stage.status === 'RUNNING');
-      if (running >= 0) return { text: `${STAGE_LABEL[stages[running].stage]} 중 ${position(running)}`, tone: 'running' };
+      if (running >= 0) {
+        const stage = stages[running];
+        const doing = stage.attempt_no >= 2 ? ` 결과 다시 조회 중(${stage.attempt_no}번째)` : ' 중';
+        return { text: `${STAGE_LABEL[stage.stage]}${doing} ${position(running)}`, tone: 'running' };
+      }
       if (job.status === 'ACCEPTED' || job.visual.status === 'QUEUED') return { text: '차례를 기다리는 중', tone: 'running' };
       const next = stages.findIndex((stage) => stage.status === 'WAITING' || stage.status === 'QUEUED');
       if (next >= 0) return { text: `${STAGE_LABEL[stages[next].stage]} 준비 중 ${position(next)}`, tone: 'running' };

@@ -20,6 +20,7 @@ function setup(options: MockApiOptions = {}) {
     rejectField: () => null,
     flakyCount: () => 0,
     lostJob: () => false,
+    requeryStage: () => null,
     ...options,
   });
   return { api, advance: (ms: number) => (time += ms) };
@@ -100,5 +101,29 @@ describe('같은 조건으로 다시 시도', () => {
     const value = stored({ ...REQUEST, garment_variant_id: 'removed' });
     if (!canRestart(value)) throw new Error('저장된 요청이 있어야 한다');
     await expect(restartFitting(api, value)).rejects.toMatchObject({ status: 404, code: 'GARMENT_NOT_FOUND' });
+  });
+});
+
+describe('가짜 API: 같은 요청 ID 재조회 흉내(?mockRequery, B5)', () => {
+  const realize = async (api: ReturnType<typeof setup>['api'], jobId: string) =>
+    (await api.getFitting(jobId)).stages.find((stage) => stage.stage === 'REALIZE');
+
+  it('그 단계의 진행 시간 절반부터 RUNNING 그대로 attempt_no 2, 끝나도 2가 남는다', async () => {
+    const { api, advance } = setup({ requeryStage: () => 'REALIZE' });
+    const { job_id: jobId } = await api.createFitting(REQUEST);
+    advance(7000 + 1000); // 몸 2초 + 착장 3초 + 렌더 2초 뒤 실사화 1초째
+    expect(await realize(api, jobId)).toEqual({ stage: 'REALIZE', status: 'RUNNING', attempt_no: 1 });
+    advance(1500); // 실사화 4초 중 2.5초째
+    expect(await realize(api, jobId)).toEqual({ stage: 'REALIZE', status: 'RUNNING', attempt_no: 2 });
+    advance(3000);
+    expect(await realize(api, jobId)).toEqual({ stage: 'REALIZE', status: 'SUCCEEDED', attempt_no: 2 });
+  });
+
+  it('옵션이 없으면 모든 단계가 attempt_no 1', async () => {
+    const { api, advance } = setup();
+    const { job_id: jobId } = await api.createFitting(REQUEST);
+    advance(60_000);
+    const job = await api.getFitting(jobId);
+    expect(job.stages.every((stage) => stage.attempt_no === 1)).toBe(true);
   });
 });
