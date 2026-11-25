@@ -6,7 +6,7 @@
 1. 렌더 정지 프레임 → 실사 사진(Nano Banana Pro 편집)
 2. 렌더 클립 + 1의 사진을 첫 프레임으로 실사화해 렌더 핏을 입힌 프레임(LTX-2.3 render-to-real)
 3. 팔을 내린 정면 사진(Nano Banana Pro 편집)
-4. 시작·끝을 3의 사진으로 고정한 8초 회전 영상(Veo 3.1 first-last-frame)
+4. 시작·끝을 3의 사진으로 고정한 8초 회전 영상(Veo 3.1 Fast first-last-frame, 표준판은 옵션)
 근거·실험 결과는 docs/realize-fitroom.md.
 """
 

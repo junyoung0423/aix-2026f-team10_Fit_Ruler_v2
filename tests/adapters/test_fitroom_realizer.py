@@ -17,7 +17,11 @@ from fitting.adapters.fal_fitroom.realizer import (  # noqa: E402
     FitRoomOptions,
     FitRoomRealizer,
 )
-from fitting.adapters.fal_fitroom.steps import PHOTO_ENDPOINT, TURN_ENDPOINT  # noqa: E402
+from fitting.adapters.fal_fitroom.steps import (  # noqa: E402
+    PHOTO_ENDPOINT,
+    TURN_ENDPOINT,
+    TURN_MODELS,
+)
 from fitting.adapters.fal_ltx.render_to_real import ENDPOINT as TRANSFER_ENDPOINT  # noqa: E402
 from fitting.adapters.media.validator import FIT_FRAME_ROLE as VALIDATOR_FIT_FRAME  # noqa: E402
 from fitting.domain import ErrorCode, GarmentVariant, Stage  # noqa: E402
@@ -63,6 +67,7 @@ class FakeFal:
         self.submits: list[tuple[str, dict[str, Any]]] = []
         self.uploads: list[str] = []
         self.ids: dict[str, str] = {}
+        self.queries: list[tuple[str, str]] = []  # (모델, 요청 ID): 상태·결과 조회
 
     def upload_file(self, path: Path) -> str:
         self.uploads.append(Path(path).name)
@@ -84,10 +89,12 @@ class FakeFal:
         return SimpleNamespace(request_id=request_id)
 
     def status(self, application: str, request_id: str, *, with_logs: bool = False) -> Any:
+        self.queries.append((application, request_id))
         queue = self.statuses.get(self.ids[request_id]) or []
         return queue.pop(0) if queue else Completed()
 
     def result(self, application: str, request_id: str) -> dict[str, Any]:
+        self.queries.append((application, request_id))
         step = self.ids[request_id]
         if step in ("photo", "pose"):
             return {"images": [{"url": f"https://fal.example/{step}.png"}]}
@@ -164,9 +171,9 @@ def test_four_steps_run_in_order_and_save_every_output(tmp_path, media):
     assert m["realize_fit_frame_artifact_id"] == f"{JOB}_{FIT_FRAME_ROLE}"
     assert m["realize_pose_artifact_id"] == f"{JOB}_realize_pose"
     transfer_cost = record(tmp_path)["steps"]["transfer"]["cost_usd"]
-    assert m["cost_usd"] == pytest.approx(0.15 + 0.15 + 1.60 + transfer_cost, abs=1e-3)
-    # 사진 2장 $0.30 + 회전 8초 $1.60 + 핏 옮기기(작은 시험 클립)
-    assert m["estimated_cost_usd"] > 1.9
+    assert m["cost_usd"] == pytest.approx(0.15 + 0.15 + 0.80 + transfer_cost, abs=1e-3)
+    # 사진 2장 $0.30 + 회전 8초 $0.80(Veo 3.1 Fast) + 핏 옮기기(작은 시험 클립)
+    assert m["estimated_cost_usd"] > 1.0
     assert result.tool_versions["realize"] == REALIZE_VERSION
     assert result.tool_versions["turn_endpoint"] == TURN_ENDPOINT
     assert record(tmp_path)["state"] == "done"
@@ -289,6 +296,49 @@ def test_plan_lists_steps_and_rejects_a_bad_duration(tmp_path, media):
     realizer.options.turn_duration_s = 5
     with pytest.raises(ValueError, match="Veo 길이"):
         realizer.plan(request(), GARMENT)
+
+
+def test_default_turn_model_is_veo_fast(tmp_path, media):
+    plan = make(tmp_path, media, FakeFal()).plan(request(), GARMENT)
+    assert plan["turn_model"] == "fast"
+    assert plan["endpoints"]["turn"] == TURN_ENDPOINT
+    assert TURN_ENDPOINT == "fal-ai/veo3.1/fast/first-last-frame-to-video"
+    assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)  # 8초 x $0.10
+
+
+def test_standard_turn_model_uses_the_standard_veo_and_price(tmp_path, media):
+    client = FakeFal()
+    realizer = make(tmp_path, media, client, turn_model="standard")
+    plan = realizer.plan(request(), GARMENT)
+    assert plan["endpoints"]["turn"] == TURN_MODELS["standard"][0]
+    assert plan["estimate_usd"]["turn"] == pytest.approx(1.6)  # 8초 x $0.20
+    result = realizer.realize(request(), GARMENT)
+    assert client.submits[-1][0] == "fal-ai/veo3.1/first-last-frame-to-video"
+    assert result.tool_versions["turn_endpoint"] == "fal-ai/veo3.1/first-last-frame-to-video"
+
+
+def test_unknown_turn_model_is_rejected_before_calling_fal(tmp_path, media):
+    client = FakeFal()
+    realizer = make(tmp_path, media, client, turn_model="ultra")
+    with pytest.raises(ValueError, match="회전 모델"):
+        realizer.plan(request(), GARMENT)
+    with pytest.raises(PortFailure) as caught:
+        realizer.realize(request(), GARMENT)
+    assert caught.value.error.retryable is False
+    assert client.submits == [] and client.uploads == []
+
+
+def test_resumed_turn_is_queried_with_the_model_it_was_submitted_to(tmp_path, media):
+    client = FakeFal(statuses={"turn": [Queued(1)] * 1000})
+    realizer = make(tmp_path, media, client, wait_limit_s=60, turn_model="standard")
+    with pytest.raises(PortFailure):
+        realizer.realize(request(), GARMENT)
+    client.statuses["turn"] = []
+    client.queries.clear()
+    realizer.options.turn_model = "fast"  # 다시 부를 때 옵션이 바뀌어도 같은 요청을 본다
+    realizer.realize(request(), GARMENT)
+    assert len(client.submits) == 4
+    assert {model for model, _ in client.queries} == {"fal-ai/veo3.1/first-last-frame-to-video"}
 
 
 def test_missing_render_clip_fails_without_calling_fal(tmp_path, media):

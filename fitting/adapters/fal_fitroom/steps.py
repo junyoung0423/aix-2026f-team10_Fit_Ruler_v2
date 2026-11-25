@@ -8,7 +8,11 @@
 |---|---|---|
 | ① 사진·③ 자세 | `fal-ai/nano-banana-pro/edit` | 장당 $0.15(1K·2K) |
 | ② 핏 옮기기 | `fal-ai/ltx-2.3-quality/render-to-real` | 메가픽셀당 $0.0024075 (`render_to_real`) |
-| ④ 회전 | `fal-ai/veo3.1/first-last-frame-to-video` | 초당 $0.20(720p·1080p, 소리 끔) |
+| ④ 회전(기본 fast) | `fal-ai/veo3.1/fast/first-last-frame-to-video` | 초당 $0.10(소리 끔) |
+| ④ 회전(standard) | `fal-ai/veo3.1/first-last-frame-to-video` | 초당 $0.20(소리 끔) |
+
+④는 같은 조건 실험(2026-11-25)에서 Fast가 표준판과 같은 수준이라 Fast를 기본으로 둔다
+(docs/realize-fitroom.md 2절).
 """
 
 from __future__ import annotations
@@ -22,10 +26,15 @@ import numpy as np
 from fitting.adapters.media.frames import read_frames, read_video_info
 
 PHOTO_ENDPOINT = "fal-ai/nano-banana-pro/edit"
-TURN_ENDPOINT = "fal-ai/veo3.1/first-last-frame-to-video"
+# ④ 회전 모델: 이름 → (fal 모델, 초당 가격). 입력 형식은 둘이 같다
+TURN_MODELS = {
+    "fast": ("fal-ai/veo3.1/fast/first-last-frame-to-video", 0.10),
+    "standard": ("fal-ai/veo3.1/first-last-frame-to-video", 0.20),
+}
+DEFAULT_TURN_MODEL = "fast"
+TURN_ENDPOINT = TURN_MODELS[DEFAULT_TURN_MODEL][0]
 PRICE_CHECKED_ON = "2026-11-25"
 PHOTO_USD = 0.15
-TURN_USD_PER_SECOND = 0.20
 TURN_DURATIONS_S = (4, 6, 8)
 
 # 이 밝기(0~255)보다 어둡고 거의 고른 프레임만 있으면 검은 영상으로 본다. LTX 이미지→영상이 큰
@@ -58,7 +67,7 @@ def turn_arguments(
     resolution: str = "720p",
     seed: int | None = 42,
 ) -> dict[str, Any]:
-    """Veo 3.1 시작·끝 프레임: 시작과 끝을 같은 정면 사진으로 둔다. 소리는 끈다.
+    """Veo 3.1 시작·끝 프레임(Fast·표준 같은 형식): 시작과 끝을 같은 정면 사진으로, 소리는 끈다.
 
     Raises:
         ValueError: Veo가 받지 않는 길이다.
@@ -80,8 +89,17 @@ def turn_arguments(
     return arguments
 
 
-def turn_cost(duration_s: int) -> float:
-    return round(duration_s * TURN_USD_PER_SECOND, 4)
+def turn_endpoint(model: str = DEFAULT_TURN_MODEL) -> str:
+    """Raises: ValueError — 모르는 회전 모델이다."""
+    if model not in TURN_MODELS:
+        raise ValueError(f"회전 모델은 {sorted(TURN_MODELS)} 중 하나여야 합니다: {model}")
+    return TURN_MODELS[model][0]
+
+
+def turn_cost(duration_s: int, model: str = DEFAULT_TURN_MODEL) -> float:
+    """Raises: ValueError — 모르는 회전 모델이다."""
+    turn_endpoint(model)
+    return round(duration_s * TURN_MODELS[model][1], 4)
 
 
 # --- 프레임 ---------------------------------------------------------------------------------

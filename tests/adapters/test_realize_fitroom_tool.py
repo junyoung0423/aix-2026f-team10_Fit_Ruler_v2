@@ -44,8 +44,9 @@ def test_dry_run_plans_four_steps_without_calling_fal(tmp_path, media, capsys):
     out = tmp_path / "out" / "f1"
     plan = json.loads((out / "plan.json").read_text(encoding="utf-8"))
     assert list(plan["endpoints"]) == ["photo", "transfer", "pose", "turn"]
-    assert plan["estimate_usd"]["turn"] == pytest.approx(1.6)  # 8초 x $0.20
-    assert plan["estimate_usd"]["total"] > 1.9
+    assert plan["turn_model"] == "fast"
+    assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)  # 8초 x $0.10 (Veo 3.1 Fast)
+    assert plan["estimate_usd"]["total"] > 1.0
     assert plan["prompts"]["pants"] == "light beige chino trousers"
     assert (out / "artifacts" / "f1_render_clip.mp4").is_file()
     assert not (out / "work").exists()  # fal을 부르지 않아 기록도 없다
@@ -58,11 +59,22 @@ def test_duration_and_seed_go_into_the_plan(tmp_path, media):
     args = ["--input", str(media["render"]), "--name", "f2", "--out-dir", out]
     assert tool.main([*args, "--duration", "4", "--seed", "random"]) == tool.EXIT_OK
     plan = json.loads((tmp_path / "out" / "f2" / "plan.json").read_text(encoding="utf-8"))
-    assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)
+    assert plan["estimate_usd"]["turn"] == pytest.approx(0.4)
     with pytest.raises(SystemExit):
         tool.main([*args, "--duration", "5"])
     with pytest.raises(SystemExit):
         tool.main([*args, "--seed", "abc"])
+
+
+def test_turn_model_option_selects_the_standard_veo(tmp_path, media, capsys):
+    out = str(tmp_path / "out")
+    args = ["--input", str(media["render"]), "--name", "f6", "--out-dir", out]
+    assert tool.main([*args, "--turn-model", "standard"]) == tool.EXIT_OK
+    plan = json.loads((tmp_path / "out" / "f6" / "plan.json").read_text(encoding="utf-8"))
+    assert plan["endpoints"]["turn"] == "fal-ai/veo3.1/first-last-frame-to-video"
+    assert plan["estimate_usd"]["turn"] == pytest.approx(1.6)
+    with pytest.raises(SystemExit):
+        tool.main([*args, "--turn-model", "ultra"])
 
 
 def test_real_call_needs_the_key(tmp_path, media, monkeypatch, capsys):

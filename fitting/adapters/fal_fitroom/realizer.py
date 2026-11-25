@@ -7,7 +7,8 @@
 2. `transfer`: 렌더 클립 + 1의 사진(첫 프레임 기준 `image_url`) → LTX render-to-real. 렌더 구조를
    따라가며 렌더 핏이 입혀진 **마지막 프레임**에서 좌우 검은 띠를 잘라 `{job}_realize_fit_frame.png`
 3. `pose`: 2의 프레임에서 팔을 내린 정면 사진 `{job}_realize_pose.png` (Nano Banana Pro 편집)
-4. `turn`: 시작·끝을 3의 사진으로 둔 8초 회전 영상 `{job}_video.mp4` (Veo 3.1 first-last-frame)
+4. `turn`: 시작·끝을 3의 사진으로 둔 8초 회전 영상 `{job}_video.mp4` (Veo 3.1 Fast first-last-frame,
+   `turn_model="standard"`이면 Veo 3.1 표준판)
 
 계약 출력은 `REALIZE_OUTPUTS`(실사 영상)이고, 중간 사진 3장은 계약 밖 산출물로 같은 폴더에 두고 지표
 (`realize_*_artifact_id`)로 알린다(C5 옷 마스크와 같은 방식). 검증 어댑터가 이름 규칙으로 찾는다.
@@ -24,6 +25,7 @@
   `REALIZE_TIMEOUT`(retryable, 그 단계의 요청 ID).
 - 제출 전에 4단계 예상 비용 합이 `max_cost_usd`를 넘으면 `BUDGET_LIMIT`.
 - 생성 결과가 모두 검은 화면이면 `REALIZE_FAILED`(retryable=false). 다시 조회해도 같은 결과다.
+- 상태·결과 조회는 제출할 때 기록한 모델로 한다(다시 부를 때 옵션이 바뀌어도 같은 요청을 본다).
 """
 
 from __future__ import annotations
@@ -63,6 +65,7 @@ from .steps import (
     PHOTO_USD,
     PRICE_CHECKED_ON,
     TURN_ENDPOINT,
+    TURN_MODELS,
     crop_side_bars,
     first_frame,
     is_black,
@@ -71,6 +74,7 @@ from .steps import (
     sample_frames,
     turn_arguments,
     turn_cost,
+    turn_endpoint,
     write_png,
 )
 
@@ -80,6 +84,7 @@ SUMMARY_NAME = "realize.json"
 STEPS = ("photo", "transfer", "pose", "turn")
 # 계약 밖 중간 산출물 역할(지표로 ID를 알린다). 검증 어댑터가 같은 이름으로 찾는다
 PHOTO_ROLE, FIT_FRAME_ROLE, POSE_ROLE = "realize_photo", "realize_fit_frame", "realize_pose"
+# 기본 옵션(④ Veo 3.1 Fast) 기준 단계별 모델. 옵션에 맞춘 값은 `FitRoomRealizer.endpoints()`
 ENDPOINTS = {
     "photo": PHOTO_ENDPOINT,
     "transfer": TRANSFER_ENDPOINT,
@@ -104,7 +109,7 @@ Downloader = Callable[[str, Path], None]
 @dataclass
 class FitRoomOptions:
     seed: int | None = 42  # ②·④에 보내는 시드(①·③ 사진 편집은 fal이 고른다)
-    max_cost_usd: float = 3.0  # 4단계 예상 비용 합 상한(기본 흐름 약 $2.1)
+    max_cost_usd: float = 3.0  # 4단계 예상 비용 합 상한(기본 흐름 약 $1.3, 표준판 ④면 약 $2.1)
     poll_interval_s: float = 3.0
     wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
     garment_text: str | None = None  # 프롬프트 옷 설명(시험용)
@@ -113,6 +118,7 @@ class FitRoomOptions:
     transfer_intensity: str = "strong-v2"
     turn_duration_s: int = 8
     turn_resolution: str = "720p"
+    turn_model: str = "fast"  # "fast": Veo 3.1 Fast(초당 $0.10) · "standard": 표준판($0.20)
 
 
 @dataclass
@@ -179,6 +185,10 @@ class FitRoomRealizer:
             "turn": directory / f"{job_id}_{REALIZE_OUTPUTS[0]}.mp4",
         }
 
+    def endpoints(self) -> dict[str, str]:
+        """옵션에 맞춘 단계별 fal 모델. Raises: ValueError — 모르는 회전 모델이다."""
+        return {**ENDPOINTS, "turn": turn_endpoint(self.options.turn_model)}
+
     # --- 계획(드라이런) ---------------------------------------------------------------------
 
     def plan(self, request: PortRequest, garment: GarmentVariant) -> dict[str, Any]:
@@ -193,6 +203,7 @@ class FitRoomRealizer:
             raise FileNotFoundError(f"렌더 클립이 없습니다: {request.input_artifact_ids}")
         _, info = sample_frames(clip, count=1)
         prompts = build_fitroom_prompts(garment, garment_text=self.options.garment_text)
+        endpoints = self.endpoints()
         transfer = self._transfer_settings(garment, info)
         width, height = output_size(int(info["width"]), int(info["height"]), transfer.resolution)
         transfer_estimate = estimate_cost(width, height, transfer.num_frames)
@@ -208,12 +219,13 @@ class FitRoomRealizer:
             "photo": PHOTO_USD,
             "transfer": transfer_estimate.usd,
             "pose": PHOTO_USD,
-            "turn": turn_cost(self.options.turn_duration_s),
+            "turn": turn_cost(self.options.turn_duration_s, self.options.turn_model),
         }
         return {
             "version": REALIZE_VERSION,
             "input": {"path": clip.name, **info},
-            "endpoints": ENDPOINTS,
+            "endpoints": endpoints,
+            "turn_model": self.options.turn_model,
             "prompts": prompts.to_dict(),
             "transfer_prompt_version": STYLE_VERSIONS["fitting_room"],
             "transfer_settings": transfer.to_arguments("<렌더 클립 주소>"),
@@ -253,7 +265,9 @@ class FitRoomRealizer:
             "transfer_prompt": STYLE_VERSIONS["fitting_room"],
             "photo_endpoint": PHOTO_ENDPOINT,
             "transfer_endpoint": TRANSFER_ENDPOINT,
-            "turn_endpoint": TURN_ENDPOINT,
+            "turn_endpoint": TURN_MODELS[self.options.turn_model][0]
+            if self.options.turn_model in TURN_MODELS
+            else f"unknown:{self.options.turn_model}",
             "fal_client": self.client_version,
             "price_checked_on": PRICE_CHECKED_ON,
         }
@@ -407,7 +421,7 @@ class FitRoomRealizer:
     def _submit(
         self, name: str, arguments: dict[str, Any], record: _Record, ctx: dict[str, Any]
     ) -> str:
-        endpoint = ENDPOINTS[name]
+        endpoint = self.endpoints()[name]
         _write_json(
             ctx["record_dir"] / f"{name}_request.json",
             {"endpoint": endpoint, "arguments": arguments},
@@ -445,8 +459,12 @@ class FitRoomRealizer:
         )
         return request_id
 
+    def _endpoint(self, name: str, record: _Record) -> str:
+        """제출할 때 기록한 모델(없으면 지금 옵션의 모델)."""
+        return str(record.step(name).get("endpoint") or self.endpoints()[name])
+
     def _wait(self, name: str, request_id: str, record: _Record, ctx: dict[str, Any]) -> None:
-        endpoint = ENDPOINTS[name]
+        endpoint = self._endpoint(name, record)
         failures = 0
         while True:
             if self.clock() > ctx["deadline"]:
@@ -503,7 +521,7 @@ class FitRoomRealizer:
     def _fetch(
         self, name: str, request_id: str, record: _Record, ctx: dict[str, Any]
     ) -> dict[str, Any]:
-        endpoint = ENDPOINTS[name]
+        endpoint = self._endpoint(name, record)
         response = self._call(
             f"{name}:result", lambda: self.client.result(endpoint, request_id), record
         )

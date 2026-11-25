@@ -1,7 +1,7 @@
 """렌더 클립 하나를 피팅룸 실사화 어댑터로 회전 영상으로 만든다(서버 없이, 같은 어댑터).
 
     python -m tools.realize_fitroom --input path/to/render_clip.mp4         # 드라이런(비용 없음)
-    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출(약 $2.1)
+    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출(약 $1.3)
     python -m tools.realize_fitroom --name <이전 이름> --yes                 # 이어 받기(끝난 단계
     건너뜀)
 
@@ -35,7 +35,14 @@ import numpy as np
 
 from fitting.adapters.fal_fitroom.factory import make_fitroom_realizer
 from fitting.adapters.fal_fitroom.realizer import FitRoomOptions, FitRoomRealizer
-from fitting.adapters.fal_fitroom.steps import first_frame, read_image, sample_frames, write_png
+from fitting.adapters.fal_fitroom.steps import (
+    DEFAULT_TURN_MODEL,
+    TURN_MODELS,
+    first_frame,
+    read_image,
+    sample_frames,
+    write_png,
+)
 from fitting.ports import PortFailure, PortRequest
 from server.app import DEFAULT_GARMENTS_DIR, GARMENTS_DIR_ENV
 from server.garments import GarmentDirectory
@@ -70,6 +77,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--duration", type=int, choices=[4, 6, 8], default=8, help="회전 영상 길이(초)"
+    )
+    parser.add_argument(
+        "--turn-model",
+        choices=sorted(TURN_MODELS),
+        default=DEFAULT_TURN_MODEL,
+        help="④ 회전 모델: fast(Veo 3.1 Fast, 초당 $0.10, 기본)·standard(Veo 3.1, 초당 $0.20)",
     )
     parser.add_argument("--max-cost-usd", type=float, default=3.0, help="4단계 예상 비용 합 상한")
     parser.add_argument("--timeout", type=int, default=900, help="4단계 전체 대기 상한(초)")
@@ -133,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         garment_text=args.garment_text,
         allow_resubmit=args.resubmit,
         turn_duration_s=args.duration,
+        turn_model=args.turn_model,
     )
     request = PortRequest(
         job_id=name,
