@@ -10,9 +10,10 @@
 |---|---|
 | `fitting/adapters/fal_ltx/realizer.py` | `FalRealizer`(`Realizer` 포트). 업로드 → 제출 → 상태 조회 → 결과 → 내려받기 |
 | `fitting/adapters/fal_ltx/factory.py` | B4 팩토리 `make_realizer(settings)`. FAL_KEY가 없으면 `AdapterConfigError` |
+| `fitting/adapters/fal_ltx/prompt.py` | D5 프롬프트 템플릿(`realize_prompt_v1`). docs/realize-pipeline.md 1절 |
 | `tools/realize_clip.py` | 서버 없이 렌더 클립 하나를 실사화하는 명령(기본 드라이런, `--yes`일 때만 실제 호출) |
 
-설정에 넣는 법: `realize: "fitting.adapters.fal_ltx.factory:make_realizer"`. **`default.yaml`의 `realize`는 아직 `fake`다.** 피팅 흐름 안에서는 C5 실제 렌더 클립이 있어야 실사화할 수 있기 때문이다(가짜 렌더는 파일을 만들지 않는다).
+설정에 넣는 법: `realize: "fitting.adapters.fal_ltx.factory:make_realizer"`. **`default.yaml`의 `realize`는 아직 `fake`다.** 피팅 흐름 안에서는 C5 실제 렌더 클립이 있어야 실사화할 수 있기 때문이다(가짜 렌더는 파일을 만들지 않는다). 영상 경로 5단계를 모두 실제로 돌리는 설정은 `config/adapters/visual_real.yaml`이다(D5, docs/realize-pipeline.md 2절).
 
 ## 2. 흐름과 설정
 
@@ -21,7 +22,7 @@
 | 입력 | `input_artifact_ids[0]`(렌더 클립)의 파일 `artifacts_dir/{id}.mp4` |
 | 설정 | D1과 같다. `light`, 720p, 출력 24fps, 프레임 수는 입력 길이 안의 8k + 1(3초 → 65), **오디오 끔**, seed 42 |
 | 길이 | 해상도별 상한(720p 약 6초)을 넘는 클립은 앞부분만(720p 24fps면 137프레임) |
-| 프롬프트 | D1 문장에 의류 설명을 넣는다. 원단 설명(`fabric.description_en`)이 있으면 그것, 없으면 색. 얼굴 처리 문구 조정은 D5 |
+| 프롬프트 | D5 템플릿 `realize_prompt_v1`: 색·원단 + 의류군 + 핏, 목 아래 구도, 렌더와 같은 회색 배경. `negative_prompt`는 보내지 않는다(fal 기본값 유지). docs/realize-pipeline.md 1절 |
 | 비용 상한 | 제출 전 예상 비용(출력 크기 상한 기준)이 `max_cost_usd`(기본 $0.5)를 넘으면 `BUDGET_LIMIT` |
 | 대기 | 2초마다 상태 조회. 한도는 `PortRequest.timeout_seconds`(서버 기본 600초) |
 | 출력 | `artifacts_dir/{job_id}_video.mp4`. 다 받은 뒤에만 이 이름으로 바꾼다(`.part` → 산출물) |
@@ -84,7 +85,7 @@
 
 | 파일 | 내용 |
 |---|---|
-| `plan.json` | 입력 클립 정보, 보낼 설정 미리보기, 예상 비용 |
+| `plan.json` | 입력 클립 정보, 프롬프트(판·대상·옷 설명·문장), 보낼 설정 미리보기, 예상 비용 |
 | `request.json` | 실제로 보낸 값(엔드포인트, arguments) |
 | `response.json` | 받은 결과(영상 주소, seed, 프롬프트) |
 | `error.json` | 실패한 단계, 오류 종류·메시지, HTTP 상태와 응답 본문(앞 2000자) |
