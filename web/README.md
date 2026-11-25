@@ -84,6 +84,7 @@ http://localhost:5173/garments?mockReject=shoulder_cm
 | `/garments?mockFlaky=2` | 진행 상태 조회가 처음 2번 연결 오류로 실패한다. "다시 시도하는 중 (1/5)" 안내가 나오고 1초·2초 뒤 다시 불러 이어서 진행한다. `6` 이상이면 5번째 연속 실패에서 멈추고 "다시 불러오기" 버튼이 나온다 |
 | `/garments?mockLost=1` | 진행 상태 조회가 404 `JOB_NOT_FOUND`다(서버를 다시 켠 경우). "작업 기록을 찾을 수 없습니다" 안내와 "같은 조건으로 다시 시도"·"다른 티셔츠 고르기"가 나온다. 다시 시도로 만든 새 작업은 정상으로 진행한다 |
 | `/garments?mockFail=realize&mockFlaky=2` | 두 경우를 함께 본다 |
+| `/garments?mockRequery=realize` | 서버가 같은 요청 ID로 결과를 다시 조회하는 경우(B5)다. 실사화 진행 시간의 절반부터 `attempt_no`가 2가 된다. 한 줄 상태가 "실사화 결과 다시 조회 중(2번째) (4/5)"로, 단계 목록에 "다시 조회 중(2번째)"가 붙고, 끝나면 "조회 2번"이 남는다. 단계 이름은 `mockFail`과 같다 |
 
 `npm run dev`(React StrictMode)에서는 결과 화면이 열릴 때 첫 조회가 두 번 일어나, 처음 실패 2번이 한꺼번에 소진된다. 그래서 `mockFlaky=2`는 "(1/5)"만 잠깐 보인다. 간격이 늘어나는 모습은 `mockFlaky=4`(1/5 → 2/5 → 3/5, 1초·2초·4초)로 본다.
 

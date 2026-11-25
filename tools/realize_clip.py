@@ -38,6 +38,7 @@ from fitting.ports import PortFailure, PortRequest
 from server.app import DEFAULT_GARMENTS_DIR, GARMENTS_DIR_ENV
 from server.garments import GarmentDirectory
 from server.wiring import AdapterConfigError, AdapterSettings
+from tools.console import use_utf8_output
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GARMENT_ID = "tee_regular_m_navy_v1"
@@ -258,4 +259,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())

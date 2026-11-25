@@ -47,6 +47,7 @@ from fitting.adapters.fal_ltx import (
 )
 from fitting.adapters.fal_ltx.render_to_real import download
 from fitting.adapters.media.frames import read_video_info, save_representative_frame
+from tools.console import use_utf8_output
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / "artifacts" / "spikes" / "fal_ltx"
@@ -362,4 +363,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     raise SystemExit(main())

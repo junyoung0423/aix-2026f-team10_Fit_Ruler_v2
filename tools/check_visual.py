@@ -58,6 +58,7 @@ from fitting.adapters.media.visual_measure import (
     load_check_config,
 )
 from fitting.verify import MATCH_MODES
+from tools.console import use_utf8_output
 
 ROOT = Path(__file__).resolve().parents[1]
 EXIT_OK, EXIT_INPUT = 0, 1
@@ -249,4 +250,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())

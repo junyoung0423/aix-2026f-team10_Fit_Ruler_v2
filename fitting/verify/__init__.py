@@ -20,6 +20,7 @@ from .frame_match import (
     coverage,
     match_render_frame,
 )
+from .silhouette import SHAPE_VERSION, EmptyMaskError, compare_masks, mask_shape
 from .visual_check import CHECK_VERSION as VISUAL_CHECK_VERSION
 from .visual_check import (
     FrameMeasure,
@@ -39,11 +40,13 @@ __all__ = [
     "FAIL",
     "MATCH_MODES",
     "PASS",
+    "SHAPE_VERSION",
     "UNVERIFIABLE",
     "VISUAL_CHECK_VERSION",
     "ClipTiming",
     "DrapeCheckResult",
     "DrapeCheckThresholds",
+    "EmptyMaskError",
     "FrameMatch",
     "FrameMeasure",
     "FrameResult",
@@ -51,12 +54,14 @@ __all__ = [
     "PenetrationSummary",
     "VisualCheckResult",
     "VisualCriteria",
+    "compare_masks",
     "coverage",
     "delta_e_2000",
     "judge_drape",
     "judge_frame",
     "judge_video",
     "mask_iou",
+    "mask_shape",
     "match_render_frame",
     "srgb_to_lab",
     "summarize_penetration",

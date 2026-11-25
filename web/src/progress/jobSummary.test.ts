@@ -28,6 +28,15 @@ describe('jobHeadline (작업 전체 상태 한 줄)', () => {
     expect(jobHeadline(first).text).toBe('몸 생성 중 (1/5)');
   });
 
+  it('같은 요청 ID를 다시 조회하는 중이면 몇 번째 조회인지', () => {
+    const running = job('running');
+    const requery = {
+      ...running,
+      stages: running.stages.map((stage) => (stage.stage === 'REALIZE' ? { ...stage, attempt_no: 2 } : stage)),
+    };
+    expect(jobHeadline(requery)).toEqual({ text: '실사화 결과 다시 조회 중(2번째) (4/5)', tone: 'running' });
+  });
+
   it('대기열이면 차례를 기다린다, 단계 사이면 다음 단계 준비 중', () => {
     const queued = withStages(job('running'), Array(5).fill('WAITING'), 'ACCEPTED');
     expect(jobHeadline({ ...queued, visual: { ...queued.visual, status: 'QUEUED' } }).text).toBe('차례를 기다리는 중');
@@ -131,10 +140,12 @@ describe('realizeMessage (실사 착장 결과 칸)', () => {
 });
 
 describe('attemptText', () => {
-  it('attempt_no가 2 이상일 때만 재시도 횟수', () => {
+  it('attempt_no가 2 이상일 때만, 진행 중이면 다시 조회 중(N번째), 끝났으면 조회 N번', () => {
     expect(attemptText({ stage: 'REALIZE', status: 'RUNNING', attempt_no: 1 })).toBeNull();
-    expect(attemptText({ stage: 'REALIZE', status: 'RUNNING', attempt_no: 2 })).toBe('재시도 2회째');
-    expect(attemptText({ stage: 'REALIZE', status: 'FAILED', attempt_no: 3 })).toBe('재시도 3회째');
+    expect(attemptText({ stage: 'REALIZE', status: 'SUCCEEDED', attempt_no: 1 })).toBeNull();
+    expect(attemptText({ stage: 'REALIZE', status: 'RUNNING', attempt_no: 2 })).toBe('다시 조회 중(2번째)');
+    expect(attemptText({ stage: 'REALIZE', status: 'SUCCEEDED', attempt_no: 2 })).toBe('조회 2번');
+    expect(attemptText({ stage: 'REALIZE', status: 'FAILED', attempt_no: 3 })).toBe('조회 3번');
   });
 });
 

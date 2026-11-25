@@ -33,6 +33,7 @@ from fitting.catalog.sample_plan import (
     style_for_chest,
 )
 from fitting.catalog.search import SampleCandidate
+from tools.console import use_utf8_output
 
 EXIT_OK = 0
 EXIT_PROBLEMS = 1
@@ -244,4 +245,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())
