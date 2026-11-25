@@ -6,6 +6,7 @@
  * - `?mockReject=칸`   그 칸을 서버가 422로 거절한다. height_cm·chest_cm·waist_cm·shoulder_cm·arm_length_cm
  * - `?mockFlaky=N`     진행 상태 조회(GET /api/fittings/{id})가 처음 N번 연결 오류로 실패한다(다시 부르기 확인)
  * - `?mockLost=1`      진행 상태 조회가 404 JOB_NOT_FOUND다(서버를 다시 켜 작업 기록이 사라진 경우)
+ * - `?mockRequery=단계` 그 단계가 진행 시간의 절반부터 같은 요청 ID를 다시 조회한다(attempt_no 2, B5). 단계 이름은 mockFail과 같다
  * 여러 개를 함께 쓸 수 있다. 예: `/garments?mockFail=realize&mockFlaky=2`
  */
 import { ApiError, type FittingApi } from '../api/api';
@@ -73,6 +74,8 @@ interface JobRecord {
   flaky?: number;
   /** 작업 기록이 없는 것처럼 404를 돌려줄지(?mockLost) */
   lost?: boolean;
+  /** 같은 요청 ID를 다시 조회하는 단계(?mockRequery) */
+  requeryStage?: Stage | null;
 }
 
 export interface MockApiOptions {
@@ -90,6 +93,8 @@ export interface MockApiOptions {
   flakyCount?: () => number;
   /** 진행 상태 조회가 404 JOB_NOT_FOUND인지. 기본은 주소의 ?mockLost=1 */
   lostJob?: () => boolean;
+  /** 같은 요청 ID를 다시 조회할 단계. 기본은 주소의 ?mockRequery= 값(body·drape·render·realize·validate) */
+  requeryStage?: () => Stage | null;
 }
 
 const STORAGE_KEY = 'fit-ruler.mock-jobs.v2';
@@ -102,6 +107,7 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
   const rejectField = options.rejectField ?? rejectFieldFromUrl;
   const flakyCount = options.flakyCount ?? flakyCountFromUrl;
   const lostJob = options.lostJob ?? lostJobFromUrl;
+  const requeryStage = options.requeryStage ?? requeryStageFromUrl;
   const jobs = new Map<string, JobRecord>(loadJobs(storage).map((record) => [record.jobId, record]));
   const isoNow = () => new Date(now()).toISOString();
 
@@ -135,6 +141,7 @@ export function createMockApi(options: MockApiOptions = {}): FittingApi {
         failStage: failStage(),
         flaky: flakyCount(),
         lost: lostJob(),
+        requeryStage: requeryStage(),
       };
       jobs.set(jobId, record);
       saveJobs(storage, [...jobs.values()]);
@@ -230,19 +237,21 @@ function buildStatus(record: JobRecord, at: number): FittingStatus {
       continue;
     }
     const end = start + durationMs;
+    // ?mockRequery: 진행 시간의 절반부터 두 번째 조회(attempt_no 2). 다시 조회하는 동안에도 단계는 RUNNING이다.
+    const attempt_no = record.requeryStage === stage && elapsed >= start + durationMs / 2 ? 2 : 1;
     if (elapsed < start) {
       stages.push({ stage, status: 'WAITING', attempt_no: 1 });
     } else if (elapsed < end) {
-      stages.push({ stage, status: 'RUNNING', attempt_no: 1 });
+      stages.push({ stage, status: 'RUNNING', attempt_no });
       visual.stage = stage;
     } else if (record.failStage === stage) {
-      stages.push({ stage, status: 'FAILED', attempt_no: 1 });
+      stages.push({ stage, status: 'FAILED', attempt_no });
       visual.stage = stage;
       visual.error_code = FAIL_CODE[stage];
       if (stage === 'VALIDATE') addValidateOutputs(visual, jobId, 'FAIL');
       stopped = 'failed';
     } else {
-      stages.push({ stage, status: 'SUCCEEDED', attempt_no: 1 });
+      stages.push({ stage, status: 'SUCCEEDED', attempt_no });
       visual.stage = stage;
       addOutputs(visual, jobId, stage);
     }
@@ -365,6 +374,12 @@ function flakyCountFromUrl(): number {
   if (typeof window === 'undefined') return 0;
   const value = Number(new URLSearchParams(window.location.search).get('mockFlaky') ?? '0');
   return Number.isInteger(value) && value > 0 ? Math.min(value, 20) : 0;
+}
+
+function requeryStageFromUrl(): Stage | null {
+  if (typeof window === 'undefined') return null;
+  const value = new URLSearchParams(window.location.search).get('mockRequery')?.toLowerCase() ?? '';
+  return FAIL_ALIASES[value] ?? null;
 }
 
 function lostJobFromUrl(): boolean {
