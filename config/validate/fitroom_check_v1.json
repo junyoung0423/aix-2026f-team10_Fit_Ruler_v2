@@ -1,0 +1,17 @@
+{
+  "name": "fitroom_check_v1",
+  "version": "1.0.0",
+  "status": "draft",
+  "description": "피팅룸 실사화(렌더를 핏 참고로 쓴 회전 영상) 검증 설정. 핏 옮기기 프레임은 visual_check_v1의 명세서 7장 프레임 기준으로 보고, 여기에는 영상 검사 값만 둔다. 값은 2026-11-25 실험 9편에서 골랐다(결정 docs/decisions.md 2026-11-25, 근거 docs/realize-fitroom.md)",
+  "video": {
+    "_basis": "같은 첫·끝 정면 사진·같은 문장·8초로 만든 9편(Veo 3.1 3편, LTX-2.3 3편, LTX-2.3 22B 3편). end_frame_gap: 첫·끝 프레임을 96x128로 줄인 평균 차이(0~255). Veo 1.0~2.7, LTX 5.4~6.5, 22B 11.5~19.2 -> 4.0. lightness_range: 1초 간격으로 첫 프레임 몸통 색과 거리 25 안의 픽셀(옷) 밝기 L* 중앙값의 최대-최소. 거리는 L* 차이에 2.55를 곱한 Lab 거리(OpenCV 8비트 Lab 거리와 같다. 밝기 차이를 무겁게 봐서 그림자·다른 옷이 덜 섞인다). 이 측정(마지막 프레임 포함 9장)으로 Veo 2.7~5.0, LTX 6.4~8.9(중간에 옷이 어두워짐), 22B 5.4~6.2 -> 6.0. garment_min_fraction: 시점마다 그 거리 안의 픽셀이 화면의 이 비율 이상이어야 옷을 찾은 것으로 본다. 9편 모두 9장 전부 찾았고 비율은 최소 0.094(22B), Veo·LTX 0.21 이상 -> 0.01, 한 시점이라도 못 찾으면 실패(옷 색이 크게 바뀌면 밝기 측정에서 조용히 빠지는 것을 막는다). black: LTX 이미지->영상이 오류 없이 전부 검은 영상(평균 0, 표준편차 0)을 돌려준 일이 있다 -> 모든 샘플이 평균 8 미만이고 표준편차 4 미만이면 검은 영상",
+    "sample_step_s": 1.0,
+    "end_frame_gap_max": 4.0,
+    "lightness_range_max": 6.0,
+    "garment_color_distance": 25.0,
+    "lightness_weight": 2.55,
+    "garment_min_fraction": 0.01,
+    "black_mean_max": 8.0,
+    "black_std_max": 4.0
+  }
+}
