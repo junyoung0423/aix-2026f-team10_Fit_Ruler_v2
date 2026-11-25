@@ -10,10 +10,12 @@
 - 빈 마스크(옷 픽셀 0개)는 `EmptyMaskError`다. 0이나 NaN으로 숨기지 않는다.
 - 두 마스크 비교는 같은 크기만 한다. 늘이거나 옮겨 맞추지 않는다(명세서 7장).
 
-높이별 가로 폭: 기준 마스크의 바운딩 박스 맨 위에서 박스 높이의 `level` 비율인 행을 가운데로 둔
-`band_rows`개 행(박스 안으로 자름)마다 "가장 왼쪽 ~ 가장 오른쪽 옷 픽셀" 폭을 재고 그 중앙값을 쓴다
-(옷 픽셀이 없는 행은 0). 기본 높이 0.15·0.45·0.90과 5행은 명세서 7장(가슴 45 %, 밑단 90 %,
-주변 5행 중앙값)에 어깨·소매 쪽 0.15를 더한 것이다.
+높이별 가로 폭: D6 판정(`visual_check.width_rows`·`band_width`)과 같은 함수로 잰다.
+기준 마스크의 옷 상자 맨 위 행 + round(level × (맨 아래 행 − 맨 위 행))을 가운데로 둔
+`band_rows`개 행(이미지 안으로 자름)마다 "가장 왼쪽 ~ 가장 오른쪽 옷 픽셀" 폭을 재고
+그 중앙값을 쓴다(옷 픽셀이 없는 행은 0).
+기본 높이 0.15·0.45·0.90과 5행은 명세서 7장(가슴 45 %, 밑단 90 %, 주변 5행 중앙값)에 어깨·소매 쪽
+0.15를 더한 것이다. 처진 소매 끝이 잴 높이에 걸리면 폭이 소매 끝까지로 잡히는 약점도 D6와 같다.
 
 경계 거리: 95 % Hausdorff 거리(HD95)를 쓴다. 각 마스크의 경계 픽셀(4-이웃 중 옷이 아닌 픽셀이
 있는 옷 픽셀, 이미지 밖은 옷이 아님)에서 다른 마스크 경계까지의 최소 거리를 구하고, 두 방향 각각의
@@ -27,6 +29,8 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
+
+from .visual_check import band_width, width_rows
 
 SHAPE_VERSION = "silhouette_shape_v1"
 DEFAULT_LEVELS: tuple[float, ...] = (0.15, 0.45, 0.90)
@@ -70,36 +74,28 @@ def _bbox(m: np.ndarray) -> tuple[int, int, int, int]:
     return int(cols[0]), int(rows[0]), int(cols[-1]), int(rows[-1])
 
 
-def _row_spans(m: np.ndarray) -> np.ndarray:
-    """행마다 가장 왼쪽 ~ 가장 오른쪽 옷 픽셀 폭(px, 끝 포함). 빈 행은 0."""
-    w = m.shape[1]
-    any_row = m.any(axis=1)
-    left = np.argmax(m, axis=1)
-    right = w - 1 - np.argmax(m[:, ::-1], axis=1)
-    return np.where(any_row, right - left + 1, 0)
-
-
-def _level_rows(y0: int, y1: int, level: float, band_rows: int) -> tuple[int, int, int]:
-    """박스 맨 위에서 level 비율인 행과 그 주변 band_rows개 행 범위(박스 안, 끝 포함)."""
-    if not 0.0 <= level <= 1.0:
-        raise ValueError(f"높이 비율은 0~1이어야 합니다: {level}")
-    box_h = y1 - y0 + 1
-    row = min(y0 + int(np.floor(level * box_h)), y1)
-    half = band_rows // 2
-    lo = max(y0, row - half)
-    hi = min(y1, row - half + band_rows - 1)
-    return row, lo, hi
+def _check_band(band_rows: int) -> None:
+    # D6 band_width는 가운데 행 위아래로 band_rows // 2행씩 잰다. 짝수면 한 행이 더 들어간다.
+    if band_rows < 1 or band_rows % 2 == 0:
+        raise ValueError(f"band_rows는 1 이상의 홀수여야 합니다: {band_rows}")
 
 
 def _widths_at(
-    m: np.ndarray, y0: int, y1: int, levels: Sequence[float], band_rows: int
+    m: np.ndarray, ref: np.ndarray, levels: Sequence[float], band_rows: int
 ) -> list[dict[str, Any]]:
-    spans = _row_spans(m)
-    box_h = y1 - y0 + 1
+    """`ref` 옷 상자로 정한 높이에서 `m`의 폭을 잰다(D6 `width_rows`·`band_width`)."""
+    rows = width_rows(ref, 0.0, 0.0)
+    box_h = rows.bottom - rows.top + 1
+    half = band_rows // 2
     out = []
     for lv in levels:
-        row, lo, hi = _level_rows(y0, y1, float(lv), band_rows)
-        width = float(np.median(spans[lo : hi + 1]))
+        level = float(lv)
+        if not 0.0 <= level <= 1.0:
+            raise ValueError(f"높이 비율은 0~1이어야 합니다: {level}")
+        row = width_rows(ref, level, level).chest
+        lo, hi = max(row - half, 0), min(row + half, m.shape[0] - 1)
+        measured = band_width(m, row, band_rows)
+        width = 0.0 if measured is None else measured  # row가 이미지 안이라 None은 나오지 않는다
         out.append(
             {
                 "level": float(lv),
@@ -124,8 +120,7 @@ def mask_shape(
     `symmetry_diff = 1 - symmetry_iou`이고 symmetry_iou는 마스크와 그 좌우 반전(바운딩 박스 가운데
     세로선 기준)의 IoU다. 0이면 좌우 대칭.
     """
-    if band_rows < 1:
-        raise ValueError("band_rows는 1 이상이어야 합니다")
+    _check_band(band_rows)
     m = as_bool_mask(mask)
     _nonempty(m)
     h, w = m.shape
@@ -153,7 +148,7 @@ def mask_shape(
         "centroid_norm": [(cx + 0.5) / w, (cy + 0.5) / h],
         "hem_row_px": y1,
         "hem_norm": (y1 + 1) / h,
-        "widths": _widths_at(m, y0, y1, levels, band_rows),
+        "widths": _widths_at(m, m, levels, band_rows),
         "symmetry_iou": sym_iou,
         "symmetry_diff": 1.0 - sym_iou,
     }
@@ -226,9 +221,8 @@ def compare_masks(
     inter = int(np.logical_and(a, b).sum())
     union = int(np.logical_or(a, b).sum())
 
-    _, y0, _, y1 = sa["bbox_px"]
-    w_ref = _widths_at(a, y0, y1, levels, band_rows)
-    w_oth = _widths_at(b, y0, y1, levels, band_rows)
+    w_ref = _widths_at(a, a, levels, band_rows)
+    w_oth = _widths_at(b, a, levels, band_rows)
     widths = []
     for r, o in zip(w_ref, w_oth, strict=True):
         widths.append(

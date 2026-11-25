@@ -41,10 +41,10 @@ def test_rectangle_shape_matches_hand_values():
     assert s["hem_row_px"] == 29
     assert s["hem_norm"] == pytest.approx(30 / 80)
     w = by_level(s["widths"])
-    # 박스 높이 20: 0.15 → 행 10+3, 0.45 → 10+9, 0.90 → 10+18. 5행 띠, 박스 밖은 자른다
+    # D6와 같은 행: 맨 위 10 + round(level × (29 − 10)). 0.15 → 10+3, 0.45 → 10+9, 0.90 → 10+17
     assert (w[0.15]["row"], w[0.15]["rows"]) == (13, [11, 15])
     assert (w[0.45]["row"], w[0.45]["rows"]) == (19, [17, 21])
-    assert (w[0.9]["row"], w[0.9]["rows"]) == (28, [26, 29])
+    assert (w[0.9]["row"], w[0.9]["rows"]) == (27, [25, 29])
     for v in w.values():
         assert v["width_px"] == 40
         assert v["width_rel"] == pytest.approx(2.0)
@@ -61,7 +61,8 @@ def test_trapezoid_widths_area_centroid():
     w = by_level(s["widths"])
     assert w[0.15]["rows"] == [0, 3] and w[0.15]["width_px"] == 5.0  # 2,4,6,8
     assert w[0.45]["rows"] == [2, 6] and w[0.45]["width_px"] == 10.0  # 6..14
-    assert w[0.9]["rows"] == [7, 9] and w[0.9]["width_px"] == 18.0  # 16,18,20
+    # 0.90 → 행 8, 띠 6~10. 박스 밖 10행은 옷이 없어 폭 0으로 센다(D6 band_width와 같음)
+    assert w[0.9]["rows"] == [6, 10] and w[0.9]["width_px"] == 16.0  # 14,16,18,20,0
     assert w[0.45]["width_rel"] == pytest.approx(1.0)
     assert s["symmetry_diff"] == 0.0
 
@@ -90,8 +91,10 @@ def test_single_pixel_mask():
     s = mask_shape(m)
     assert s["area_px"] == 1
     assert s["bbox_px"] == [7, 3, 7, 3]
-    assert all(w["width_px"] == 1 for w in s["widths"])
     assert all(w["row"] == 3 for w in s["widths"])
+    # 5행 띠 중 옷이 있는 행은 1개라 중앙값은 0이다(D6와 같음). 1행 띠면 1이다
+    assert all(w["width_px"] == 0 for w in s["widths"])
+    assert all(w["width_px"] == 1 for w in mask_shape(m, band_rows=1)["widths"])
 
 
 def test_level_one_is_last_row():
@@ -132,6 +135,27 @@ def test_invalid_level_and_band():
         mask_shape(rect(), levels=(1.2,))
     with pytest.raises(ValueError):
         mask_shape(rect(), band_rows=0)
+    with pytest.raises(ValueError):
+        mask_shape(rect(), band_rows=4)  # 짝수: 가운데 행 위아래가 같지 않다
+
+
+def test_widths_match_d6_measurement():
+    """D6 판정(visual_check)이 재는 가슴·밑단 폭과 같은 값이다."""
+    from fitting.verify.visual_check import band_width, width_rows
+
+    rng = np.random.default_rng(0)
+    ref = np.zeros((120, 90), dtype=bool)
+    for y in range(15, 100):
+        half = 10 + (y - 15) // 3 + int(rng.integers(0, 4))
+        ref[y, 45 - half : 45 + half] = True
+    ref[40:44, 2:12] = True  # 처진 소매 끝처럼 떨어진 조각
+    other = np.roll(ref, (3, -2), axis=(0, 1))
+    rows = width_rows(ref, 0.45, 0.90)
+    w = by_level(compare_masks(ref, other)["widths"])
+    assert w[0.45]["row"] == rows.chest and w[0.9]["row"] == rows.hem
+    assert w[0.45]["ref_width_px"] == band_width(ref, rows.chest, 5)
+    assert w[0.45]["other_width_px"] == band_width(other, rows.chest, 5)
+    assert w[0.9]["other_width_px"] == band_width(other, rows.hem, 5)
 
 
 # ---------------------------------------------------------------- compare_masks
