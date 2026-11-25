@@ -8,8 +8,10 @@
 `tee_regular_m_navy_v1`(`docs/decisions.md`의 "1주차 기준 [제안]" 1절).
 
 어댑터는 서버와 같은 설정(`config/adapters/`)으로 고른다: `--adapters` > 환경변수
-`FIT_ADAPTERS` > `default`. 단계가 바뀔 때마다 한 줄씩 출력하고, 끝나면 요약(핏 리포트·단계별 상태·
-영상 경로 결과·산출물 파일 위치와 있는지)을 출력해 `summary.txt`에도 쓴다.
+`FIT_ADAPTERS` > `default`. 명령으로 실행하면 저장소 맨 위 `.env`를 읽어 비어 있는 환경변수만
+채운다(`server/env_file.py`). 무엇이 빠졌는지는 먼저 `python -m tools.check_env --adapters …`로
+본다. 단계가 바뀔 때마다 한 줄씩 출력하고, 끝나면 요약(핏 리포트·단계별 상태·영상 경로 결과·
+산출물 파일 위치와 있는지)을 출력해 `summary.txt`에도 쓴다.
 결과 폴더(`--out`, 기본 `artifacts/runs/{job_id}/`)에는 `request.json`, `report.json`,
 `status.json`, `summary.txt`가 생기고, 어댑터가 쓰는 산출물은 그 안의 `artifacts/`에 쓴다.
 
@@ -50,6 +52,7 @@ from fitting.services.fitting import run_fitting
 from fitting.services.pipeline import PipelineConfigError, load_run_settings
 from server.app import DEFAULT_GARMENTS_DIR, GARMENTS_DIR_ENV
 from server.artifacts import ArtifactDirectory
+from server.env_file import load_env_file
 from server.errors import input_invalid_error
 from server.garments import GarmentDirectory
 from server.wiring import (
@@ -61,6 +64,7 @@ from server.wiring import (
     describe,
     load_adapter_config,
 )
+from tools.console import use_utf8_output
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUNS_DIR = REPO_ROOT / "artifacts" / "runs"
@@ -427,4 +431,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
+    load_env_file()  # 저장소 맨 위 .env: 비어 있는 환경변수만 채운다(server/env_file.py)
     sys.exit(main())

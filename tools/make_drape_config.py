@@ -9,6 +9,8 @@ import argparse
 import json
 from pathlib import Path
 
+from tools.console import use_utf8_output
+
 
 def set_path(d, dotted, value):
     keys = dotted.split('.')
@@ -49,4 +51,5 @@ def main():
 
 
 if __name__ == '__main__':
+    use_utf8_output()
     main()

@@ -41,6 +41,7 @@ import yaml
 from fitting.adapters.garmentcode import pattern_fit as pf
 from fitting.adapters.garmentcode import pattern_measure as pm
 from fitting.catalog.sample_plan import TARGET_FIELDS, SamplePlanError, parse_sample_plan
+from tools.console import use_utf8_output
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = REPO_ROOT / "config" / "samples" / "tee_gc_v1.yaml"
@@ -445,4 +446,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())

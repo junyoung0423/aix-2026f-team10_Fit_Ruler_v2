@@ -74,10 +74,12 @@ def make_xxx(settings: AdapterSettings) -> 포트 객체    # BodyBuilder / Drap
 
 1. **팩토리를 만듭니다.** `make_xxx(settings) -> 포트 객체` (위 약속). 어댑터가 머지되기 전에는 가짜 어댑터를 쓰거나 `tests/stub_adapters.py`처럼 작은 파일을 쓰는 스텁으로 시험합니다.
 2. **`config/adapters/default.yaml`에서 자기 줄 하나만 바꿉니다.** 예: `drape: "fitting.adapters.blender.factory:make_draper"`
-3. **확인합니다.** 서버 없이 한 번 돌려 봅니다.
+3. **확인합니다.** 필요한 것이 다 있는지 점검한 뒤 서버 없이 한 번 돌려 봅니다.
    ```bash
+   python -m tools.check_env --adapters default      # 빠진 것과 고치는 방법(B6, README "설치" 4단계)
    python -m tools.run_fitting_once --adapters default --consent
    ```
+   자기 어댑터가 Blender·SMPL·fal 말고 다른 것이 필요하면 `tools/check_env.py`의 `ADAPTER_NEEDS`에 한 줄 더하고 B에게 알려 주세요.
    단계 진행이 한 줄씩 나오고, 끝나면 요약(핏 판정, 단계별 상태, 산출물 파일 위치와 **파일이 있는지**)이 나옵니다. 영상 경로가 실패하면 요약 첫 줄이 "영상 경로 실패"이고 종료 코드가 0이 아닙니다(3).
 4. **그 출력을 PR에 붙입니다.** 다른 팀원 PC에서 같은 명령으로 다시 확인할 수 있게 `FIT_WORK_DIR`·`BLENDER_PATH` 같은 필요한 환경변수도 적어 주세요.
 

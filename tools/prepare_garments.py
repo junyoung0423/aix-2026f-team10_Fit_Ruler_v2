@@ -52,6 +52,8 @@ from fitting.catalog.search import (
     search_sample,
 )
 from fitting.domain import GarmentVariant
+from server.env_file import load_env_file
+from tools.console import use_utf8_output
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOL_VERSION = "0.1.0"
@@ -458,4 +460,6 @@ def main(
 
 
 if __name__ == "__main__":
+    use_utf8_output()
+    load_env_file()  # 저장소 맨 위 .env: 비어 있는 환경변수만 채운다(server/env_file.py)
     sys.exit(main())

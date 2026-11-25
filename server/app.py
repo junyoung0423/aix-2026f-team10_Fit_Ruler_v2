@@ -28,6 +28,8 @@
   `PipelineConfigError`로 서버가 뜨지 않는다(`fitting/services/pipeline.py`).
 - 어댑터에 넘기는 환경: `FIT_WORK_DIR`(중간 파일, 기본 `artifacts/work/`),
   `BLENDER_PATH`/`BLENDER_EXE`, `SMPL_MODEL_DIR`, `FAL_KEY`(값은 읽지 않고 있는지만 본다)
+- `.env`: `uvicorn server.app:app`이 `app`을 처음 찾을 때 저장소 맨 위 `.env`를 읽어 비어 있는
+  환경변수만 채운다(`server/env_file.py`, B6). `create_app()`을 직접 부르면 읽지 않는다.
 
 환경변수
 - `FIT_MAX_WORKERS` (기본 1): 동시에 도는 영상 경로 수
@@ -67,6 +69,7 @@ from fitting.services.fitting import FittingPorts
 from fitting.services.jobs import JobRunner
 from fitting.services.pipeline import load_run_settings
 from server.artifacts import DEFAULT_ARTIFACTS_SUBDIR, ArtifactDirectory, media_type
+from server.env_file import load_env_file
 from server.errors import (
     GARMENT_NOT_READY_STATUS,
     ArtifactNotFound,
@@ -309,8 +312,13 @@ def __getattr__(name: str) -> FastAPI:
 
     모듈을 불러오는 것만으로는 어댑터 설정을 읽지 않는다. 설정이 틀리면 서버를 띄울 때 멈추고,
     이 모듈을 불러오기만 하는 도구(테스트 수집 등)는 설정의 영향을 받지 않는다.
+    만들기 전에 `.env`를 읽어 비어 있는 환경변수만 채운다(값은 로그에 남기지 않는다).
     """
     if name == "app":
+        env_file = load_env_file()
+        if env_file.loaded:
+            names = ", ".join(env_file.loaded)
+            logger.info(".env에서 환경변수 %d개를 읽었습니다: %s", len(env_file.loaded), names)
         created = create_app()
         globals()["app"] = created  # 다음부터는 모듈 속성으로 바로 찾는다
         return created

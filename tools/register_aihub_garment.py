@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from fitting.adapters.aihub import AihubLabelRejected, label_to_garment, read_label
 from fitting.domain import GarmentVariant
+from tools.console import use_utf8_output
 
 DEFAULT_OUT = Path(__file__).resolve().parents[1] / "data" / "garments"
 
@@ -99,4 +100,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())
