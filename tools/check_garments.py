@@ -25,6 +25,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from fitting.domain import GarmentStatus, GarmentVariant
+from tools.console import use_utf8_output
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GARMENTS_DIR_ENV = "FIT_GARMENTS_DIR"
@@ -201,4 +202,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())
