@@ -4,7 +4,7 @@
     python -m tools.check_visual --run artifacts/realize/<이름>      # tools.realize_clip 결과 폴더
     python -m tools.check_visual --real ... --render ... --render-mask-dark 80   # 임시 클립용
     python -m tools.check_visual --run artifacts/realize/<이름> --mask <마스크.png>
-        # tools.realize_fitroom 결과 폴더: 핏 옮기기 프레임이 있어 피팅룸 검사를 한다
+        # tools.realize_fitroom 결과 폴더: 핏 확인 사진이 있어 피팅룸 검사를 한다
 
 검증 어댑터(`fitting.adapters.media.validator`)와 같은 측정·판정(`check_videos`)과 같은 설정
 (`config/validate/visual_check_v1.json`, `--config`로 바꿀 수 있음)을 쓴다.
@@ -12,7 +12,7 @@
 피팅룸 검사: `--fit-frame`(또는 `--run` 폴더의 `artifacts/*_realize_fit_frame.png`)이 있으면 검증
 어댑터처럼 11프레임 대신 피팅룸 검사(`check_fitroom`, `config/validate/fitroom_check_v1.json`)를
 한다. 렌더 옷 마스크 파일이 필요하다(`--render-mask-dark`는 못 쓴다). 결과 폴더에는
-`fitroom_sheet.png`(렌더 · 핏 옮기기 프레임 · 영상 1초 간격), `frame.png`(영상 첫 프레임),
+`fitroom_sheet.png`(렌더 · 핏 확인 사진 · 영상 1초 간격), `frame.png`(영상 첫 프레임),
 `render_frame.png`(렌더 첫 프레임), `check.json`, `masks/fit_frame.png`가 남는다.
 
 렌더 옷 마스크
@@ -81,7 +81,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--fit-frame",
         type=Path,
-        help="피팅룸 실사화의 핏 옮기기 프레임(.png). 주면 11프레임 대신 피팅룸 검사를 한다",
+        help="피팅룸 실사화의 핏 확인 사진(.png). 주면 11프레임 대신 피팅룸 검사를 한다",
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CHECK_CONFIG, help="검증 설정")
     parser.add_argument(
@@ -105,7 +105,7 @@ def _one(directory: Path, pattern: str, required: bool = True) -> Path | None:
 
 
 def resolve_inputs(args: argparse.Namespace) -> tuple[Path, Path, Path | None, Path | None]:
-    """(실사 영상, 렌더 클립, 마스크 파일 또는 None, 핏 옮기기 프레임 또는 None)."""
+    """(실사 영상, 렌더 클립, 마스크 파일 또는 None, 핏 확인 사진 또는 None)."""
     if args.run is not None:
         directory = args.run / "artifacts"
         real = _one(directory, "*_video.mp4")
@@ -181,7 +181,7 @@ def _fitroom(
     if result.fit is not None:
         m = result.fit.measure
         print(
-            f"  핏 옮기기 프레임 {result.fit.status}: IoU {m.iou} 가슴 {m.chest_change} "
+            f"  핏 확인 사진 {result.fit.status}: IoU {m.iou} 가슴 {m.chest_change} "
             f"밑단 {m.hem_change} 색 {m.delta_e} 면적비 {m.area_ratio}"
         )
     video = result.video

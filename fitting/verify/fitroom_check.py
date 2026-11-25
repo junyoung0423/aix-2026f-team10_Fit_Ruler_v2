@@ -4,7 +4,7 @@
 자리에서
 겹쳐 보는 11프레임 규칙(`visual_check`)을 영상에 그대로 쓸 수 없다. 그래서 둘로 나눠 본다.
 
-1. **핏 옮기기**: 렌더와 실사화 ② 단계의 프레임(렌더 구조를 따라간 같은 구도의 실사 프레임)을 명세서
+1. **핏 확인 사진**: 렌더와 실사화 사진(렌더와 같은 구도·체형·핏으로 만든 실사 사진)을 명세서
    7장
    프레임 기준(`visual_check.judge_frame`: 면적 0.5~1.5배, IoU ≥ 0.85, 가슴·밑단 폭 ±5 %,
    CIEDE2000 ≤ 8)으로 한 장 비교한다.
@@ -13,9 +13,9 @@
    기준값은 실험 9편에서 골랐다(`config/validate/fitroom_check_v1.json`, docs/realize-fitroom.md).
 
 판정
-- FAIL: 핏 옮기기 프레임이 실패, 검은 영상, 끝 프레임 차이 초과, 옷 색을 못 찾은 시점이 있음, 밝기
+- FAIL: 핏 확인 사진이 실패, 검은 영상, 끝 프레임 차이 초과, 옷 색을 못 찾은 시점이 있음, 밝기
   흔들림 초과 중 하나라도 있다
-- UNVERIFIABLE: 실패는 없지만 핏 옮기기 프레임을 잴 수 없다(옷 영역을 못 찾음 등)
+- UNVERIFIABLE: 실패는 없지만 핏 확인 사진을 잴 수 없다(옷 영역을 못 찾음 등)
 - PASS: 그 밖
 
 옆·뒤 핏은 렌더가 정면 한 장뿐이라 자동으로 비교하지 않는다. 얼굴·중대한 변형도 자동으로 찾지
@@ -114,7 +114,7 @@ class VideoMeasure:
 @dataclass(frozen=True)
 class FitRoomCheckResult:
     status: str
-    fit: FrameResult | None  # 핏 옮기기 프레임 판정(없으면 None)
+    fit: FrameResult | None  # 핏 확인 사진 판정(없으면 None)
     video: VideoMeasure
     criteria: FitRoomVideoCriteria
     fails: tuple[str, ...] = ()
@@ -127,13 +127,13 @@ class FitRoomCheckResult:
 
     def reasons(self) -> list[str]:
         text = {
-            "fit_frame": "핏 옮기기 프레임이 렌더와 다름(명세서 7장 프레임 기준)",
+            "fit_frame": "핏 확인 사진이 렌더와 다름(명세서 7장 프레임 기준)",
             "black": "영상이 검은 화면",
             "end_frame_gap": "정면으로 돌아와 끝나지 않음(첫·끝 프레임 차이 초과)",
             "garment_missing": "옷 색을 찾지 못한 시점이 있음(옷 색이 크게 바뀌었거나 화면 밖)",
             "lightness_range": "시간에 따라 옷 밝기가 크게 흔들림",
-            "fit_frame_unmeasurable": "핏 옮기기 프레임을 잴 수 없음",
-            "no_fit_frame": "핏 옮기기 프레임이 없음",
+            "fit_frame_unmeasurable": "핏 확인 사진을 잴 수 없음",
+            "no_fit_frame": "핏 확인 사진이 없음",
         }
         return [text[c] for c in (*self.fails, *self.unverifiable)]
 

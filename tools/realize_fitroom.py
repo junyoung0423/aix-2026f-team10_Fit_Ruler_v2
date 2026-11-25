@@ -1,7 +1,7 @@
 """렌더 클립 하나를 피팅룸 실사화 어댑터로 회전 영상으로 만든다(서버 없이, 같은 어댑터).
 
     python -m tools.realize_fitroom --input path/to/render_clip.mp4         # 드라이런(비용 없음)
-    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출(약 $1.0)
+    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출($0.95)
     python -m tools.realize_fitroom --name <이전 이름> --yes                 # 이어 받기(끝난 단계
     건너뜀)
 
@@ -10,12 +10,10 @@
 부른다. FAL_KEY는 환경변수나 저장소 맨 위 `.env`에서 읽는다.
 
 결과는 `artifacts/realize/<이름>/`에 남는다(커밋 금지).
-- `artifacts/<이름>_render_clip.mp4`(입력 사본), `<이름>_realize_photo.png`(① 사진),
-  `<이름>_realize_fit_frame.png`(② 핏 옮긴 프레임), `<이름>_realize_pose.png`(③ 자세,
-  `--pose-step`일 때만),
-  `<이름>_video.mp4`(④ 회전 영상)
+- `artifacts/<이름>_render_clip.mp4`(입력 사본), `<이름>_realize_fit_frame.png`(실사 사진, 핏 확인
+  프레임), `<이름>_realize_pose.png`(자세, `--pose-step`일 때만), `<이름>_video.mp4`(회전 영상)
 - `work/<이름>/realize/`: `plan.json`, 단계별 `*_request.json`·`*_response.json`, `realize.json`
-- `strip.png`: 렌더 첫 프레임 · ① · ② · (③) · 영상 0~8초 프레임을 나란히 놓은 확인 그림
+- `strip.png`: 렌더 첫 프레임 · 사진 · (자세) · 영상 0~8초 프레임을 나란히 놓은 확인 그림
 
 종료 코드: 0 성공(드라이런 포함), 3 어댑터 실패(`PortFailure`), 2 입력·설정 오류.
 """
@@ -89,7 +87,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--pose-step",
         action="store_true",
-        help="③ 팔 내리기 사진을 만든다(기본은 ② 프레임을 ④에 바로 씀, $0.15·약 30초 추가)",
+        help="팔 내리기 사진을 만든다(기본은 사진을 회전 영상에 바로 씀, $0.15·약 40초 추가)",
     )
     parser.add_argument("--max-cost-usd", type=float, default=3.0, help="예상 비용 합 상한")
     parser.add_argument("--timeout", type=int, default=900, help="전체 대기 상한(초)")
@@ -203,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SETUP
     realizer.options = options
 
-    print(f"\nfal 호출 중… ({len(steps)}단계, 모두 3~5분쯤 걸립니다)")
+    print(f"\nfal 호출 중… ({len(steps)}단계, 모두 2~3분쯤 걸립니다)")
     try:
         result = realizer.realize(request, garment)
     except PortFailure as failure:
@@ -222,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         out / "strip.png",
         strip_image(
             clip,
-            [outputs[s] for s in ("photo", "transfer", "pose") if s in realizer.steps()],
+            [outputs[s] for s in ("photo", "pose") if s in realizer.steps()],
             outputs["turn"],
         ),
     )
@@ -232,7 +230,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     labels = (
         ("photo_s", "사진"),
-        ("transfer_s", "핏 옮기기"),
         ("pose_s", "자세"),
         ("turn_s", "회전"),
     )

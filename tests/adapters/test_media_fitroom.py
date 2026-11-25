@@ -239,7 +239,7 @@ def test_unreadable_fit_frame_fails_the_port(tmp_path, media):
     with pytest.raises(PortFailure) as caught:
         validator.validate(request(), GARMENT)
     assert caught.value.error.code.value == "VALIDATION_UNVERIFIABLE"
-    assert "핏 옮기기 프레임" in record(tmp_path)["error"]["message"]
+    assert "핏 확인 사진" in record(tmp_path)["error"]["message"]
 
 
 # --- D6 화면비 맞추기 ---------------------------------------------------------------------

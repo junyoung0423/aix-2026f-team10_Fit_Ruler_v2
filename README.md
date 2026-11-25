@@ -142,14 +142,14 @@ python -m tools.run_fitting_once --adapters drape_render_blender
 | `drape_render_blender` | 착장 · 렌더 | 위와 같음 | + `*_render_clip.mp4`, `*_render_mask.png` | + 약 1분 | 없음 |
 | `smpl_body` | 몸 | SMPL 모델(`SMPL_MODEL_DIR`), `.[body]` | `*_body_mesh.obj` | 약 20초 | 없음 |
 | `visual_real` | 몸 · 착장 · 렌더 · 실사화 · 검증 | 위 전부(개발용 몸은 비움) + `FAL_KEY`, `.[realize]` | + `*_video.mp4`, `*_frame.png`, `*_render_frame.png`, 검증 PASS·FAIL | 약 10분 [추정: 끝까지 돌린 기록 없음] | 실사화 1회 약 $0.2. `--consent --yes`가 있어야 돈다 |
-| `visual_fitroom` | `visual_real`과 같고 실사화만 피팅룸 영상(사진 → 핏 옮기기 → Veo 3.1 Fast 회전) | `visual_real`과 같음 | `*_video.mp4`가 9:16 회전 영상, + 중간 사진 `*_realize_photo.png`·`*_realize_fit_frame.png`, 검증은 피팅룸 검사 | 약 7~8분 [추정: 실사화 실측 약 4분 + 몸·착장·렌더, 끝까지 돌린 기록 없음] | 실사화 1회 약 $1.0. `--consent --yes`가 있어야 돈다 |
+| `visual_fitroom` | `visual_real`과 같고 실사화만 피팅룸 영상(사진 → Veo 3.1 Fast 회전) | `visual_real`과 같음 | `*_video.mp4`가 9:16 회전 영상, + 실사 사진 `*_realize_fit_frame.png`, 검증은 피팅룸 검사 | 약 4.6~6분 [추정: 실사화 약 2분(사진·회전을 따로 실측) + 몸·착장·렌더, 끝까지 돌린 기록 없음] | 실사화 1회 $0.95. `--consent --yes`가 있어야 돈다 |
 
 ```powershell
 python -m tools.run_fitting_once                                   # 기본 어댑터, 실사화 미동의(렌더까지)
 python -m tools.run_fitting_once --adapters fake --consent
 python -m tools.run_fitting_once --body 175,100,80,40,56 --garment-id tee_regular_m_navy_v1 --out C:\dev\_runs\run1
 python -m tools.run_fitting_once --adapters visual_real --consent --yes   # fal 비용 발생
-python -m tools.run_fitting_once --adapters visual_fitroom --consent --yes   # fal 비용 약 $1.0
+python -m tools.run_fitting_once --adapters visual_fitroom --consent --yes   # fal 비용 $0.95
 ```
 
 - `--consent` 없이 돌리면 실사화·검증은 하지 않고 렌더까지입니다(실사화 미동의). 실제 실사화를 `--consent`로 돌리려면 `--yes`가 있어야 합니다. 없으면 아무것도 실행하지 않고 안내만 합니다.

@@ -1,17 +1,15 @@
 """피팅룸 실사화 단계별 fal 모델·설정·가격과 프레임 처리.
 
-가격은 fal 모델 목록(2026-11-25)에서 확인한 값이다. 예상 비용은 제출 전 상한 확인에 쓰고, 실제
-비용은
-② 핏 옮기기만 내려받은 영상 크기로 다시 계산한다(나머지는 정해진 값).
+가격은 fal 모델 목록(2026-11-25)에서 확인한 값이다. 예상 비용은 제출 전 상한 확인에 쓴다(모두 정해진
+값이라 실제 비용과 같다).
 
 | 단계 | fal 모델 | 가격 |
 |---|---|---|
-| ① 사진·③ 자세 | `fal-ai/nano-banana-pro/edit` | 장당 $0.15(1K·2K) |
-| ② 핏 옮기기 | `fal-ai/ltx-2.3-quality/render-to-real` | 메가픽셀당 $0.0024075 (`render_to_real`) |
-| ④ 회전(기본 fast) | `fal-ai/veo3.1/fast/first-last-frame-to-video` | 초당 $0.10(소리 끔) |
-| ④ 회전(standard) | `fal-ai/veo3.1/first-last-frame-to-video` | 초당 $0.20(소리 끔) |
+| 사진·자세 | `fal-ai/nano-banana-pro/edit` | 장당 $0.15(1K·2K) |
+| 회전(기본 fast) | `fal-ai/veo3.1/fast/first-last-frame-to-video` | 초당 $0.10(소리 끔) |
+| 회전(standard) | `fal-ai/veo3.1/first-last-frame-to-video` | 초당 $0.20(소리 끔) |
 
-④는 같은 조건 실험(2026-11-25)에서 Fast가 표준판과 같은 수준이라 Fast를 기본으로 둔다
+회전은 같은 조건 실험(2026-11-25)에서 Fast가 표준판과 같은 수준이라 Fast를 기본으로 둔다
 (docs/realize-fitroom.md 2절).
 """
 
@@ -42,8 +40,6 @@ TURN_DURATIONS_S = (4, 6, 8)
 # 오류 없이 전부 검은 영상을 돌려준 일이 있다(실험 4회차, 평균 0·표준편차 0)
 BLACK_MEAN_MAX = 8.0
 BLACK_STD_MAX = 4.0
-# render-to-real이 화면비를 맞추려고 좌우에 덧붙이는 검은 띠를 찾을 때 쓰는 열 밝기 상한
-BAR_COLUMN_MEAN_MAX = 10.0
 
 
 def photo_arguments(image_url: str, prompt: str, *, resolution: str = "2K") -> dict[str, Any]:
@@ -161,27 +157,3 @@ def sample_frames(video: Path, count: int = 12) -> tuple[list[np.ndarray], dict[
 def is_black(frames: list[np.ndarray]) -> bool:
     """모든 프레임이 아주 어둡고 고르면 True(생성 실패로 본다)."""
     return all(float(f.mean()) < BLACK_MEAN_MAX and float(f.std()) < BLACK_STD_MAX for f in frames)
-
-
-def crop_side_bars(frame: np.ndarray, aspect: float = 3 / 4) -> np.ndarray:
-    """좌우 검은 띠를 자르고, 가운데에서 `aspect`(가로/세로)로 맞춘다(늘리지 않는다)."""
-    columns = frame.mean(axis=(0, 2))
-    bright = np.flatnonzero(columns > BAR_COLUMN_MEAN_MAX)
-    left, right = (int(bright[0]), int(bright[-1]) + 1) if bright.size else (0, frame.shape[1])
-    cropped = frame[:, left:right]
-    h, w = cropped.shape[:2]
-    target_w = round(h * aspect)
-    if target_w < w:
-        x0 = (w - target_w) // 2
-        cropped = cropped[:, x0 : x0 + target_w]
-    elif target_w > w:
-        target_h = round(w / aspect)
-        y0 = (h - target_h) // 2
-        cropped = cropped[y0 : y0 + target_h]
-    return np.ascontiguousarray(cropped)
-
-
-def last_frame(video: Path) -> np.ndarray:
-    """Raises: ValueError — 영상을 열 수 없거나 프레임이 없다."""
-    frames, _ = sample_frames(video, count=1)
-    return frames[-1]

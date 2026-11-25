@@ -2,7 +2,7 @@
 
 작성 2026-11-12 · 관련 이슈 #10 · 상태: 코드·가짜 클라이언트 테스트·드라이런 완료, **실제 fal 1회 호출로 실사 영상 저장 확인**(2026-11-12, $0.07)
 
-렌더 클립을 fal / LTX-2.3 render-to-real로 실사 영상으로 바꾸는 `Realizer` 포트 구현이다. 매장 피팅룸에서 사람이 한 바퀴 도는 영상을 만드는 4단계 실사화(`fal_fitroom`, 2026-11-25 결정)는 docs/realize-fitroom.md에 있다. 그 어댑터도 이 문서의 재시도·재조회 규칙과 `FalQueueClient`를 단계마다 쓴다. D1 스파이크(`docs/spikes/fal-ltx-render-to-real.md`)의 설정·가격·내려받기를 그대로 쓰고, 정식 어댑터에 필요한 재시도·재조회·타임아웃·비용 상한·기록을 더했다.
+렌더 클립을 fal / LTX-2.3 render-to-real로 실사 영상으로 바꾸는 `Realizer` 포트 구현이다. 매장 피팅룸에서 사람이 한 바퀴 도는 영상을 만드는 실사화(`fal_fitroom`: 사진 → 회전, 2026-11-25 결정)는 docs/realize-fitroom.md에 있다. 그 어댑터도 이 문서의 재시도·재조회 규칙과 `FalQueueClient`를 단계마다 쓴다. D1 스파이크(`docs/spikes/fal-ltx-render-to-real.md`)의 설정·가격·내려받기를 그대로 쓰고, 정식 어댑터에 필요한 재시도·재조회·타임아웃·비용 상한·기록을 더했다.
 
 ## 1. 구성
 
@@ -24,7 +24,7 @@
 | 길이 | 해상도별 상한(720p 약 6초)을 넘는 클립은 앞부분만(720p 24fps면 137프레임) |
 | 프롬프트 | D5 템플릿 `realize_prompt_v1`: 색·원단 + 의류군 + 핏, 목 아래 구도, 렌더와 같은 회색 배경. `negative_prompt`는 보내지 않는다(fal 기본값 유지). docs/realize-pipeline.md 1절 |
 | 비용 상한 | 제출 전 예상 비용(출력 크기 상한 기준)이 `max_cost_usd`(기본 $0.5)를 넘으면 `BUDGET_LIMIT` |
-| 대기 | 2초마다 상태 조회. 한도는 `PortRequest.timeout_seconds`(서버 기본 900초, 2026-11-25 피팅룸 실사화 4단계 때문에 600초에서 늘림) |
+| 대기 | 2초마다 상태 조회. 한도는 `PortRequest.timeout_seconds`(서버 기본 900초, 2026-11-25 피팅룸 실사화의 여러 단계·대기열 때문에 600초에서 늘림) |
 | 출력 | `artifacts_dir/{job_id}_video.mp4`. 다 받은 뒤에만 이 이름으로 바꾼다(`.part` → 산출물) |
 
 ## 3. 재시도·재조회·실패

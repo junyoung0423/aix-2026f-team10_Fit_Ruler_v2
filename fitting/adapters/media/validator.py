@@ -53,7 +53,7 @@ MASK_DIR = "masks"
 # 테스트로 같은지 확인한다.
 RENDER_MASK_ROLE = "render_mask"
 NO_MASK_REASON = "렌더 옷 마스크 파일이 없어 색·실루엣을 비교하지 못했습니다."
-# 피팅룸 실사화가 쓰는 핏 옮기기 프레임 이름
+# 피팅룸 실사화가 쓰는 핏 확인 사진 이름
 # 끝(`fitting.adapters.fal_fitroom.realizer.FIT_FRAME_ROLE`).
 # 테스트로 같은지 확인한다.
 FIT_FRAME_ROLE = "realize_fit_frame"
@@ -68,7 +68,7 @@ class VisualValidator:
     work_dir: Path
     config: CheckConfig
     mode: str = "time"
-    # 피팅룸 실사화(`fal_fitroom`) 결과 검사 설정. 실사화 중간 사진(핏 옮기기 프레임)이 있으면 쓴다
+    # 피팅룸 실사화(`fal_fitroom`) 결과 검사 설정. 실사화 중간 사진(핏 확인 프레임)이 있으면 쓴다
     fitroom: FitRoomConfig | None = None
 
     def __post_init__(self) -> None:
@@ -221,7 +221,7 @@ class VisualValidator:
         render_frame_id: str,
         mask_id: str,
     ) -> PortResult:
-        """피팅룸 영상 검사: 렌더 ↔ 핏 옮기기 프레임(정면 핏) + 영상(검은 화면·정면 끝·밝기 흐름).
+        """피팅룸 영상 검사: 렌더 ↔ 핏 확인 사진(정면 핏) + 영상(검은 화면·정면 끝·밝기 흐름).
 
         대표 프레임은 영상 첫 프레임(정면 실사), 대응 렌더 프레임은 렌더 첫 프레임이다.
         """

@@ -81,7 +81,7 @@ DEFAULT_STAGE_TIMEOUTS_S: Mapping[Stage, float] = {
     Stage.BODY_FIT: 180.0,
     Stage.DRAPE: 600.0,
     Stage.RENDER: 300.0,
-    Stage.REALIZE: 900.0,  # 피팅룸 실사화 4단계(docs/realize-fitroom.md)
+    Stage.REALIZE: 900.0,  # 피팅룸 실사화·대기열 여유(docs/realize-fitroom.md)
     Stage.VALIDATE: 120.0,
 }
 # 단계별 감시 여유(초) 기본값 = `config/pipeline_v0.yaml`의 `watchdog_grace_s` ([제안]).

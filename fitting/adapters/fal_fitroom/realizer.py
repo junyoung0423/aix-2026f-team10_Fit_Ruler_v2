@@ -1,31 +1,33 @@
 """피팅룸 실사화 어댑터 (`Realizer` 포트, #10). 렌더를 핏 참고로 써서 매장 피팅룸의 실제 사람이
-제자리에서
-한 바퀴 도는 영상을 만든다.
+제자리에서 한 바퀴 도는 영상을 만든다.
 
 단계 (모두 fal, 이름은 기록·지표에 쓴다)
-1. `photo`: 렌더 클립 첫 프레임 → 실사 사진 `{job}_realize_photo.png` (Nano Banana Pro 편집)
-2. `transfer`: 렌더 클립 + 1의 사진(첫 프레임 기준 `image_url`) → LTX render-to-real. 렌더 구조를
-   따라가며 렌더 핏이 입혀진 **마지막 프레임**에서 좌우 검은 띠를 잘라 `{job}_realize_fit_frame.png`
-3. `pose`(옵션 `pose_step`, 기본 끔): 2의 프레임에서 팔을 내린 정면 사진 `{job}_realize_pose.png`
-   (Nano Banana Pro 편집). 기본은 2의 문장이 팔을 내린 채 숨쉬기만 시켜 2의 프레임을 4에 바로 쓴다
-4. `turn`: 시작·끝을 2의 프레임(3을 켜면 3의 사진)으로 둔 8초 회전 영상 `{job}_video.mp4`
+1. `photo`: 렌더 클립 첫 프레임 → 실사 사진 `{job}_realize_fit_frame.png` (Nano Banana Pro 편집).
+   체형·자세·구도·옷 핏은 렌더 그대로 두라고 지시하고, 검증 어댑터가 이 사진을 렌더와 겹쳐 핏을 본다
+2. `pose`(옵션 `pose_step`, 기본 끔): 1의 사진에서 팔을 내린 정면 사진 `{job}_realize_pose.png`
+   (Nano Banana Pro 편집)
+3. `turn`: 시작·끝을 1의 사진(2를 켜면 2의 사진)으로 둔 8초 회전 영상 `{job}_video.mp4`
    (Veo 3.1 Fast first-last-frame, `turn_model="standard"`이면 Veo 3.1 표준판)
 
-계약 출력은 `REALIZE_OUTPUTS`(실사 영상)이고, 중간 사진 3장은 계약 밖 산출물로 같은 폴더에 두고 지표
+예전에 있던 "핏 옮기기"(렌더 클립 + 사진 → LTX render-to-real의 마지막 프레임)는 뺐다. 사진 문장에
+핏 지시와 옷과 대비되는 바지를 넣은 뒤로는 1의 사진이 렌더 핏을 더 잘 지켰고(IoU 0.973 대 0.948),
+빼면 실사화가 약 2분 짧아진다(docs/realize-fitroom.md 2.6절).
+
+계약 출력은 `REALIZE_OUTPUTS`(실사 영상)이고, 중간 사진은 계약 밖 산출물로 같은 폴더에 두고 지표
 (`realize_*_artifact_id`)로 알린다(C5 옷 마스크와 같은 방식). 검증 어댑터가 이름 규칙으로 찾는다.
 
 제출·재조회 규칙은 D4 어댑터(`fal_ltx.realizer`)와 같다.
 - 외부 호출(업로드·상태·결과·내려받기)은 일시 오류면 한 번 더 시도한다. **제출은 한 번만** 보낸다
   (요청이 fal에 닿지 않았다고 확실할 때만 한 번 더).
 - 단계마다 요청 ID와 상태를 `work_dir/{job}/realize/realize.json`에 남긴다. 같은 작업으로 다시
-  부르면
-  **끝난 단계는 건너뛰고**, 진행 중이던 단계는 다시 제출하지 않고 같은 요청 ID로 결과만 받는다.
+  부르면 **끝난 단계는 건너뛰고**, 진행 중이던 단계는 다시 제출하지 않고 같은 요청 ID로 결과만
+  받는다.
 - 접수 여부를 모르는 제출(요청 ID 없음) 뒤에 다시 부르면 다시 보내지 않고 실패로 알린다
   (`allow_resubmit`을 명시할 때만 다시 보낸다).
-- 대기 한도(기본 `PortRequest.timeout_seconds`)는 4단계 전체에 한 번 적용한다. 넘으면
+- 대기 한도(기본 `PortRequest.timeout_seconds`)는 모든 단계에 한 번 적용한다. 넘으면
   `REALIZE_TIMEOUT`(retryable, 그 단계의 요청 ID).
-- 제출 전에 4단계 예상 비용 합이 `max_cost_usd`를 넘으면 `BUDGET_LIMIT`.
-- 생성 결과가 모두 검은 화면이면 `REALIZE_FAILED`(retryable=false). 다시 조회해도 같은 결과다.
+- 제출 전에 단계별 예상 비용 합이 `max_cost_usd`를 넘으면 `BUDGET_LIMIT`.
+- 회전 영상이 모두 검은 화면이면 `REALIZE_FAILED`(retryable=false). 다시 조회해도 같은 결과다.
 - 상태·결과 조회는 제출할 때 기록한 모델로 한다(다시 부를 때 옵션이 바뀌어도 같은 요청을 본다).
 """
 
@@ -40,7 +42,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fitting.adapters.fal_ltx.prompt import STYLE_VERSIONS, build_prompt
 from fitting.adapters.fal_ltx.realizer import (
     MAX_ATTEMPTS,
     FalQueueClient,
@@ -48,15 +49,7 @@ from fitting.adapters.fal_ltx.realizer import (
     submit_not_sent,
     submit_rejected,
 )
-from fitting.adapters.fal_ltx.render_to_real import ENDPOINT as TRANSFER_ENDPOINT
-from fitting.adapters.fal_ltx.render_to_real import (
-    MAX_SECONDS,
-    RenderToRealSettings,
-    download,
-    estimate_cost,
-    frames_for_clip,
-    output_size,
-)
+from fitting.adapters.fal_ltx.render_to_real import download
 from fitting.domain import SCHEMA_VERSION, ErrorCode, GarmentVariant, Stage
 from fitting.ports import REALIZE_OUTPUTS, PortError, PortFailure, PortRequest, PortResult
 
@@ -67,7 +60,6 @@ from .steps import (
     PRICE_CHECKED_ON,
     TURN_ENDPOINT,
     TURN_MODELS,
-    crop_side_bars,
     first_frame,
     is_black,
     photo_arguments,
@@ -79,17 +71,17 @@ from .steps import (
     write_png,
 )
 
-REALIZE_VERSION = "realize_fitroom_v1"
+REALIZE_VERSION = "realize_fitroom_v2"  # v1은 핏 옮기기(LTX)가 있던 흐름
 RECORD_DIR = "realize"
 SUMMARY_NAME = "realize.json"
 # 단계 순서. `pose`는 옵션(`FitRoomOptions.pose_step`)이고 기본은 건너뛴다
-STEPS = ("photo", "transfer", "pose", "turn")
-# 계약 밖 중간 산출물 역할(지표로 ID를 알린다). 검증 어댑터가 같은 이름으로 찾는다
-PHOTO_ROLE, FIT_FRAME_ROLE, POSE_ROLE = "realize_photo", "realize_fit_frame", "realize_pose"
+STEPS = ("photo", "pose", "turn")
+# 계약 밖 중간 산출물 역할(지표로 ID를 알린다). 1의 사진이 핏 확인 프레임이고 검증 어댑터가 같은
+# 이름으로 찾는다
+FIT_FRAME_ROLE, POSE_ROLE = "realize_fit_frame", "realize_pose"
 # 기본 옵션(④ Veo 3.1 Fast) 기준 단계별 모델. 옵션에 맞춘 값은 `FitRoomRealizer.endpoints()`
 ENDPOINTS = {
     "photo": PHOTO_ENDPOINT,
-    "transfer": TRANSFER_ENDPOINT,
     "pose": PHOTO_ENDPOINT,
     "turn": TURN_ENDPOINT,
 }
@@ -110,17 +102,14 @@ Downloader = Callable[[str, Path], None]
 
 @dataclass
 class FitRoomOptions:
-    seed: int | None = 42  # ②·④에 보내는 시드(①·③ 사진 편집은 fal이 고른다)
-    max_cost_usd: float = 3.0  # 예상 비용 합 상한(기본 흐름 약 $1.0)
+    seed: int | None = 42  # 회전 영상에 보내는 시드(사진 편집은 fal이 고른다)
+    max_cost_usd: float = 3.0  # 예상 비용 합 상한(기본 흐름 $0.95)
     poll_interval_s: float = 2.0
     wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
     garment_text: str | None = None  # 프롬프트 옷 설명(시험용)
     allow_resubmit: bool = False  # 접수 여부를 모르는 이전 제출이 있어도 다시 보낸다(비용 위험)
     photo_resolution: str = "2K"
-    transfer_intensity: str = "strong-v2"
-    # ② 프레임 수(8k+1). 마지막 프레임만 쓰고, 렌더 핏은 2초(48프레임)쯤 수렴했다(실험 q3)
-    transfer_frames: int = 49
-    pose_step: bool = False  # ③ 팔 내리기 사진. 끄면 ② 프레임을 ④의 시작·끝으로 바로 쓴다
+    pose_step: bool = False  # 팔 내리기 사진. 끄면 1의 사진을 회전 영상의 시작·끝으로 바로 쓴다
     turn_duration_s: int = 8
     turn_resolution: str = "720p"
     turn_model: str = "fast"  # "fast": Veo 3.1 Fast(초당 $0.10) · "standard": 표준판($0.20)
@@ -184,8 +173,7 @@ class FitRoomRealizer:
     def outputs(self, job_id: str) -> dict[str, Path]:
         directory = Path(self.artifacts_dir)
         return {
-            "photo": directory / f"{job_id}_{PHOTO_ROLE}.png",
-            "transfer": directory / f"{job_id}_{FIT_FRAME_ROLE}.png",
+            "photo": directory / f"{job_id}_{FIT_FRAME_ROLE}.png",
             "pose": directory / f"{job_id}_{POSE_ROLE}.png",
             "turn": directory / f"{job_id}_{REALIZE_OUTPUTS[0]}.mp4",
         }
@@ -214,9 +202,6 @@ class FitRoomRealizer:
         _, info = sample_frames(clip, count=1)
         prompts = build_fitroom_prompts(garment, garment_text=self.options.garment_text)
         endpoints = self.endpoints()
-        transfer = self._transfer_settings(garment, info)
-        width, height = output_size(int(info["width"]), int(info["height"]), transfer.resolution)
-        transfer_estimate = estimate_cost(width, height, transfer.num_frames)
         turn_arguments(  # 길이 검사
             "<사진>",
             prompts.turn,
@@ -227,7 +212,6 @@ class FitRoomRealizer:
         )
         estimate = {
             "photo": PHOTO_USD,
-            "transfer": transfer_estimate.usd,
             "pose": PHOTO_USD,
             "turn": turn_cost(self.options.turn_duration_s, self.options.turn_model),
         }
@@ -239,38 +223,10 @@ class FitRoomRealizer:
             "endpoints": endpoints,
             "turn_model": self.options.turn_model,
             "prompts": prompts.to_dict(),
-            "transfer_prompt_version": STYLE_VERSIONS["fitting_room"],
-            "transfer_settings": transfer.to_arguments("<렌더 클립 주소>"),
             "estimate_usd": {**estimate, "total": round(sum(estimate.values()), 4)},
             "max_cost_usd": self.options.max_cost_usd,
             "price_checked_on": PRICE_CHECKED_ON,
         }
-
-    def _transfer_settings(self, garment: GarmentVariant, info: dict[str, float]):
-        prompt = build_prompt(
-            garment, subject="person", garment_text=self.options.garment_text, style="fitting_room"
-        )
-        wanted = self.options.transfer_frames
-        if wanted < 9 or (wanted - 1) % 8:
-            raise ValueError(f"② 프레임 수는 9 이상의 8k+1이어야 합니다: {wanted}")
-        limit = int(MAX_SECONDS["720p"] * 24)
-        frames = min(
-            wanted,
-            frames_for_clip(int(info["frame_count"]), float(info["fps"]) or 24.0, 24.0),
-            max(9, (limit - 1) // 8 * 8 + 1),
-        )
-        settings = RenderToRealSettings(
-            prompt=prompt.text,
-            negative_prompt=prompt.negative_prompt,
-            intensity=self.options.transfer_intensity,  # type: ignore[arg-type]
-            resolution="720p",
-            num_frames=frames,
-            frames_per_second=24.0,
-            seed=self.options.seed,
-            generate_audio=False,
-        )
-        settings.check()
-        return settings
 
     # --- 포트 -------------------------------------------------------------------------------
 
@@ -278,9 +234,7 @@ class FitRoomRealizer:
         return {
             "realize": REALIZE_VERSION,
             "prompt": FITROOM_PROMPT_VERSION,
-            "transfer_prompt": STYLE_VERSIONS["fitting_room"],
             "photo_endpoint": PHOTO_ENDPOINT,
-            "transfer_endpoint": TRANSFER_ENDPOINT,
             "turn_endpoint": TURN_MODELS[self.options.turn_model][0]
             if self.options.turn_model in TURN_MODELS
             else f"unknown:{self.options.turn_model}",
@@ -400,16 +354,10 @@ class FitRoomRealizer:
             still = write_png(record_dir / "render_still.png", first_frame(ctx["clip"]))
             url = self._upload(name, still, record, ctx)
             return photo_arguments(url, prompts.photo, resolution=self.options.photo_resolution)
-        if name == "transfer":
-            _, info = sample_frames(ctx["clip"], count=1)
-            settings = self._transfer_settings(ctx["garment"], info)
-            clip_url = self._upload(name, ctx["clip"], record, ctx)
-            photo_url = self._upload(name, ctx["outputs"]["photo"], record, ctx)
-            return {**settings.to_arguments(clip_url), "image_url": photo_url}
         if name == "pose":
-            url = self._upload(name, ctx["outputs"]["transfer"], record, ctx)
+            url = self._upload(name, ctx["outputs"]["photo"], record, ctx)
             return photo_arguments(url, prompts.pose, resolution=self.options.photo_resolution)
-        start = ctx["outputs"]["pose" if self.options.pose_step else "transfer"]
+        start = ctx["outputs"]["pose" if self.options.pose_step else "photo"]
         url = self._upload(name, start, record, ctx)
         return turn_arguments(
             url,
@@ -598,7 +546,6 @@ class FitRoomRealizer:
             record_dir
             / {
                 "photo": "photo.png",
-                "transfer": "transfer.mp4",
                 "pose": "pose.png",
                 "turn": "turn.mp4",
             }[name]
@@ -620,18 +567,6 @@ class FitRoomRealizer:
         try:
             if name in ("photo", "pose"):
                 write_png(output, read_image(raw))
-            elif name == "transfer":
-                frames, info = sample_frames(raw)
-                if is_black(frames):
-                    raise _BlackOutput(info)
-                write_png(output, crop_side_bars(frames[-1]))
-                record.save_step(
-                    name,
-                    video=info,
-                    cost_usd=estimate_cost(
-                        int(info["width"]), int(info["height"]), int(info["frame_count"])
-                    ).usd,
-                )
             else:
                 frames, info = sample_frames(raw)
                 if is_black(frames):
@@ -754,14 +689,12 @@ class FitRoomRealizer:
             "cost_usd": round(cost, 4),
             "estimated_cost_usd": estimate.get("total"),
             "photo_s": seconds("photo"),
-            "transfer_s": seconds("transfer"),
             "pose_s": seconds("pose"),
             "turn_s": seconds("turn"),
             "retries": len(record.data.get("retries", [])),
             "video_width": video.get("width"),
             "video_height": video.get("height"),
-            "realize_photo_artifact_id": outputs["photo"].stem,
-            "realize_fit_frame_artifact_id": outputs["transfer"].stem,
+            "realize_fit_frame_artifact_id": outputs["photo"].stem,
             "realize_pose_artifact_id": outputs["pose"].stem if self.options.pose_step else None,
         }
         return PortResult(
