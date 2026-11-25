@@ -166,7 +166,7 @@ def test_success_writes_clip_mask_and_still_with_fixed_names(env):
     assert m["static_clip"] == 1 and m["render_seconds"] == 41.5
     assert m["engine"] == "CYCLES" and m["samples"] == 32
     assert m["garment_mask_ratio"] == 0.2959 and m["head_vertices_in_frame"] == 0
-    assert m["render_config"] == "render_v1@1.0.0"
+    assert m["render_config"] == "render_v1@1.1.0"
     assert all(isinstance(v, int | float | str) and not isinstance(v, bool) for v in m.values())
     assert result.tool_versions == {"renderer": rr.RENDERER_VERSION, "blender": "5.2.3 LTS"}
     record = json.loads((env["work"] / JOB / rr.RECORD_FILE).read_text("utf-8"))
@@ -245,6 +245,95 @@ def test_choose_color_sources():
     hex_, source, warnings = rr.choose_color(_garment(color="mint", color_hex=None), "#808080")
     assert (hex_, source, len(warnings)) == ("#808080", "default", 1)
     assert set(rr.COLOR_SOURCES) == {"color_hex", "color_table", "default"}
+
+
+# --- 배경 (옷 색이 기본 배경과 가까우면 다른 배경) ---
+
+WORLD = CFG["world"]
+
+
+def test_shipped_background_rule():
+    assert WORLD["background_srgb_hex"] == "#808080"
+    assert WORLD["background_name"] == "medium_gray"
+    rule = WORLD["background_rule"]
+    assert rule["min_delta_e00"] == 15.0
+    assert [a["srgb_hex"] for a in rule["alternatives"]] == ["#d9d9d9", "#3a3a3a"]
+
+
+def test_only_gray_in_the_color_table_changes_the_background():
+    chosen = {key: rr.choose_background(hex_, WORLD) for key, hex_ in COLOR_HEX.items()}
+    changed = {key: b.name for key, b in chosen.items() if b.changed}
+    assert changed == {"gray": "dark_gray"}
+    assert all(b.srgb_hex == "#808080" for key, b in chosen.items() if key != "gray")
+    gray = chosen["gray"]
+    assert gray.default_delta_e00 < 15 <= gray.delta_e00
+    # 바뀐 뒤에도 기준보다 멀고, 바꾸지 않은 색은 모두 기본 배경과 기준 이상 떨어져 있다
+    assert all(b.delta_e00 >= 15 for b in chosen.values())
+
+
+def test_background_boundary_keeps_the_default_at_exactly_the_threshold():
+    hex_ = COLOR_HEX["brown"]
+    de = rr.choose_background(hex_, WORLD).default_delta_e00
+    at = {**WORLD, "background_rule": {**WORLD["background_rule"], "min_delta_e00": de}}
+    above = {**WORLD, "background_rule": {**WORLD["background_rule"], "min_delta_e00": de + 0.01}}
+    assert not rr.choose_background(hex_, at).changed
+    assert rr.choose_background(hex_, above).changed
+
+
+def test_background_picks_the_farthest_alternative():
+    assert rr.choose_background("#f4f4f2", {**WORLD, "background_srgb_hex": "#f0f0f0"}).name == (
+        "dark_gray"
+    )
+    assert rr.choose_background("#222326", {**WORLD, "background_srgb_hex": "#202020"}).name == (
+        "light_gray"
+    )
+
+
+def test_without_a_rule_the_default_background_is_kept():
+    world = {k: v for k, v in WORLD.items() if k != "background_rule"}
+    b = rr.choose_background(COLOR_HEX["gray"], world)
+    assert (b.srgb_hex, b.name, b.changed) == ("#808080", "medium_gray", False)
+
+
+def test_only_gray_in_the_color_table_changes_the_mannequin():
+    body = CFG["body_material"]
+    assert body["base_srgb_hex"] == "#9a9a9a"
+    chosen = {key: rr.choose_body_color(hex_, body) for key, hex_ in COLOR_HEX.items()}
+    assert {k: b.name for k, b in chosen.items() if b.changed} == {"gray": "light_gray_mannequin"}
+    assert all(b.delta_e00 >= 15 for b in chosen.values())
+
+
+def test_gray_garment_gets_colors_apart_from_each_other():
+    """회색 옷: 배경(어두운)과 마네킹(밝은)이 옷과도, 서로도 떨어져 있다."""
+    gray = COLOR_HEX["gray"]
+    bg = rr.choose_background(gray, WORLD).srgb_hex
+    body = rr.choose_body_color(gray, CFG["body_material"]).srgb_hex
+    assert (bg, body) == ("#3a3a3a", "#d9d9d9")
+    assert rr.delta_e_hex(bg, body) >= 15
+
+
+def test_renderer_passes_the_chosen_background_and_reports_it(env):
+    runner = FakeBlender()
+    result = _renderer(env, runner).render(_request(), _garment(color_hex=COLOR_HEX["gray"]))
+    assert runner.calls[0]["job"]["background_srgb_hex"] == "#3a3a3a"
+    m = result.metrics
+    assert (m["background_srgb_hex"], m["background_name"]) == ("#3a3a3a", "dark_gray")
+    assert m["background_delta_e00"] >= 15
+    assert runner.calls[0]["job"]["body_srgb_hex"] == "#d9d9d9"
+    assert (m["body_srgb_hex"], m["body_color_name"]) == ("#d9d9d9", "light_gray_mannequin")
+    record = json.loads((env["work"] / JOB / rr.RECORD_FILE).read_text("utf-8"))
+    assert record["background"]["changed"] is True
+    assert record["background"]["default_delta_e00"] < 15
+    assert record["body_color"]["changed"] is True
+
+
+def test_demo_navy_keeps_the_default_background(env):
+    runner = FakeBlender()
+    result = _renderer(env, runner).render(_request(), _garment())
+    assert runner.calls[0]["job"]["background_srgb_hex"] == "#808080"
+    assert result.metrics["background_name"] == "medium_gray"
+    assert runner.calls[0]["job"]["body_srgb_hex"] == "#9a9a9a"
+    assert result.metrics["body_color_name"] == "gray_mannequin"
 
 
 # --- 실패 (모두 RENDER_FAILED, retryable=false) ---
@@ -372,6 +461,12 @@ def test_shipped_render_config_matches_the_spec_clip():
         lambda c: c["mask"].update(ratio_min=0.7),
         lambda c: c["time_limits_s"].update(render=0),
         lambda c: c["garment_material"].pop("default_srgb_hex"),
+        lambda c: c["world"]["background_rule"].update(min_delta_e00=0),
+        lambda c: c["world"]["background_rule"].update(alternatives=[]),
+        lambda c: c["world"]["background_rule"]["alternatives"][0].update(srgb_hex="gray"),
+        lambda c: c["world"].update(background_srgb_hex="#80808"),
+        lambda c: c["body_material"]["contrast_rule"].update(min_delta_e00=-1),
+        lambda c: c["body_material"]["contrast_rule"]["alternatives"][0].pop("name"),
     ],
 )
 def test_broken_render_config_is_rejected(tmp_path, breaks):

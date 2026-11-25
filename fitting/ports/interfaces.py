@@ -107,7 +107,10 @@ class Renderer(Protocol):
     `garment_vertices_out_of_frame`(화면 밖 옷 정점), `top_limited_by`(위쪽 경계를 정한 것),
     `garment_color_hex`·`garment_color_source`(쓴 옷 색과 출처: color_hex, color_table, default)·
     `garment_color_warnings`, `garment_median_hex`·`garment_delta_e00`(마스크 안 렌더 색 중앙값과
-    그 색의 color_hex 대비 CIEDE2000, 기록용), `still_pixel_sha256`(재현성 확인),
+    그 색의 color_hex 대비 CIEDE2000, 기록용), `background_srgb_hex`·`background_name`(쓴 배경색과
+    이름: 옷 색이 기본 배경과 가까우면 다른 배경을 고른다. 실사화 프롬프트 배경과 맞출 때 쓴다)·
+    `background_delta_e00`(옷 색과 쓴 배경의 CIEDE2000), `body_srgb_hex`·`body_color_name`(쓴 마네킹
+    색과 이름: 옷 색과 가까우면 다른 색), `still_pixel_sha256`(재현성 확인),
     `render_config`·`render_config_sha256`(쓴 렌더 설정), `render_mask_artifact_id`·
     `render_still_artifact_id`(계약 출력이 아닌 옷 마스크·정지 프레임 산출물 ID).
 

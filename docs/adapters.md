@@ -212,6 +212,8 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 | `head_vertices_in_frame` | 화면 안에 투영되는 머리 정점 수(옷 맨 위보다 높은 몸 정점). 성공이면 0 |
 | `garment_vertices_out_of_frame`, `top_limited_by` | 화면 밖 옷 정점 수(판정 안 함), 위쪽 경계를 정한 것(`head`·`collar_margin`) |
 | `garment_color_hex`, `garment_color_source`, `garment_color_warnings` | 쓴 옷 색, 출처(color_hex·color_table·default), 경고 |
+| `background_srgb_hex`, `background_name`, `background_delta_e00` | 쓴 배경색·이름(`medium_gray`·`light_gray`·`dark_gray`)과 옷 색과의 CIEDE2000. 옷 색이 기본 배경과 가까우면 다른 배경을 고른다(`docs/render.md` 9절). 실사화 프롬프트 배경을 맞출 때 쓴다 |
+| `body_srgb_hex`, `body_color_name` | 쓴 마네킹 색·이름(`gray_mannequin`·`light_gray_mannequin`). 옷 색이 기본 마네킹과 가까우면 밝은 색으로 바꾼다(`docs/render.md` 9절) |
 | `garment_median_hex`, `garment_delta_e00` | 마스크 안쪽(5 px 줄임) 렌더 색 중앙값과 `color_hex` 대비 CIEDE2000(기록용, D6 기준점) |
 | `still_pixel_sha256` | 정지 프레임 픽셀 해시(재현성 확인) |
 | `render_config`, `render_config_sha256` | 쓴 렌더 설정 `이름@버전`과 sha256 |

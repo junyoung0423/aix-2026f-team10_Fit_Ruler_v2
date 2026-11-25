@@ -1,6 +1,6 @@
 {
   "name": "render_v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "status": "draft",
   "description": "C5 정면 렌더 클립·옷 마스크 설정. 값은 모두 [제안]이고 근거는 각 블록의 _basis와 docs/render.md에 적는다. 초안: 사람 검수 전",
   "objects": {
@@ -44,6 +44,15 @@
   "world": {
     "_basis": "[제안] 중립 회색 배경. 카메라에 보이는 배경색과 주변광을 따로 둔다(Light Path: Is Camera Ray). 값은 근거 없음",
     "background_srgb_hex": "#808080",
+    "background_name": "medium_gray",
+    "background_rule": {
+      "_basis": "[제안] 옷 색과 기본 배경의 CIEDE2000이 min_delta_e00보다 작으면 후보 중 옷 색과 가장 먼 배경을 쓴다. D6 실사 쪽 옷 영역(color_seed_v1)이 배경과 옷을 가르지 못해 회색 옷이 검증 불가가 된 문제(#36 리뷰) 때문이다. 15는 근거 없음: 지금 색 표(COLOR_HEX)에서 gray(6.6)만 걸리고 다음으로 가까운 brown(22.1)은 걸리지 않게 골랐다. 배경 하나로 바꾸면 밝은 배경은 white(5.9), 어두운 배경은 black(7.6)을 깨서 색마다 고른다(docs/render.md 9절)",
+      "min_delta_e00": 15.0,
+      "alternatives": [
+        {"name": "light_gray", "srgb_hex": "#d9d9d9"},
+        {"name": "dark_gray", "srgb_hex": "#3a3a3a"}
+      ]
+    },
     "ambient_srgb_hex": "#ffffff",
     "ambient_strength": 0.3
   },
@@ -74,6 +83,14 @@
   "body_material": {
     "_basis": "[제안] 중립 회색 마네킹(피부색 없음). 실사화 프롬프트(D5)와 맞춰야 한다(결정 필요)",
     "base_srgb_hex": "#9a9a9a",
+    "base_name": "gray_mannequin",
+    "contrast_rule": {
+      "_basis": "[제안] 옷 색과 마네킹 색의 CIEDE2000이 min_delta_e00보다 작으면 후보 중 옷 색과 가장 먼 색을 쓴다. 회색 옷은 배경만 바꾸면 D6 실사 쪽 옷 영역이 마네킹까지 번졌다(면적비 1.63). 배경 어두운 회색 + 마네킹 #d9d9d9로 렌더 자기 비교가 11프레임 PASS였다(docs/render.md 9절). #d9d9d9는 실사화 프롬프트 mannequin 문구(light gray)와 맞는다. 15는 배경 규칙과 같은 값, 근거 없음",
+      "min_delta_e00": 15.0,
+      "alternatives": [
+        {"name": "light_gray_mannequin", "srgb_hex": "#d9d9d9"}
+      ]
+    },
     "roughness": 0.6,
     "specular_ior_level": 0.3,
     "shade_smooth": true

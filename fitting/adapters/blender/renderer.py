@@ -6,7 +6,9 @@
 흐름 (작업 1개)
 1. 입력: `request.input_artifact_ids[0]`의 `artifacts_dir/{id}.blend`(C4 착장 결과).
 2. 옷 색: `garment.color_hex` > `COLOR_HEX[garment.color]`(AI Hub 색 표) > 설정의 중립 회색
-   (경고 기록).
+   (경고 기록). 배경: 옷 색과 기본 배경의 CIEDE2000이 `world.background_rule.min_delta_e00`보다
+   작으면 후보 중 옷 색과 가장 먼 배경(`choose_background`). 마네킹 색도 같은 방식
+   (`body_material.contrast_rule`, `choose_body_color`). 규칙이 없으면 기본 색 그대로.
 3. Blender를 하위 프로세스로 돌린다(`blender_render.py`). 작업 폴더는 `work_dir/{job_id}/render/`.
    시간 제한은 `request.timeout_seconds`와 설정 `time_limits_s.render` 중 작은 값이고, 넘으면
    프로세스 트리를 끝낸다(착장 어댑터와 같은 방식).
@@ -35,6 +37,7 @@ from typing import Any
 
 from fitting.adapters.aihub.tables import COLOR_HEX
 from fitting.adapters.blender.draper import _kill_tree, _num, _sha256_file
+from fitting.adapters.blender.render_color import delta_e_hex, hex_to_srgb
 from fitting.domain import SCHEMA_VERSION, ErrorCode, GarmentVariant, Stage
 from fitting.ports import RENDER_OUTPUTS, PortError, PortFailure, PortRequest, PortResult
 
@@ -104,6 +107,66 @@ def choose_color(garment: GarmentVariant, default_hex: str) -> tuple[str, str, l
     )
 
 
+@dataclass(frozen=True)
+class ContrastPick:
+    """옷 색과 대비를 보고 고른 색(배경 또는 마네킹)."""
+
+    srgb_hex: str
+    name: str
+    delta_e00: float  # 옷 색과 고른 색의 CIEDE2000
+    default_delta_e00: float  # 옷 색과 기본 색의 CIEDE2000
+    changed: bool
+
+
+def _pick(
+    garment_hex: str, default_hex: str, default_name: str, rule: Mapping[str, Any] | None
+) -> ContrastPick:
+    """옷 색과 대비가 되는 색을 고른다.
+
+    기본 색과 옷 색의 CIEDE2000이 `rule.min_delta_e00`보다 작으면 후보(`alternatives`) 중 옷 색과
+    가장 먼 색을 쓴다. 같으면 앞의 후보. 규칙이 없거나 기본 색이 충분히 멀면 기본 색이다.
+    """
+    default_hex = default_hex.lower()
+    default_de = round(delta_e_hex(garment_hex, default_hex), 2)
+    if not rule or default_de >= float(rule["min_delta_e00"]):
+        return ContrastPick(default_hex, default_name, default_de, default_de, changed=False)
+    best: ContrastPick | None = None
+    for alt in rule["alternatives"]:
+        de = round(delta_e_hex(garment_hex, alt["srgb_hex"]), 2)
+        if best is None or de > best.delta_e00:
+            alt_hex = str(alt["srgb_hex"]).lower()
+            best = ContrastPick(alt_hex, str(alt["name"]), de, default_de, changed=True)
+    assert best is not None  # load_render_config가 후보 1개 이상을 확인한다
+    return best
+
+
+def choose_background(garment_hex: str, world: Mapping[str, Any]) -> ContrastPick:
+    """옷 색에 맞는 배경. 기본은 `world.background_srgb_hex`, 규칙은 `world.background_rule`."""
+    name = str(world.get("background_name") or "default")
+    return _pick(garment_hex, str(world["background_srgb_hex"]), name, world.get("background_rule"))
+
+
+def choose_body_color(garment_hex: str, body: Mapping[str, Any]) -> ContrastPick:
+    """옷 색에 맞는 마네킹 색. 기본은 `body_material.base_srgb_hex`, 규칙은 `contrast_rule`."""
+    name = str(body.get("base_name") or "default")
+    return _pick(garment_hex, str(body["base_srgb_hex"]), name, body.get("contrast_rule"))
+
+
+def _check_rule(where: str, default_hex: Any, rule: Any) -> None:
+    hex_to_srgb(str(default_hex))
+    if rule is None:
+        return
+    if not isinstance(rule["min_delta_e00"], int | float) or rule["min_delta_e00"] <= 0:
+        raise ValueError(f"{where}.min_delta_e00가 양수가 아닙니다")
+    alternatives = rule["alternatives"]
+    if not isinstance(alternatives, list) or not alternatives:
+        raise ValueError(f"{where}.alternatives가 비었습니다")
+    for alt in alternatives:
+        if not isinstance(alt["name"], str) or not alt["name"]:
+            raise ValueError(f"{where}.alternatives의 name이 비었습니다")
+        hex_to_srgb(alt["srgb_hex"])
+
+
 def load_render_config(path: Path) -> dict[str, Any]:
     """렌더 설정을 읽고 어댑터가 쓰는 값이 있는지 본다. 틀리면 ValueError."""
     cfg = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -121,6 +184,9 @@ def load_render_config(path: Path) -> dict[str, Any]:
         if cfg["time_limits_s"]["render"] <= 0:
             raise ValueError("time_limits_s.render가 양수가 아닙니다")
         cfg["garment_material"]["default_srgb_hex"]
+        w, b = cfg["world"], cfg["body_material"]
+        _check_rule("world.background_rule", w["background_srgb_hex"], w.get("background_rule"))
+        _check_rule("body_material.contrast_rule", b["base_srgb_hex"], b.get("contrast_rule"))
     except (KeyError, TypeError) as error:
         raise ValueError(f"렌더 설정에 필요한 값이 없습니다: {error}") from None
     return cfg
@@ -206,6 +272,16 @@ class BlenderRenderer:
             "garment_color_hex": garment.color_hex,
             "warnings": warnings,
         }
+        background = choose_background(color_hex, cfg["world"])
+        body_color = choose_body_color(color_hex, cfg["body_material"])
+        for key, pick in (("background", background), ("body_color", body_color)):
+            record[key] = {
+                "srgb_hex": pick.srgb_hex,
+                "name": pick.name,
+                "delta_e00": pick.delta_e00,
+                "default_delta_e00": pick.default_delta_e00,
+                "changed": pick.changed,
+            }
 
         timeout_s = min(float(request.timeout_seconds), float(cfg["time_limits_s"]["render"]))
         out.mkdir(parents=True, exist_ok=True)
@@ -213,6 +289,8 @@ class BlenderRenderer:
             "out_dir": str(out),
             "config": str(self.render_config),
             "garment_color_hex": color_hex,
+            "background_srgb_hex": background.srgb_hex,
+            "body_srgb_hex": body_color.srgb_hex,
             "engine_override": None,
         }
         (out / JOB_FILE).write_text(json.dumps(job, indent=2, ensure_ascii=False), "utf-8")
@@ -308,6 +386,11 @@ class BlenderRenderer:
             "garment_color_warnings": _num(warnings),
             "garment_median_hex": _num(raw.get("garment_median_hex")),
             "garment_delta_e00": _num(raw.get("garment_delta_e00")),
+            "background_srgb_hex": background.srgb_hex,
+            "background_name": background.name,
+            "background_delta_e00": background.delta_e00,
+            "body_srgb_hex": body_color.srgb_hex,
+            "body_color_name": body_color.name,
             "still_pixel_sha256": _num(raw.get("still_pixel_sha256")),
             "render_config": f"{cfg['name']}@{cfg['version']}",
             "render_config_sha256": cfg_sha,
