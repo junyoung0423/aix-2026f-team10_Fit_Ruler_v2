@@ -5,8 +5,8 @@
 흐름(모두 fal)
 1. 렌더 정지 프레임 → 실사 사진(Nano Banana Pro 편집). 렌더 핏을 그대로 두라고 지시하고, 이 사진이
    핏 확인 프레임이다
-2. (옵션, 기본 끔) 팔을 내린 정면 사진(Nano Banana Pro 편집)
-3. 시작·끝을 1의 사진(2를 켜면 2의 사진)으로 고정한 8초 회전 영상(Veo 3.1 Fast first-last-frame,
+2. 팔을 내린 정면 사진(Nano Banana Pro 편집, 기본 켬. 1의 사진은 렌더의 A자세라 팔이 벌어져 있다)
+3. 시작·끝을 2의 사진(끄면 1의 사진)으로 고정한 8초 회전 영상(Veo 3.1 Fast first-last-frame,
    표준판은 옵션)
 근거·실험 결과는 docs/realize-fitroom.md.
 """

@@ -240,11 +240,11 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 
 ## 피팅룸 실사화 어댑터 (`fitting.adapters.fal_fitroom.factory:make_fitroom_realizer`)
 
-`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 한 바퀴(앞 → 옆 → 뒤 → 반대쪽 옆 → 앞) 도는 8초 영상을 만듭니다. `FAL_KEY`가 필요하고 작업 1건에 $0.95·약 2분이 듭니다(사진 53초·회전 73초를 따로 실측, 이 어댑터로 한 번에 돌린 기록은 아직 없음).
+`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 한 바퀴(앞 → 옆 → 뒤 → 반대쪽 옆 → 앞) 도는 8초 영상을 만듭니다. `FAL_KEY`가 필요하고 작업 1건에 $1.10·약 3분이 듭니다(사진 53초·회전 73초 실측, 자세 약 40초 추정. 이 어댑터로 한 번에 돌린 기록은 아직 없음).
 
-- 흐름(모두 fal): 사진(렌더 첫 프레임 → 실사 사진, Nano Banana Pro 편집. 체형·자세·구도·옷 핏은 렌더 그대로) → 회전(시작·끝을 사진으로 고정한 영상, Veo 3.1 Fast first-last-frame, 720×1280. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, +$0.80). 팔을 내린 정면 사진(자세, Nano Banana Pro 편집)은 옵션(`pose_step`·`--pose-step`, +$0.15)이고, 켜면 회전이 자세 사진에서 시작·끝납니다. 예전의 핏 옮기기(LTX render-to-real)는 뺐습니다(docs/realize-fitroom.md 2.6절)
+- 흐름(모두 fal): 사진(렌더 첫 프레임 → 실사 사진, Nano Banana Pro 편집. 체형·자세·구도·옷 핏은 렌더 그대로) → 자세(팔을 내린 정면 사진, Nano Banana Pro 편집, $0.15) → 회전(시작·끝을 자세 사진으로 고정한 영상, Veo 3.1 Fast first-last-frame, 720×1280. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, +$0.80). 자세는 기본으로 켜고, 끄면(`pose_step=False`·`--no-pose-step`) 사진을 바로 써서 팔을 벌린 채 시작·끝납니다. 예전의 핏 옮기기(LTX render-to-real)는 뺐습니다(docs/realize-fitroom.md 2.6절)
 - 입력: `input_artifact_ids[0]`(렌더 클립)의 `artifacts_dir/{id}.mp4`
-- 출력: 계약 출력 `{job_id}_video.mp4`(`REALIZE_OUTPUTS`). 계약 밖 중간 사진 `{job_id}_realize_fit_frame.png`(실사 사진, 검증 어댑터가 핏 확인에 씀), 자세를 켜면 `{job_id}_realize_pose.png`
+- 출력: 계약 출력 `{job_id}_video.mp4`(`REALIZE_OUTPUTS`). 계약 밖 중간 사진 `{job_id}_realize_fit_frame.png`(실사 사진, 검증 어댑터가 핏 확인에 씀), 자세 사진 `{job_id}_realize_pose.png`(자세를 끄면 없음)
 - 재시도·재조회: D4 규칙을 단계마다 씁니다. 같은 `job_id`로 다시 불리면 끝난 단계는 건너뛰고 진행 중인 단계만 같은 요청 ID로 다시 조회합니다. 오류 코드는 `EXTERNAL_SUBMIT_UNKNOWN`·`BUDGET_LIMIT`·`REALIZE_TIMEOUT`·`REALIZE_FAILED`(검은 영상 포함)
 - 지표: `external_request_id`(회전), `cost_usd`·`estimated_cost_usd`, 단계별 시간 `photo_s`·`pose_s`·`turn_s`, `retries`, `video_width`·`video_height`
 - 기록: `FIT_WORK_DIR/{job_id}/realize/realize.json`과 단계별 요청·응답

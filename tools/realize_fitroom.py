@@ -1,7 +1,7 @@
 """렌더 클립 하나를 피팅룸 실사화 어댑터로 회전 영상으로 만든다(서버 없이, 같은 어댑터).
 
     python -m tools.realize_fitroom --input path/to/render_clip.mp4         # 드라이런(비용 없음)
-    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출($0.95)
+    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출($1.10)
     python -m tools.realize_fitroom --name <이전 이름> --yes                 # 이어 받기(끝난 단계
     건너뜀)
 
@@ -11,7 +11,7 @@
 
 결과는 `artifacts/realize/<이름>/`에 남는다(커밋 금지).
 - `artifacts/<이름>_render_clip.mp4`(입력 사본), `<이름>_realize_fit_frame.png`(실사 사진, 핏 확인
-  프레임), `<이름>_realize_pose.png`(자세, `--pose-step`일 때만), `<이름>_video.mp4`(회전 영상)
+  프레임), `<이름>_realize_pose.png`(자세, `--no-pose-step`이면 없음), `<이름>_video.mp4`(회전 영상)
 - `work/<이름>/realize/`: `plan.json`, 단계별 `*_request.json`·`*_response.json`, `realize.json`
 - `strip.png`: 렌더 첫 프레임 · 사진 · (자세) · 영상 0~8초 프레임을 나란히 놓은 확인 그림
 
@@ -86,8 +86,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--pose-step",
-        action="store_true",
-        help="팔 내리기 사진을 만든다(기본은 사진을 회전 영상에 바로 씀, $0.15·약 40초 추가)",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="팔 내리기 사진을 만들어 회전 영상의 시작·끝으로 쓴다(기본 켬, $0.15·약 40초). "
+        "--no-pose-step이면 팔을 벌린 사진을 바로 쓴다",
     )
     parser.add_argument("--max-cost-usd", type=float, default=3.0, help="예상 비용 합 상한")
     parser.add_argument("--timeout", type=int, default=900, help="전체 대기 상한(초)")
@@ -201,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SETUP
     realizer.options = options
 
-    print(f"\nfal 호출 중… ({len(steps)}단계, 모두 2~3분쯤 걸립니다)")
+    print(f"\nfal 호출 중… ({len(steps)}단계, 모두 3분쯤 걸립니다)")
     try:
         result = realizer.realize(request, garment)
     except PortFailure as failure:

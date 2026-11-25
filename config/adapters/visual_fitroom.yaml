@@ -1,12 +1,12 @@
 # 영상 경로 5단계를 모두 실제 어댑터로 돌리고, 실사화는 피팅룸 영상(렌더를 핏 참고로 쓴 Veo 회전 영상)으로
 # 만드는 설정 (#10 #11).
 #
-# 몸(D3 SMPL) → 착장(C4 Blender) → 렌더(C5 Blender) → 실사화(피팅룸: Nano Banana Pro 사진 →
-# Veo 3.1 Fast 회전, fal) → 검증(정면 핏 + 영상 검사). 실사화는 작업 1건에 $0.95가 든다
+# 몸(D3 SMPL) → 착장(C4 Blender) → 렌더(C5 Blender) → 실사화(피팅룸: Nano Banana Pro 사진·자세 →
+# Veo 3.1 Fast 회전, fal) → 검증(정면 핏 + 영상 검사). 실사화는 작업 1건에 $1.10이 든다
 # (docs/realize-fitroom.md).
 # Blender·GarmentCode·SMPL 모델·FAL_KEY가 모두 있는 PC에서만 시작한다(없으면 이유를 알리고 멈춤).
 #
-#   python -m tools.run_fitting_once --adapters visual_fitroom --consent --yes   # fal 비용 $0.95
+#   python -m tools.run_fitting_once --adapters visual_fitroom --consent --yes   # fal 비용 $1.10
 #
 # 검증 어댑터는 실사화 사진(`{job_id}_realize_fit_frame.png`)이 있으면 피팅룸 검사를 한다.
 # default.yaml은 바꾸지 않는다(기본 설정은 몸·착장·렌더가 가짜라 실사화만 실제로 바꾸면 돌지 않는다).
