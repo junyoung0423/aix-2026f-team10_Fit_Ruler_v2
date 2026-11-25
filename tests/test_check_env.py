@@ -157,6 +157,20 @@ def test_visual_real_on_empty_pc_lists_every_missing_piece(tmp_path):
     assert "개발용 몸 OBJ" not in _items(report)  # 몸이 실제면 개발용 몸은 필요 없다
 
 
+def test_visual_fitroom_needs_the_same_as_visual_real(tmp_path):
+    """실사화만 피팅룸 어댑터로 바꾼 설정도 빈 PC에서 FAL_KEY까지 같은 것을 알려 준다."""
+    environ = {
+        "FIT_GC_PYTHON": str(tmp_path / "없음" / "python.exe"),
+        "FIT_RULER_GC_ROOT": str(tmp_path / "없음"),
+        "FIT_PREPARED_DIR": str(tmp_path / "없음"),
+    }
+    real = _run("visual_real", environ, tmp_path)
+    fitroom = _run("visual_fitroom", environ, tmp_path)
+
+    assert {c.item for c in fitroom.missing} == {c.item for c in real.missing}
+    assert "FAL_KEY" in {c.item for c in fitroom.missing}
+
+
 def test_visual_real_with_everything_runs_the_factories(tmp_path, no_factories):
     environ = _base_env(tmp_path)
     del environ["FIT_DRAPE_BODY_OBJ"]
@@ -448,6 +462,10 @@ def test_needs_follow_adapter_modules():
     assert needs() == set()
     assert needs(drape="tests.stub_adapters:make_drape") == set()  # 모르는 모듈은 팩토리 검사만
     assert ce.NEED_FAL_KEY in needs(realize="fitting.adapters.fal_ltx.factory:make_realizer")
+    assert needs(realize="fitting.adapters.fal_fitroom.factory:make_fitroom_realizer") == {
+        "extra:realize",
+        ce.NEED_FAL_KEY,
+    }
     assert needs(validate="fitting.adapters.media.factory:make_validator") == {"extra:realize"}
 
 

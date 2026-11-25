@@ -47,6 +47,7 @@ from fitting.ports import PortFailure, PortRequest
 from server.app import DEFAULT_GARMENTS_DIR, GARMENTS_DIR_ENV
 from server.garments import GarmentDirectory
 from server.wiring import AdapterConfigError, AdapterSettings
+from tools.console import use_utf8_output
 from tools.realize_clip import load_env_file, seed_value
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -228,4 +229,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())

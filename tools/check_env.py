@@ -108,6 +108,7 @@ ADAPTER_NEEDS: tuple[tuple[str, frozenset[str]], ...] = (
     ("fitting.adapters.blender.draper", frozenset({NEED_BLENDER, NEED_GC, NEED_PREPARED})),
     ("fitting.adapters.blender.renderer", frozenset({NEED_BLENDER})),
     ("fitting.adapters.fal_ltx.", frozenset({"extra:realize", NEED_FAL_KEY})),
+    ("fitting.adapters.fal_fitroom.", frozenset({"extra:realize", NEED_FAL_KEY})),
     ("fitting.adapters.media.", frozenset({"extra:realize"})),
 )
 

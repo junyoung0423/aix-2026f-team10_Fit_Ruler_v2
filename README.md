@@ -94,6 +94,7 @@ copy .env.example .env      # 쓸 값만 채운다. .env는 커밋하지 않는�
 python -m tools.check_env                                   # 기본 설정(지금은 전부 가짜)
 python -m tools.check_env --adapters drape_render_blender   # 착장·렌더까지 실제
 python -m tools.check_env --adapters visual_real            # 영상 경로 5단계 모두 실제
+python -m tools.check_env --adapters visual_fitroom         # 위와 같고 실사화만 피팅룸 영상
 ```
 
 고른 어댑터 설정에 필요한 것만(Python·선택 의존성, Blender, GarmentCode 루트·Python 3.9, 준비된 의류, 개발용 몸, SMPL 모델 파일, `FAL_KEY`, Node) 표로 보여 주고, 빠진 것마다 고치는 방법을 한 줄씩 적습니다. 모두 있으면 서버와 같은 팩토리로 어댑터를 실제로 만들어 봅니다(fal은 부르지 않음). `FAL_KEY`는 **있음/없음만** 출력합니다. 빠진 것이 있으면 종료 코드 1입니다. 표는 마크다운이라 PR에 그대로 붙일 수 있습니다.
@@ -141,18 +142,20 @@ python -m tools.run_fitting_once --adapters drape_render_blender
 | `drape_render_blender` | 착장 · 렌더 | 위와 같음 | + `*_render_clip.mp4`, `*_render_mask.png` | + 약 1분 | 없음 |
 | `smpl_body` | 몸 | SMPL 모델(`SMPL_MODEL_DIR`), `.[body]` | `*_body_mesh.obj` | 약 20초 | 없음 |
 | `visual_real` | 몸 · 착장 · 렌더 · 실사화 · 검증 | 위 전부(개발용 몸은 비움) + `FAL_KEY`, `.[realize]` | + `*_video.mp4`, `*_frame.png`, `*_render_frame.png`, 검증 PASS·FAIL | 약 10분 [추정: 끝까지 돌린 기록 없음] | 실사화 1회 약 $0.2. `--consent --yes`가 있어야 돈다 |
+| `visual_fitroom` | `visual_real`과 같고 실사화만 피팅룸 영상(사진 → 핏 옮기기 → 자세 → Veo 3.1 Fast 회전) | `visual_real`과 같음 | `*_video.mp4`가 9:16 회전 영상, + 중간 사진 `*_realize_photo.png`·`*_realize_fit_frame.png`·`*_realize_pose.png`, 검증은 피팅룸 검사 | 약 15분 [추정: 실사화 6~8분, 끝까지 돌린 기록 없음] | 실사화 1회 약 $1.3. `--consent --yes`가 있어야 돈다 |
 
 ```powershell
 python -m tools.run_fitting_once                                   # 기본 어댑터, 실사화 미동의(렌더까지)
 python -m tools.run_fitting_once --adapters fake --consent
 python -m tools.run_fitting_once --body 175,100,80,40,56 --garment-id tee_regular_m_navy_v1 --out C:\dev\_runs\run1
 python -m tools.run_fitting_once --adapters visual_real --consent --yes   # fal 비용 발생
+python -m tools.run_fitting_once --adapters visual_fitroom --consent --yes   # fal 비용 약 $1.3
 ```
 
 - `--consent` 없이 돌리면 실사화·검증은 하지 않고 렌더까지입니다(실사화 미동의). 실제 실사화를 `--consent`로 돌리려면 `--yes`가 있어야 합니다. 없으면 아무것도 실행하지 않고 안내만 합니다.
 - 단계가 바뀔 때마다 한 줄씩 출력하고, 끝나면 요약(핏 판정, 단계별 상태, 산출물 파일 위치와 있는지)을 출력해 결과 폴더(`artifacts/runs/{job_id}/`)의 `request.json`·`report.json`·`status.json`·`summary.txt`에도 씁니다. 산출물은 그 안의 `artifacts/`, 중간 파일은 `FIT_WORK_DIR`(기본 `artifacts/work/{job_id}/`)에 생깁니다.
 - 종료 코드는 0 성공, 3 영상 경로 실패(핏 리포트는 있음), 2 작업 실패, 1 설정·입력 오류입니다.
-- 어댑터별 환경변수·실패 코드는 [docs/adapters.md](docs/adapters.md), 몸은 [docs/body-fit.md](docs/body-fit.md), 실사화는 [docs/realize.md](docs/realize.md), 검증은 [docs/visual-check.md](docs/visual-check.md)에 있습니다.
+- 어댑터별 환경변수·실패 코드는 [docs/adapters.md](docs/adapters.md), 몸은 [docs/body-fit.md](docs/body-fit.md), 실사화는 [docs/realize.md](docs/realize.md)(피팅룸 실사화는 [docs/realize-fitroom.md](docs/realize-fitroom.md)), 검증은 [docs/visual-check.md](docs/visual-check.md)에 있습니다.
 - 견본 검색은 `python -m tools.search_sample --garment data/garments/tee_regular_m_navy_v1.json --samples tests/fixtures/catalog/samples_v0.json`으로 확인합니다([견본 검색](docs/api/README.md)).
 
 ## 서버 실행
