@@ -12,6 +12,8 @@
 같은 입력으로 자동 반복하지 않는다(명세서 11장).
 --skip-analyze면 3단계(Blender 없이 지표 재계산, 판정에 쓰지 않음)를 건너뛴다. 서버 착장 어댑터가 쓴다.
 Blender 실행 파일은 --blender, 없으면 환경변수 BLENDER_EXE, 그것도 없으면 Blender 5.2 기본 설치 경로.
+--ref-body는 패턴을 만든 몸이다(없으면 <gc-root>/assets/bodies/mean_all.obj, config/pattern의
+body_yaml과 같은 몸). export가 옷 패널 첫 위치를 --body의 어깨에 맞추는 기준으로 쓴다.
 """
 import argparse
 import json
@@ -76,12 +78,16 @@ def main():
     ap.add_argument('--max-frames', type=int, help='짧은 시험용. thresholds.max_frames 이하만 허용')
     ap.add_argument('--gc-root', default=str(DEFAULT_GC_ROOT))
     ap.add_argument('--blender', default=str(DEFAULT_BLENDER))
+    ap.add_argument('--ref-body', help='패턴을 만든 몸 OBJ(옷 패널 첫 위치의 기준). '
+                                       '없으면 <gc-root>/assets/bodies/mean_all.obj')
     ap.add_argument('--skip-analyze', action='store_true',
                     help='착장 뒤 analyze(판정에 쓰지 않는 지표 재계산·패널 요약)를 건너뛴다')
     args = ap.parse_args()
 
     spec, body, cfg_path = (Path(p).resolve() for p in (args.spec, args.body, args.config))
     gc_root, blender = Path(args.gc_root).resolve(), Path(args.blender)
+    ref_body = (Path(args.ref_body) if args.ref_body
+                else gc_root / 'assets' / 'bodies' / 'mean_all.obj').resolve()
     out_root = resolve_out_root(args.out_root)
     if out_root is None:
         sys.exit(f'output root not set: pass --out-root or set {RUNS_DIR_ENV} '
@@ -97,7 +103,9 @@ def main():
         'out_dir': str(out),
         'config': cfg_rec,
         'inputs': {'spec': str(spec), 'spec_sha256': sha256_file(spec),
-                   'body': str(body), 'body_sha256': sha256_file(body)},
+                   'body': str(body), 'body_sha256': sha256_file(body),
+                   'ref_body': str(ref_body),
+                   'ref_body_sha256': sha256_file(ref_body) if ref_body.is_file() else None},
         'versions': {'repo_commit': git_head(HERE), 'garmentcode_commit': git_head(gc_root),
                      'python': sys.version.split()[0], 'blender_exe': str(blender)},
         'max_frames_override': args.max_frames,
@@ -114,10 +122,13 @@ def main():
         print(json.dumps({k: summary[k] for k in ('name', 'status', 'error_code', 'reason')}, ensure_ascii=False))
         sys.exit(0 if status == 'SUCCEEDED' else 1)
 
+    if not ref_body.is_file():
+        finish('FAILED', 'GARMENT_NOT_READY', f'reference body not found: {ref_body}')
+
     # 1) export (GarmentCode는 system.json 상대경로 때문에 cwd·PYTHONPATH를 GarmentCode 루트로.
     #    export_panels는 패키지 모듈이라 저장소 루트도 PYTHONPATH 뒤에 붙인다)
     rec = run_step('export', [sys.executable, '-m', 'fitting.adapters.garmentcode.export_panels',
-                              spec, body, out, '--config', cfg_path],
+                              spec, body, out, '--config', cfg_path, '--ref-body', ref_body],
                    out / 'export_log.txt', cwd=str(gc_root),
                    extra_env={'PYTHONPATH': os.pathsep.join([str(gc_root), str(REPO_ROOT)])})
     summary['steps'].append(rec)

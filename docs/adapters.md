@@ -136,6 +136,7 @@ python -m tools.run_fitting_once --adapters drape_blender
 - 몸: `request.input_artifact_ids[0]`의 `artifacts_dir/{id}.obj`(D3 몸 메시: y 위·z 앞·미터, `docs/spikes/smpl-body-measure.md` 1절).
 - 개발용 몸: D3 전에는 가짜 몸에 메시 파일이 없어서 `FIT_DRAPE_BODY_OBJ`(GarmentCode `mean_all.obj`)를 씁니다. 사용자 몸이 아니며 개발·시연용입니다. 지표 `body_source`·`body_sha256`에 남습니다. GarmentCode·SMPL 몸 파일은 저장소에 넣지 않습니다.
 - 의류: `{FIT_PREPARED_DIR}/{garment_id}/prep.json`과 `specification.json`.
+- 옷 패널 첫 위치: GarmentCode는 패턴을 만든 몸(준비 기록의 `generation_body`, 지금은 `mean_all`) 둘레에 패널을 놓습니다. 다른 몸에 그대로 입히면 어깨 높이가 달라 봉제가 닫히지 않습니다(기준 신체 1은 어깨 끝이 약 5 cm 높음). 그래서 export가 패널마다 평행 이동만 해서 입력 몸의 어깨에 맞춥니다(`garmentcode/placement.py`). 모든 패널은 어깨 끝 높이 차(좌우 중 큰 쪽) + 봉제 여유 1 cm만큼, 소매는 그쪽 어깨 끝의 옆 위치 차만큼 옮깁니다. 패널 모양·치수는 그대로이고(R06), 패턴을 만든 몸과 같은 몸이면 옮기지 않습니다. 옮긴 거리는 작업 폴더 `drape_input.json`의 `placement`에, 기준 몸은 `drape_record.json`의 `placement_reference_body`에 남습니다.
 
 **실행**: GarmentCode용 Python으로 `python -m fitting.adapters.blender.run_drape`(export → Blender 착장 → 분석)를 저장소 루트에서 돌립니다. 작업 폴더는 `FIT_WORK_DIR/{job_id}/drape/`, 기록은 `FIT_WORK_DIR/{job_id}/drape_record.json`(`internal_details_ref`)입니다. 시간 제한은 `request.timeout_seconds`와 설정 `time_limits_s.drape`(600초) 중 작은 값이고, 넘으면 Blender까지 프로세스 트리를 끝냅니다(`DRAPE_INVALID`). 착장이 끝난 뒤의 analyze(Blender 없이 지표를 다시 계산, 판정에 쓰지 않음)는 **기본으로 건너뜁니다**(`--skip-analyze`). 판정은 처음부터 Blender의 `drape_metrics.json`으로 하므로 결과는 같고, 서버 착장 단계가 analyze 시간(C3 실측 40~430초)만큼 짧아집니다. `FIT_DRAPE_ANALYZE=on`으로 켜면 analyze에 같은 길이의 한도를 따로 주고, 넘으면 analyze만 끝내고 판정은 `drape_metrics.json`으로 합니다. 이때는 의류 1벌이 최대 약 2배 한도까지 걸릴 수 있습니다.
 
