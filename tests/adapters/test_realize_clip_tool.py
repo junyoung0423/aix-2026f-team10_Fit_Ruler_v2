@@ -71,6 +71,11 @@ def test_real_call_with_a_fake_client_saves_the_video(tmp_path, clip, monkeypatc
     out = tmp_path / "out" / "t3"
     assert (out / "artifacts" / "t3_video.mp4").is_file()
     assert (out / "frame_real.png").is_file()
+    # D5: 실사 대표 프레임과 같은 시각의 렌더 프레임
+    assert (out / "frame_render_matched.png").is_file()
+    frames = json.loads((out / "frames.json").read_text(encoding="utf-8"))
+    assert frames["match"]["mode"] == "time"
+    assert frames["render_frame"]["index"] == frames["real_frame"]["index"]  # 같은 24fps
     assert "req-123" in capsys.readouterr().out
 
 
@@ -108,3 +113,31 @@ def test_unknown_submit_is_blocked_until_resubmit_is_given(tmp_path, clip, monke
 def test_resume_needs_an_existing_clip(tmp_path, capsys):
     assert tool.main(["--name", "none", "--out-dir", str(tmp_path)]) == tool.EXIT_SETUP
     assert tool.main(["--name", "../bad", "--out-dir", str(tmp_path)]) == tool.EXIT_SETUP
+
+
+def test_subject_and_prompt_version_are_shown_in_the_dry_run(tmp_path, clip, capsys):
+    code = tool.main(
+        [
+            "--input",
+            str(clip),
+            "--name",
+            "t5",
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--subject",
+            "mannequin",
+        ]
+    )
+    assert code == tool.EXIT_OK
+    printed = capsys.readouterr().out
+    assert "realize_prompt_v1" in printed and "mannequin" in printed
+    plan = json.loads((tmp_path / "out" / "t5" / "plan.json").read_text(encoding="utf-8"))
+    assert plan["prompt"]["subject"] == "mannequin"
+
+
+def test_empty_garment_text_is_a_setup_error(tmp_path, clip, capsys):
+    out = str(tmp_path / "out")
+    args = ["--input", str(clip), "--name", "t6", "--out-dir", out, "--garment-text", " "]
+    code = tool.main(args)
+    assert code == tool.EXIT_SETUP
+    assert "garment_text" in capsys.readouterr().err

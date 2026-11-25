@@ -231,7 +231,24 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 
 ## 실사화 어댑터 (D4, `fitting.adapters.fal_ltx.factory:make_realizer`)
 
-`realize: "fitting.adapters.fal_ltx.factory:make_realizer"`로 연결합니다. `FAL_KEY`가 필요하고 호출마다 비용이 듭니다(`run_fitting_once`는 `--consent`로 돌릴 때 `--yes`를 요구합니다). 렌더 클립 파일이 있어야 하므로 C5 전에는 `python -m tools.realize_clip`으로 클립 하나씩 시험합니다. 재시도·같은 요청 ID 재조회·오류 코드·기록은 docs/realize.md에 있습니다.
+`realize: "fitting.adapters.fal_ltx.factory:make_realizer"`로 연결합니다. `FAL_KEY`가 필요하고 호출마다 비용이 듭니다(`run_fitting_once`는 `--consent`로 돌릴 때 `--yes`를 요구합니다). 렌더 클립 파일이 있어야 하므로 실제 렌더(C5)와 함께 돌리거나 `python -m tools.realize_clip`으로 클립 하나씩 시험합니다. 재시도·같은 요청 ID 재조회·오류 코드·기록은 docs/realize.md, 프롬프트 템플릿(D5)은 docs/realize-pipeline.md 1절에 있습니다.
+
+## 검증 어댑터 — 프레임 부분 (D5, `fitting.adapters.media.factory:make_validator`)
+
+실사 영상의 대표 프레임과 그 시각에 대응하는 렌더 프레임을 저장합니다(길이·fps 차이 보정). 색·실루엣 판정(D6) 전이라 **`quality_status`는 늘 `UNVERIFIABLE`**이고, 서비스는 이때 검증 단계를 `VALIDATION_UNVERIFIABLE`로 끝냅니다. 그래서 `default.yaml`의 `validate`는 `fake`로 둡니다. 필요한 것은 OpenCV(`pip install -e ".[realize]"`)뿐입니다.
+
+- 입력: `input_artifact_ids` = [렌더 클립, 실사 영상]의 `artifacts_dir/{id}.mp4`
+- 출력(`VALIDATE_OUTPUTS`): `{job_id}_frame.png`(실사 대표 프레임), `{job_id}_render_frame.png`(대응 렌더 프레임). 각 영상의 원래 크기 PNG
+- 기록: `FIT_WORK_DIR/{job_id}/validate/frames.json`(`internal_details_ref`)
+- 실패: 입력이 없거나 읽지 못하면 `VALIDATION_UNVERIFIABLE`, `retryable=false`
+
+영상 경로 5단계를 모두 실제로 돌리는 설정은 `config/adapters/visual_real.yaml`입니다(몸 D3 · 착장 C4 · 렌더 C5 · 실사화 D4 · 검증 D5). Blender·GarmentCode·SMPL 모델·FAL_KEY가 모두 있어야 시작합니다.
+
+```bash
+python -m tools.run_fitting_once --adapters visual_real --consent --yes   # fal 비용 발생(C5 클립 기준 약 $0.2)
+```
+
+매칭 방식·근거·명령(`python -m tools.match_frames`)은 docs/realize-pipeline.md 3·4절에 있습니다.
 
 ## 막혔을 때
 
