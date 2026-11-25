@@ -60,6 +60,10 @@ soft even lighting, natural fabric folds. Keep the garment color, shape, length 
 
 **시험용 덮어쓰기**: `RealizeOptions.garment_text`(`--garment-text`)는 옷 설명 부분만 바꾼다. 빈 값이면 제출 전에 실패한다(`EXTERNAL_SUBMIT_UNKNOWN`, `retryable=false`, 기록 `stage: prepare`).
 
+### 1.1 피팅룸 판 (`realize_prompt_v2`, 2026-11-25)
+
+`build_prompt(..., style="fitting_room")`은 같은 옷 설명을 매장 피팅룸·실제 사람 장면으로 쓴다(목 아래 구도, 고정 카메라). `negative_prompt`에 fal 기본값과 마네킹·얼굴·머리 등을 더해 보낸다. 대상은 `person`만 받는다. 기본(`studio`, `realize_prompt_v1`)은 그대로이고, 피팅룸 실사화 ② 단계(docs/realize-fitroom.md)가 이 판을 쓴다. `tools.realize_clip --style fitting_room --seed random`으로 시험할 수 있다.
+
 ## 2. 파이프라인에서 실사화 실행·저장
 
 영상 경로는 이미 렌더 → 실사화 → 검증 순서로 산출물 ID를 넘긴다(`fitting/services/fitting.py`). D5는 실제 `FalRealizer`가 그 안에서 돌고 파일이 이어지는지 확인했다.
