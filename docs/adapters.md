@@ -235,22 +235,26 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 
 `realize: "fitting.adapters.fal_ltx.factory:make_realizer"`로 연결합니다. `FAL_KEY`가 필요하고 호출마다 비용이 듭니다(`run_fitting_once`는 `--consent`로 돌릴 때 `--yes`를 요구합니다). 렌더 클립 파일이 있어야 하므로 실제 렌더(C5)와 함께 돌리거나 `python -m tools.realize_clip`으로 클립 하나씩 시험합니다. 재시도·같은 요청 ID 재조회·오류 코드·기록은 docs/realize.md, 프롬프트 템플릿(D5)은 docs/realize-pipeline.md 1절에 있습니다.
 
-## 검증 어댑터 — 프레임 부분 (D5, `fitting.adapters.media.factory:make_validator`)
+## 검증 어댑터 (D5·D6, `fitting.adapters.media.factory:make_validator`)
 
-실사 영상의 대표 프레임과 그 시각에 대응하는 렌더 프레임을 저장합니다(길이·fps 차이 보정). 색·실루엣 판정(D6) 전이라 **`quality_status`는 늘 `UNVERIFIABLE`**이고, 서비스는 이때 검증 단계를 `VALIDATION_UNVERIFIABLE`로 끝냅니다. 그래서 `default.yaml`의 `validate`는 `fake`로 둡니다. 필요한 것은 OpenCV(`pip install -e ".[realize]"`)뿐입니다.
+실사 영상을 렌더 클립과 비교해 색·실루엣을 판정합니다(명세서 7장). 실사 영상 길이의 0~100 % 11프레임을 같은 시각의 렌더 프레임과 비교하고, 9프레임 이상이 모든 기준(IoU ≥ 0.85, 가슴·밑단 폭 변화 ≤ 5 %, CIEDE2000 ≤ 8)을 통과하면 `PASS`입니다. 기준은 `config/validate/visual_check_v1.json`입니다. 필요한 것은 OpenCV(`pip install -e ".[realize]"`)뿐이고 모델 파일·GPU는 필요 없습니다.
 
-- 입력: `input_artifact_ids` = [렌더 클립, 실사 영상]의 `artifacts_dir/{id}.mp4`
-- 출력(`VALIDATE_OUTPUTS`): `{job_id}_frame.png`(실사 대표 프레임), `{job_id}_render_frame.png`(대응 렌더 프레임). 각 영상의 원래 크기 PNG
-- 기록: `FIT_WORK_DIR/{job_id}/validate/frames.json`(`internal_details_ref`)
-- 실패: 입력이 없거나 읽지 못하면 `VALIDATION_UNVERIFIABLE`, `retryable=false`
+- 입력: `input_artifact_ids` = [렌더 클립, 실사 영상]의 `artifacts_dir/{id}.mp4`, 렌더 옷 마스크 `artifacts_dir/{job_id}_render_mask.png`(C5 렌더 어댑터가 쓰는 이름. 계약 출력이 아니어서 이름 규칙으로 찾습니다)
+- 출력(`VALIDATE_OUTPUTS`): `{job_id}_frame.png`(대표 프레임), `{job_id}_render_frame.png`(대응 렌더 프레임). 각 영상의 원래 크기 PNG
+- 지표: `quality_status`(`PASS`·`FAIL`·`UNVERIFIABLE`), 숫자 `color_delta_e`·`silhouette_iou`·`width_change_ratio`(측정된 프레임의 중앙값)·`frames_passed`. 숫자는 화면의 `quality_metrics`로 갑니다
+- 판정이 `PASS`가 아니어도 결과를 돌려줍니다. 서비스가 프레임 ID를 남기고 검증 단계를 `VALIDATION_FAILED`(FAIL)·`VALIDATION_UNVERIFIABLE`(그 밖)로 끝냅니다. 렌더 옷 마스크가 없으면 비교하지 않고 `UNVERIFIABLE`입니다
+- 기록: `FIT_WORK_DIR/{job_id}/validate/validate.json`(`internal_details_ref`), 같은 폴더의 `contact_sheet.png`(11프레임 사람 확인용)·`masks/`(프레임별 실사 옷 영역)
+- 실패(`PortFailure`): 입력이 없거나 읽지 못하면 `VALIDATION_UNVERIFIABLE`, `retryable=false`
+- 중대한 변형·얼굴은 자동으로 찾지 않습니다. `PASS`에도 기록에 `human_review_required: true`가 남습니다
 
-영상 경로 5단계를 모두 실제로 돌리는 설정은 `config/adapters/visual_real.yaml`입니다(몸 D3 · 착장 C4 · 렌더 C5 · 실사화 D4 · 검증 D5). Blender·GarmentCode·SMPL 모델·FAL_KEY가 모두 있어야 시작합니다.
+`default.yaml`의 `validate`는 아직 `fake`입니다(바꿀 시점은 팀 결정, `docs/visual-check.md` 6절). 영상 경로 5단계를 모두 실제로 돌리는 설정은 `config/adapters/visual_real.yaml`입니다(몸 D3 · 착장 C4 · 렌더 C5 · 실사화 D4 · 검증 D6). Blender·GarmentCode·SMPL 모델·FAL_KEY가 모두 있어야 시작합니다.
 
 ```bash
 python -m tools.run_fitting_once --adapters visual_real --consent --yes   # fal 비용 발생(C5 클립 기준 약 $0.2)
+python -m tools.check_visual --run artifacts/realize/<이름>               # 이미 있는 결과로 판정만(비용 없음)
 ```
 
-매칭 방식·근거·명령(`python -m tools.match_frames`)은 docs/realize-pipeline.md 3·4절에 있습니다.
+기준·방법·실제 결과는 docs/visual-check.md, 대응 프레임 매칭 근거는 docs/realize-pipeline.md 3절에 있습니다.
 
 ## 막혔을 때
 
