@@ -27,6 +27,7 @@ import numpy as np
 
 from fitting.adapters.media.frames import save_frame_pair, write_image
 from fitting.verify import MATCH_MODES
+from tools.console import use_utf8_output
 
 ROOT = Path(__file__).resolve().parents[1]
 EXIT_OK, EXIT_INPUT = 0, 1
@@ -115,4 +116,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())

@@ -74,10 +74,12 @@ def make_xxx(settings: AdapterSettings) -> 포트 객체    # BodyBuilder / Drap
 
 1. **팩토리를 만듭니다.** `make_xxx(settings) -> 포트 객체` (위 약속). 어댑터가 머지되기 전에는 가짜 어댑터를 쓰거나 `tests/stub_adapters.py`처럼 작은 파일을 쓰는 스텁으로 시험합니다.
 2. **`config/adapters/default.yaml`에서 자기 줄 하나만 바꿉니다.** 예: `drape: "fitting.adapters.blender.factory:make_draper"`
-3. **확인합니다.** 서버 없이 한 번 돌려 봅니다.
+3. **확인합니다.** 필요한 것이 다 있는지 점검한 뒤 서버 없이 한 번 돌려 봅니다.
    ```bash
+   python -m tools.check_env --adapters default      # 빠진 것과 고치는 방법(B6, README "설치" 4단계)
    python -m tools.run_fitting_once --adapters default --consent
    ```
+   자기 어댑터가 Blender·SMPL·fal 말고 다른 것이 필요하면 `tools/check_env.py`의 `ADAPTER_NEEDS`에 한 줄 더하고 B에게 알려 주세요.
    단계 진행이 한 줄씩 나오고, 끝나면 요약(핏 판정, 단계별 상태, 산출물 파일 위치와 **파일이 있는지**)이 나옵니다. 영상 경로가 실패하면 요약 첫 줄이 "영상 경로 실패"이고 종료 코드가 0이 아닙니다(3).
 4. **그 출력을 PR에 붙입니다.** 다른 팀원 PC에서 같은 명령으로 다시 확인할 수 있게 `FIT_WORK_DIR`·`BLENDER_PATH` 같은 필요한 환경변수도 적어 주세요.
 
@@ -126,6 +128,7 @@ python -m tools.run_fitting_once --adapters drape_blender
 | `FIT_PREPARED_DIR` | `data/prepared/` | 의류 준비 기록 폴더(`tools/prepare_garments.py`, `data/prepared/README.md`) |
 | `FIT_DRAPE_BODY_OBJ` | 없음 | **개발·시연용 몸.** 있으면 입력 몸 메시 대신 이 OBJ를 쓴다 |
 | `FIT_DRAPE_FABRIC_MAP` | `config/drape/fabric_map_v0.yaml` | 원단 → 천 물성 매핑 표. `off`면 끄고 `drape_v1` 그대로 쓴다 |
+| `FIT_DRAPE_ANALYZE` | `off` | `on`이면 착장 뒤 analyze(Blender 없이 지표 재계산·패널별 요약, 판정에 쓰지 않음)까지 돌린다. 개발·일괄 점검용 |
 
 없거나 틀리면 팩토리가 `AdapterConfigError`로 시작을 멈춥니다(가짜로 대신하지 않음).
 
@@ -134,7 +137,7 @@ python -m tools.run_fitting_once --adapters drape_blender
 - 개발용 몸: D3 전에는 가짜 몸에 메시 파일이 없어서 `FIT_DRAPE_BODY_OBJ`(GarmentCode `mean_all.obj`)를 씁니다. 사용자 몸이 아니며 개발·시연용입니다. 지표 `body_source`·`body_sha256`에 남습니다. GarmentCode·SMPL 몸 파일은 저장소에 넣지 않습니다.
 - 의류: `{FIT_PREPARED_DIR}/{garment_id}/prep.json`과 `specification.json`.
 
-**실행**: GarmentCode용 Python으로 `python -m fitting.adapters.blender.run_drape`(export → Blender 착장 → 분석)를 저장소 루트에서 돌립니다. 작업 폴더는 `FIT_WORK_DIR/{job_id}/drape/`, 기록은 `FIT_WORK_DIR/{job_id}/drape_record.json`(`internal_details_ref`)입니다. 시간 제한은 `request.timeout_seconds`와 설정 `time_limits_s.drape`(600초) 중 작은 값이고, 넘으면 Blender까지 프로세스 트리를 끝냅니다(`DRAPE_INVALID`). 착장이 끝난 뒤의 analyze(Blender 없이 지표를 다시 계산, 판정에 쓰지 않음)에는 같은 길이의 한도를 따로 줍니다. 넘으면 analyze만 끝내고 판정은 Blender의 `drape_metrics.json`으로 합니다([제안], C3에서 analyze만 40~430초). 그래서 의류 1벌이 최대 약 2배 한도까지 걸릴 수 있습니다. 보통 4~8분입니다.
+**실행**: GarmentCode용 Python으로 `python -m fitting.adapters.blender.run_drape`(export → Blender 착장 → 분석)를 저장소 루트에서 돌립니다. 작업 폴더는 `FIT_WORK_DIR/{job_id}/drape/`, 기록은 `FIT_WORK_DIR/{job_id}/drape_record.json`(`internal_details_ref`)입니다. 시간 제한은 `request.timeout_seconds`와 설정 `time_limits_s.drape`(600초) 중 작은 값이고, 넘으면 Blender까지 프로세스 트리를 끝냅니다(`DRAPE_INVALID`). 착장이 끝난 뒤의 analyze(Blender 없이 지표를 다시 계산, 판정에 쓰지 않음)는 **기본으로 건너뜁니다**(`--skip-analyze`). 판정은 처음부터 Blender의 `drape_metrics.json`으로 하므로 결과는 같고, 서버 착장 단계가 analyze 시간(C3 실측 40~430초)만큼 짧아집니다. `FIT_DRAPE_ANALYZE=on`으로 켜면 analyze에 같은 길이의 한도를 따로 주고, 넘으면 analyze만 끝내고 판정은 `drape_metrics.json`으로 합니다. 이때는 의류 1벌이 최대 약 2배 한도까지 걸릴 수 있습니다.
 
 **원단 → 물성**: `config/drape/fabric_map_v0.yaml`([제안] 값)로 신축성 → 강성 배율, 섬유 → 면밀도를 정해 작업 폴더에 파생 설정(`drape_config_fabric.json`, `parent`·`changes` 기록)을 씁니다. `drape_v1.json`은 고치지 않고, 바뀌는 값이 없으면 `drape_v1`을 그대로 씁니다. 검사 기준은 바꾸지 않습니다.
 

@@ -60,6 +60,7 @@ from server.errors import (
     input_invalid_error,
     job_not_found_error,
 )
+from tools.console import use_utf8_output
 
 EXAMPLE_JOB_ID = "fit_sample_001"
 EXAMPLE_CREATED_AT = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -283,4 +284,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())

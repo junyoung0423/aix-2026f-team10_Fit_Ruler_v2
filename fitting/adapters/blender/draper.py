@@ -13,6 +13,9 @@
 4. GarmentCode용 Python으로 `run_drape`를 하위 프로세스로 돌린다. 작업 폴더는
    `work_dir/{job_id}/drape/`. 시간 제한은 `request.timeout_seconds`와 설정
    `time_limits_s.drape` 중 작은 값이고, 넘으면 프로세스 트리를 끝낸다.
+   착장 뒤 analyze(Blender 없이 지표 재계산, 판정에 쓰지 않음)는 기본으로 건너뛴다
+   (`--skip-analyze`). 판정은 Blender 지표로 하므로 결과는 같고, 서버 착장 단계가 analyze
+   시간(C3 실측 40~430초)만큼 짧아진다. 켜려면 `analyze=True`(`FIT_DRAPE_ANALYZE=on`).
 5. 성공하면 `drape.blend` → `{job_id}_drape_result.blend`, `front.png` →
    `{job_id}_drape_preview.png`를 `artifacts_dir`에 복사하고 `DRAPE_OUTPUTS` 순서로 돌려준다.
 
@@ -50,6 +53,7 @@ PREPARED_DIR_ENV = "FIT_PREPARED_DIR"
 DEFAULT_PREPARED_DIR = REPO_ROOT / "data" / "prepared"
 BODY_OBJ_ENV = "FIT_DRAPE_BODY_OBJ"
 FABRIC_MAP_ENV = "FIT_DRAPE_FABRIC_MAP"  # 매핑 표 경로, "off"면 끈다
+ANALYZE_ENV = "FIT_DRAPE_ANALYZE"  # "on"이면 착장 뒤 analyze까지 돌린다(기본 off)
 DEFAULT_DRAPE_CONFIG = REPO_ROOT / "config" / "drape" / "drape_v1.json"
 
 RUN_NAME = "drape"  # work_dir/{job_id}/drape/
@@ -206,6 +210,7 @@ class BlenderDraper:
     drape_config: Path = DEFAULT_DRAPE_CONFIG
     fabric_table: fm.FabricMap | None = None  # None이면 매핑하지 않음(drape_v1 그대로)
     dev_body_obj: Path | None = None
+    analyze: bool = False  # True면 착장 뒤 analyze까지 돌린다(개발·일괄 점검용, 판정에는 안 씀)
     runner: Runner = subprocess_runner
 
     # --- 실패 ---
@@ -376,8 +381,10 @@ class BlenderDraper:
             "--blender",
             str(self.blender_path),
         ]
+        if not self.analyze:
+            cmd.append("--skip-analyze")
         env = dict(os.environ, PYTHONIOENCODING="utf-8")
-        record.update(timeout_s=timeout_s, out_dir=str(out))
+        record.update(timeout_s=timeout_s, out_dir=str(out), analyze=self.analyze)
         job_dir.mkdir(parents=True, exist_ok=True)
         outcome = self.runner(cmd, REPO_ROOT, env, timeout_s, job_dir / "run_drape_log.txt")
         record["run"] = {
@@ -489,6 +496,7 @@ def make_draper(settings, environ: Mapping[str, str] | None = None) -> BlenderDr
     - 준비 폴더: `FIT_PREPARED_DIR`, 기본 저장소 `data/prepared/`
     - 개발용 몸: `FIT_DRAPE_BODY_OBJ` (있으면 입력 몸 대신 이 OBJ, 개발·시연용)
     - 원단 매핑 표: `FIT_DRAPE_FABRIC_MAP`, 기본 `config/drape/fabric_map_v0.yaml`, `off`면 끈다
+    - 착장 뒤 analyze: `FIT_DRAPE_ANALYZE`, `on`이면 돌린다. 기본은 건너뜀(판정에 쓰지 않음)
     """
     from server.wiring import AdapterConfigError  # 어댑터 본체가 server를 import하지 않게 여기서만
 
@@ -521,6 +529,9 @@ def make_draper(settings, environ: Mapping[str, str] | None = None) -> BlenderDr
             problems.append(
                 f"원단 매핑 표를 읽지 못했습니다({FABRIC_MAP_ENV}): {map_path} ({error})"
             )
+    analyze_value = (env.get(ANALYZE_ENV) or "off").strip().lower()
+    if analyze_value not in ("on", "off"):
+        problems.append(f"{ANALYZE_ENV}는 on이나 off여야 합니다: {analyze_value}")
     if problems:
         raise AdapterConfigError("; ".join(problems))
     return BlenderDraper(
@@ -532,6 +543,7 @@ def make_draper(settings, environ: Mapping[str, str] | None = None) -> BlenderDr
         prepared_dir=prepared,
         fabric_table=table,
         dev_body_obj=body,
+        analyze=analyze_value == "on",
     )
 
 
