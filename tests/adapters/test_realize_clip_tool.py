@@ -141,3 +141,43 @@ def test_empty_garment_text_is_a_setup_error(tmp_path, clip, capsys):
     code = tool.main(args)
     assert code == tool.EXIT_SETUP
     assert "garment_text" in capsys.readouterr().err
+
+
+def test_fitting_room_style_and_random_seed_are_shown_in_the_dry_run(tmp_path, clip, capsys):
+    out = str(tmp_path / "out")
+    args = ["--input", str(clip), "--name", "t7", "--out-dir", out]
+    code = tool.main([*args, "--style", "fitting_room", "--seed", "random"])
+    assert code == tool.EXIT_OK
+    printed = capsys.readouterr().out
+    assert "realize_prompt_v2" in printed and "fitting room" in printed
+    assert "부정 프롬프트: (보내지 않음" not in printed
+    assert "시드: (보내지 않음" in printed
+    preview = json.loads((tmp_path / "out" / "t7" / "plan.json").read_text("utf-8"))[
+        "arguments_preview"
+    ]
+    assert "mannequin" in preview["negative_prompt"]
+    assert "seed" not in preview
+
+
+def test_default_style_keeps_the_fal_negative_prompt_and_seed_42(tmp_path, clip, capsys):
+    code = tool.main(["--input", str(clip), "--name", "t8", "--out-dir", str(tmp_path / "out")])
+    assert code == tool.EXIT_OK
+    printed = capsys.readouterr().out
+    assert "realize_prompt_v1" in printed
+    assert "부정 프롬프트: (보내지 않음, fal 기본값)" in printed
+    assert "시드: 42" in printed
+
+
+@pytest.mark.parametrize("seed", ["abc", "-1", "1.5"])
+def test_bad_seed_is_rejected_by_the_parser(tmp_path, clip, seed):
+    with pytest.raises(SystemExit) as caught:
+        tool.main(["--input", str(clip), "--name", "t9", "--seed", seed])
+    assert caught.value.code == 2
+
+
+def test_fitting_room_style_rejects_the_mannequin_subject(tmp_path, clip, capsys):
+    out = str(tmp_path / "out")
+    args = ["--input", str(clip), "--name", "t10", "--out-dir", out]
+    code = tool.main([*args, "--style", "fitting_room", "--subject", "mannequin"])
+    assert code == tool.EXIT_SETUP
+    assert "설정 오류" in capsys.readouterr().err
