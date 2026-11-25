@@ -152,8 +152,9 @@ export function GarmentSelectPage() {
             <span>
               <strong>실사 착장 영상도 만들기</strong>
               <br />
-              신체 치수가 반영된 렌더 클립이 외부 서버(fal)로 전송되어 처리됩니다. 체크하지 않으면 핏 리포트와 3D
-              미리보기까지만 만듭니다.
+              신체 치수가 반영된 렌더 클립과 그로 만든 사진이 외부 서버(fal)로 전송되어 처리됩니다. 사진과
+              영상은 fal에서 Google(Veo·Nano Banana Pro)과 Lightricks(LTX) 모델로 만듭니다. 체크하지 않으면
+              핏 리포트와 3D 미리보기까지만 만듭니다.
             </span>
           </label>
 

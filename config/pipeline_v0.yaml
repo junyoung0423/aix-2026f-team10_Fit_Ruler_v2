@@ -7,7 +7,7 @@ stage_timeouts_s:
   BODY_FIT: 180      # D3 실측 12~62초(docs/body-fit.md)
   DRAPE: 600         # config/drape time_limits_s.drape와 같다(명세서 12장 착장 10분)
   RENDER: 300        # C5 전이라 가정값
-  REALIZE: 600       # D1 실측 전체 73초, fal 대기열 변동을 넉넉히
+  REALIZE: 900       # 피팅룸 실사화 4단계(사진·핏 옮기기·자세·회전) 실측 6~8분 + 대기열 변동. 한 단계(LTX)만이면 D1 실측 73초
   VALIDATE: 120      # D6 실측: C5 크기 합성 영상 11프레임 약 15초(docs/visual-check.md 3절), 넉넉히
 
 # 감시 시간 = 단계 시간 제한 + 이 값. 어댑터가 시간 제한을 넘기고도 돌아오지 않으면 그 단계를 실패로 끝낸다.

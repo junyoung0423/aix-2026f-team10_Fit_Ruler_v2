@@ -654,6 +654,12 @@ a:focus-visible {
   background: var(--bg);
 }
 
+/* 피팅룸 실사 영상은 세로(9:16)라 화면 높이를 넘지 않게 줄이고 비율을 지킨다 */
+.media video {
+  max-height: 70vh;
+  object-fit: contain;
+}
+
 .frames {
   display: grid;
   grid-template-columns: 1fr 1fr;
