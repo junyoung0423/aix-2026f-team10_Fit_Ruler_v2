@@ -1,15 +1,23 @@
-"""fal / LTX-2.3 render-to-real: D1 스파이크 호출 코드와 D4 실사화 어댑터(`Realizer` 포트).
+"""fal / LTX-2.3 render-to-real: D1 스파이크 호출 코드, D4 실사화 어댑터(`Realizer` 포트),
+D5 프롬프트 템플릿(`prompt.py`).
 
 팩토리는 `factory.py`(server를 import하므로 따로 둔다).
 """
 
+from .prompt import (
+    PROMPT_TEMPLATE,
+    PROMPT_VERSION,
+    SUBJECTS,
+    RealizePrompt,
+    build_prompt,
+    garment_description,
+    material_description,
+)
 from .realizer import (
     MAX_ATTEMPTS,
-    PROMPT_TEMPLATE,
     REALIZE_VERSION,
     FalRealizer,
     RealizeOptions,
-    garment_description,
     is_transient,
     submit_not_sent,
     submit_rejected,
@@ -36,17 +44,22 @@ __all__ = [
     "PRICE_CHECKED_ON",
     "PRICE_PER_MEGAPIXEL_USD",
     "PROMPT_TEMPLATE",
+    "PROMPT_VERSION",
     "REALIZE_VERSION",
+    "SUBJECTS",
     "CostEstimate",
     "FalRealizer",
     "RealizeOptions",
+    "RealizePrompt",
     "RenderToRealError",
     "RenderToRealResult",
     "RenderToRealSettings",
+    "build_prompt",
     "estimate_cost",
     "frames_for_clip",
     "garment_description",
     "is_transient",
+    "material_description",
     "output_size",
     "port_metrics",
     "run_render_to_real",
