@@ -479,10 +479,13 @@ def test_runner_stops_a_drape_that_is_too_slow(tmp_path):
 
 
 def test_runner_gives_analyze_its_own_limit(tmp_path):
-    # 착장이 1.5초 걸려 한도(2초) 안에 끝나고, analyze가 한도를 넘는다
-    body = "time.sleep(1.5)\nprint('[drape] rc=0', flush=True)\ntime.sleep(60)\n"
+    # 착장이 2.5초 걸려 한도(6초) 안에 끝나고, analyze가 한도를 넘는다.
+    # 착장 끝 줄은 1초 간격으로 확인하므로 빨라도 3초에 보인다. analyze가 따로 한도를 받으면
+    # 3 + 6 = 9초 이후에 끝나고, 같은 한도를 나눠 쓰면 7초 안쪽에서 끝난다. 기준은 8초다.
+    # PC가 바빠 Python 시작이 늦어져도 착장 끝 줄이 6초 전에만 나오면 된다(여유 약 3.5초).
+    body = "time.sleep(2.5)\nprint('[drape] rc=0', flush=True)\ntime.sleep(60)\n"
     outcome = dr.subprocess_runner(
-        _script(tmp_path, body), tmp_path, dict(os.environ), 2, tmp_path / "log.txt"
+        _script(tmp_path, body), tmp_path, dict(os.environ), 6, tmp_path / "log.txt"
     )
     assert outcome.analyze_timed_out and not outcome.timed_out
-    assert outcome.seconds >= 3
+    assert outcome.seconds >= 8
