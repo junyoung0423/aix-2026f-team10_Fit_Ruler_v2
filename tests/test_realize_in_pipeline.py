@@ -1,7 +1,9 @@
-"""D5: 피팅 파이프라인(`run_fitting`) 안에서 실사화를 실행·저장하고 프레임까지 뽑는지 확인한다.
+"""D5·D6: 피팅 파이프라인(`run_fitting`) 안에서 실사화를 실행·저장하고 색·실루엣까지
+검증하는지 본다.
 
-몸·착장은 가짜, 렌더는 실제 mp4를 쓰는 스텁(C5 클립 대신), 실사화는 **실제 `FalRealizer`**(가짜 fal
-대기열, 비용 없음), 검증은 D5 프레임 어댑터다. 실제 Blender·fal 없이 단계 사이 파일 넘김을 시험한다.
+몸·착장은 가짜, 렌더는 C5처럼 정지 클립과 옷 마스크를 쓰는 스텁, 실사화는 **실제 `FalRealizer`**
+(가짜 fal 대기열, 비용 없음), 검증은 D6 검증 어댑터다. 실제 Blender·fal 없이 단계 사이 파일 넘김과
+판정에 따른 작업 상태를 시험한다.
 """
 
 import shutil
@@ -14,7 +16,8 @@ pytest.importorskip("cv2")  # 선택 의존성 realize가 없으면 건너뛴다
 
 from fitting.adapters.fake import fake_ports  # noqa: E402
 from fitting.adapters.fal_ltx import FalRealizer, RealizeOptions  # noqa: E402
-from fitting.adapters.media.validator import FrameValidator  # noqa: E402
+from fitting.adapters.media.validator import VisualValidator  # noqa: E402
+from fitting.adapters.media.visual_measure import load_check_config  # noqa: E402
 from fitting.domain import (  # noqa: E402
     SCHEMA_VERSION,
     ErrorCode,
@@ -27,6 +30,7 @@ from fitting.domain import (  # noqa: E402
 )
 from fitting.ports import PortRequest, PortResult  # noqa: E402
 from fitting.services.fitting import RunSettings, run_fitting  # noqa: E402
+from tests.adapters import visual_clips as vc  # noqa: E402
 from tests.adapters.test_fal_realizer import (  # noqa: E402
     Completed,
     Downloader,
@@ -35,7 +39,6 @@ from tests.adapters.test_fal_realizer import (  # noqa: E402
     InProgress,
     Queued,
 )
-from tools.spike_fal_ltx import write_test_clip  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 GARMENT = GarmentVariant.model_validate_json(
@@ -46,21 +49,23 @@ NOW = datetime(2026, 11, 23, tzinfo=timezone.utc)
 
 
 class ClipRenderer:
-    """렌더 단계 스텁: C5처럼 `{job_id}_render_clip.mp4`를 실제로 쓴다."""
+    """렌더 단계 스텁: C5처럼 `{job_id}_render_clip.mp4`와 `{job_id}_render_mask.png`를 쓴다."""
 
-    def __init__(self, artifacts: Path, source: Path) -> None:
+    def __init__(self, artifacts: Path, source: Path, mask: Path) -> None:
         self.artifacts = artifacts
         self.source = source
+        self.mask = mask
         self.inputs: list[str] = []
 
     def render(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
         self.inputs = list(request.input_artifact_ids)
-        artifact_id = f"{request.job_id}_render_clip"
+        artifact_id, mask_id = f"{request.job_id}_render_clip", f"{request.job_id}_render_mask"
+        shutil.copy(self.mask, self.artifacts / f"{mask_id}.png")
         shutil.copy(self.source, self.artifacts / f"{artifact_id}.mp4")
         return PortResult(
             schema_version=SCHEMA_VERSION,
             output_artifact_ids=[artifact_id],
-            metrics={},
+            metrics={"render_mask_artifact_id": mask_id},
             tool_versions={"render": "stub"},
         )
 
@@ -68,14 +73,16 @@ class ClipRenderer:
 @pytest.fixture(scope="module")
 def clips(tmp_path_factory) -> dict[str, Path]:
     root = tmp_path_factory.mktemp("clips")
+    render, mask = vc.render_clip(root / "render.mp4")
     return {
-        "render": write_test_clip(root / "render.mp4", seconds=3.0, size=(96, 128)),
-        "real": write_test_clip(root / "real.mp4", seconds=65 / 24, size=(102, 136)),
+        "render": render,
+        "mask": vc.write_mask(root / "mask.png", mask),
+        "real": vc.real_clip(root / "real.mp4"),  # 같은 옷 → PASS
+        "recolored": vc.real_clip(root / "recolored.mp4", garment=vc.RED),  # 색이 바뀜 → FAIL
     }
 
 
-@pytest.fixture
-def chain(tmp_path, clips):
+def make_chain(tmp_path: Path, clips, real: str) -> dict:
     artifacts = tmp_path / "artifacts"
     artifacts.mkdir()
     work = tmp_path / "work"
@@ -86,17 +93,24 @@ def chain(tmp_path, clips):
         artifacts_dir=artifacts,
         work_dir=work,
         options=RealizeOptions(poll_interval_s=2.0),
-        downloader=Downloader(clips["real"]),
+        downloader=Downloader(clips[real]),
         clock=clock,
         wall=clock,
         sleep=clock.sleep,
     )
     ports = fake_ports(
-        render=ClipRenderer(artifacts, clips["render"]),
+        render=ClipRenderer(artifacts, clips["render"], clips["mask"]),
         realize=realizer,
-        validate=FrameValidator(artifacts_dir=artifacts, work_dir=work),
+        validate=VisualValidator(
+            artifacts_dir=artifacts, work_dir=work, config=load_check_config()
+        ),
     )
     return {"artifacts": artifacts, "work": work, "client": client, "ports": ports}
+
+
+@pytest.fixture
+def chain(tmp_path, clips):
+    return make_chain(tmp_path, clips, "real")
 
 
 def fitting_request(body) -> FittingRequest:
@@ -124,7 +138,7 @@ def by_stage(status) -> dict[Stage, StageStatus]:
     return {p.stage: p.status for p in status.stages}
 
 
-def test_realize_runs_in_the_pipeline_and_frames_are_saved(body, chain):
+def test_realize_and_validation_pass_in_the_pipeline(body, chain):
     outcome = run(body, chain["ports"])
     status, visual = outcome.status, outcome.status.visual
     artifacts, client = chain["artifacts"], chain["client"]
@@ -140,18 +154,39 @@ def test_realize_runs_in_the_pipeline_and_frames_are_saved(body, chain):
     assert visual.video_artifact_id == f"{JOB}_video"
     assert (artifacts / f"{JOB}_video.mp4").stat().st_size > 0
 
-    # 검증(D5): 두 프레임 파일이 있고 상태에 ID가 남는다. 판정은 D6 전이라 검증할 수 없음
+    # 검증(D6): 렌더 마스크로 11프레임을 비교해 통과했다. 두 프레임 ID와 숫자 지표가 상태에 남는다
     assert visual.frame_artifact_id == f"{JOB}_frame"
     assert visual.render_frame_artifact_id == f"{JOB}_render_frame"
     assert (artifacts / f"{JOB}_frame.png").is_file()
     assert (artifacts / f"{JOB}_render_frame.png").is_file()
-    assert visual.quality_status is QualityStatus.UNVERIFIABLE
-    assert visual.quality_metrics == {}
+    assert visual.quality_status is QualityStatus.PASS
+    assert visual.status is StageStatus.SUCCEEDED
+    assert visual.stage is Stage.VALIDATE
+    assert visual.error_code is None
+    assert by_stage(status)[Stage.VALIDATE] is StageStatus.SUCCEEDED
+    metrics = visual.quality_metrics
+    assert metrics["silhouette_iou"] >= 0.85 and metrics["color_delta_e"] <= 8.0
+    assert metrics["frames_passed"] == 11.0
+    assert (chain["work"] / JOB / "realize" / "realize.json").is_file()
+    assert (chain["work"] / JOB / "validate" / "validate.json").is_file()
+
+
+def test_a_recolored_video_fails_validation_but_keeps_frames(body, tmp_path, clips):
+    chain = make_chain(tmp_path, clips, "recolored")
+    outcome = run(body, chain["ports"])
+    visual = outcome.status.visual
+
     assert visual.status is StageStatus.FAILED
     assert visual.stage is Stage.VALIDATE
-    assert visual.error_code is ErrorCode.VALIDATION_UNVERIFIABLE
-    assert (chain["work"] / JOB / "realize" / "realize.json").is_file()
-    assert (chain["work"] / JOB / "validate" / "frames.json").is_file()
+    assert visual.error_code is ErrorCode.VALIDATION_FAILED
+    assert visual.quality_status is QualityStatus.FAIL
+    assert visual.quality_metrics["color_delta_e"] > 8.0
+    assert visual.quality_metrics["frames_passed"] == 0.0
+    # 실패해도 사람이 볼 수 있게 프레임과 실사 영상 ID는 남는다(명세서 7장: 운영자 보관)
+    assert visual.video_artifact_id == f"{JOB}_video"
+    assert visual.frame_artifact_id == f"{JOB}_frame"
+    assert (chain["artifacts"] / f"{JOB}_frame.png").is_file()
+    assert outcome.status.report is not None  # 핏 리포트는 그대로
 
 
 def test_realize_timeout_is_requeried_by_the_service_without_resubmitting(body, chain):
