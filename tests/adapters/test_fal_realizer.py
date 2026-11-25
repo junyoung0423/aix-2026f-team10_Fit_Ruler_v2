@@ -16,7 +16,12 @@ import pytest
 
 pytest.importorskip("cv2")  # 선택 의존성 realize가 없으면 건너뛴다
 
-from fitting.adapters.fal_ltx import ENDPOINT, FalRealizer, RealizeOptions  # noqa: E402
+from fitting.adapters.fal_ltx import (  # noqa: E402
+    ENDPOINT,
+    PROMPT_VERSION,
+    FalRealizer,
+    RealizeOptions,
+)
 from fitting.adapters.fal_ltx.factory import FalQueueClient, make_realizer  # noqa: E402
 from fitting.domain import ErrorCode, GarmentVariant, Stage  # noqa: E402
 from fitting.ports import PortFailure, PortRequest, Realizer  # noqa: E402
@@ -467,6 +472,10 @@ def _fail_timeout(tmp_path, clips):
     return make(tmp_path, clips, FakeQueue(statuses=[Queued(5)]))
 
 
+def _fail_bad_prompt(tmp_path, clips):
+    return make(tmp_path, clips, FakeQueue(), garment_text="  ")
+
+
 def _fail_resubmit_guard(tmp_path, clips):
     realizer = _fail_submit_without_response(tmp_path, clips)
     with pytest.raises(PortFailure):
@@ -489,6 +498,7 @@ def _fail_resubmit_guard(tmp_path, clips):
         _fail_over_budget,
         _fail_missing_clip,
         _fail_timeout,
+        _fail_bad_prompt,
         _fail_resubmit_guard,
     ],
 )
@@ -510,6 +520,39 @@ def test_garment_text_overrides_the_prompt(tmp_path, clips):
     realizer = make(tmp_path, clips, FakeQueue(), garment_text="plain black cotton T-shirt")
     prompt = realizer.plan(request(), GARMENT)["arguments_preview"]["prompt"]
     assert "plain black cotton T-shirt" in prompt and "navy" not in prompt
+
+
+# --- D5 프롬프트 템플릿 --------------------------------------------------------------------------
+
+
+def test_prompt_template_version_is_recorded(tmp_path, clips):
+    client = FakeQueue()
+    result = make(tmp_path, clips, client).realize(request(), GARMENT)
+
+    assert result.tool_versions["prompt"] == PROMPT_VERSION
+    plan = record(tmp_path, "plan.json")
+    assert plan["prompt"]["version"] == PROMPT_VERSION
+    assert plan["prompt"]["subject"] == "person"
+    assert client.arguments["prompt"] == f"3DREAL. {plan['prompt']['text']}"
+    assert "negative_prompt" not in client.arguments  # fal 기본값을 덮어쓰지 않는다
+
+
+def test_subject_option_switches_to_the_mannequin(tmp_path, clips):
+    realizer = make(tmp_path, clips, FakeQueue(), subject="mannequin")
+    prompt = realizer.plan(request(), GARMENT)["arguments_preview"]["prompt"]
+    assert "a matte light gray mannequin wearing" in prompt
+
+
+def test_bad_prompt_settings_fail_before_upload(tmp_path, clips):
+    client = FakeQueue()
+    with pytest.raises(PortFailure) as caught:
+        make(tmp_path, clips, client, garment_text="  ").realize(request(), GARMENT)
+
+    error = caught.value.error
+    assert error.code == ErrorCode.EXTERNAL_SUBMIT_UNKNOWN
+    assert error.retryable is False
+    assert client.calls["upload"] == 0
+    assert record(tmp_path)["error"]["stage"] == "prepare"
 
 
 # --- 입력·비용 ---------------------------------------------------------------------------------

@@ -1,0 +1,46 @@
+{
+  "name": "visual_check_v1",
+  "version": "1.0.0",
+  "status": "draft",
+  "description": "D6 실사화 결과 색·실루엣 검증 설정. sampling·thresholds·measurement의 수치는 명세서 7장 초기 기준을 그대로 옮겼고, segmentation(실사 옷 영역 찾기)과 render_mask는 D 제안이다. 근거는 각 블록의 _basis와 docs/visual-check.md. 초안: 팀 확인 전",
+  "sampling": {
+    "_basis": "명세서 7장 검증 절차 [추천안 R08]: 가장 보기 좋은 한 장만으로 통과시키지 않는다. 영상 길이의 0~100 % 10 % 간격 11프레임, FPS와 길이가 다르면 타임스탬프로 대응(fitting/verify/frame_match.py time), 허용 길이 차이 0.5초",
+    "fractions": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    "max_duration_gap_s": 0.5
+  },
+  "thresholds": {
+    "_basis": "명세서 7장 통과 기준 초기값: 프레임 윤곽 IoU 0.85 이상, 가슴·밑단 폭 원본 대비 각각 5 % 이내, 대표색 CIEDE2000 8 이하(참고 S7: 프로젝트 초기 제안), 11프레임 중 9프레임 이상이 모든 수치 기준 통과. 실제 출력으로 확인한 범위는 docs/visual-check.md 4절",
+    "silhouette_iou_min": 0.85,
+    "width_change_max": 0.05,
+    "color_delta_e_max": 8.0,
+    "min_frames_passed": 9
+  },
+  "measurement": {
+    "_basis": "명세서 7장: 가슴·밑단 높이 = 원본 옷 상자 위에서 45 %·90 %, 주변 5행 가로폭 중앙값. 대표색 = 두 마스크를 안쪽 5 px 줄인 공통 영역의 Lab 중앙값, 공통 영역이 원본 마스크의 20 % 미만이면 측정 불가. 실사 옷 면적이 원본의 0.5배 미만 또는 1.5배 초과면 그 프레임 측정 불가",
+    "_basis_aspect": "[D 제안] 명세서 '마스크를 억지로 늘리거나 회전시켜 통과시키지 않는다'에 맞춰 실사 프레임은 같은 비율로만 렌더 크기에 맞춘다. 화면비 차이가 1 %를 넘으면 검증 불가. fal 출력은 입력과 화면비가 같았다(540x720 -> 576x768, 768x1024 -> 720x960 계획)",
+    "max_aspect_gap": 0.01,
+    "chest_height": 0.45,
+    "hem_height": 0.9,
+    "width_rows": 5,
+    "area_ratio_min": 0.5,
+    "area_ratio_max": 1.5,
+    "color_erode_px": 5,
+    "color_min_common_ratio": 0.2
+  },
+  "segmentation": {
+    "_basis": "[D 제안] 명세서는 SAM 2 이미지 예측기를 적었지만 활동지 2장은 '분할 모델은 선택지이며 필수 기술로 확정하지 않는다'. 모델·체크포인트 없이 도는 색 기반 방법: (1) 렌더 옷 마스크를 프레임 높이 x core_erode_ratio만큼 줄인 안쪽에서 실사 옷 색(Lab 중앙값)을 잡는다. (2) 렌더 마스크를 프레임 높이 x outside_margin_ratio만큼 넓힌 바깥에서 대표색 other_colors개(k-평균)를 잡고, 옷 색과 min_other_distance보다 가까운 것은 뺀다. (3) 옷 색과의 Lab 거리가 color_distance_max 이하이고 바깥 대표색보다 옷 색에 더 가까운 픽셀을 옷 후보로 둔다. (4) 열기·닫기(프레임 높이 x open_ratio·close_ratio) 뒤, 면적의 min_component_overlap 이상이 렌더 마스크와 겹치는 연결 영역만 남기고 안쪽 구멍을 메운다. 값은 D1 실제 결과와 합성 기준 사례로 골랐다(docs/visual-check.md 3절)",
+    "method": "color_seed_v1",
+    "core_erode_ratio": 0.03,
+    "outside_margin_ratio": 0.08,
+    "other_colors": 3,
+    "min_other_distance": 10.0,
+    "color_distance_max": 40.0,
+    "open_ratio": 0.004,
+    "close_ratio": 0.01,
+    "min_component_overlap": 0.5
+  },
+  "render_mask": {
+    "_basis": "[D 제안] C5 렌더 어댑터는 정지 클립 하나와 옷 마스크 하나(artifacts/{job_id}_render_mask.png)를 낸다(render_v1 clip.static). 마스크 하나를 모든 렌더 프레임에 쓰므로, 고른 렌더 프레임이 첫 번째로 고른 프레임과 평균 이 값(0~255)보다 다르면 정지 클립이 아니라고 보고 검증 불가로 둔다. 값은 근거 없음: H264 CRF 17 인코딩 잡음보다 넉넉히 잡았다",
+    "static_mean_abs_diff_max": 2.0
+  }
+}

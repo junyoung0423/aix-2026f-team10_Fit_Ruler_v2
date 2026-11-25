@@ -10,7 +10,12 @@
 결과는 `artifacts/realize/<이름>/`에 남는다(커밋 금지).
 - `artifacts/<이름>_render_clip.mp4`(입력 사본), `artifacts/<이름>_video.mp4`(실사 영상)
 - `work/<이름>/realize/`: `plan.json`·`request.json`·`response.json`·`error.json`·`realize.json`
-- `frame_render.png`·`frame_real.png`: 렌더·실사 대표 프레임(비교용)
+- `frame_render.png`: 렌더 대표 프레임(호출 전에 뽑는다)
+- `frame_real.png`·`frame_render_matched.png`·`frames.json`: 실사 대표 프레임과 그 시각에 대응하는
+  렌더 프레임(D5 매칭, 길이·fps 차이 보정), 고른 근거
+
+`--subject mannequin`은 프롬프트 대상을 회색 마네킹으로 바꾼다
+(기본 person, `fitting/adapters/fal_ltx/prompt.py`).
 
 종료 코드: 0 성공(드라이런 포함), 3 어댑터 실패(`PortFailure`), 2 입력·설정 오류.
 """
@@ -26,9 +31,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from fitting.adapters.fal_ltx import ENDPOINT, FalRealizer, RealizeOptions
+from fitting.adapters.fal_ltx import ENDPOINT, PROMPT_VERSION, SUBJECTS, FalRealizer, RealizeOptions
 from fitting.adapters.fal_ltx.factory import make_realizer
-from fitting.adapters.media.frames import save_representative_frame
+from fitting.adapters.media.frames import save_frame_pair, save_representative_frame
 from fitting.ports import PortFailure, PortRequest
 from server.app import DEFAULT_GARMENTS_DIR, GARMENTS_DIR_ENV
 from server.garments import GarmentDirectory
@@ -68,6 +73,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--garment-text", help="프롬프트의 옷 설명(영어). 예: 'plain black cotton T-shirt'"
     )
     parser.add_argument("--garments-dir", type=Path, help="등록 의류 폴더 (기본 FIT_GARMENTS_DIR)")
+    parser.add_argument(
+        "--subject", choices=sorted(SUBJECTS), default="person", help="프롬프트 대상 (기본 person)"
+    )
     parser.add_argument("--resolution", choices=["480p", "720p"], default="720p")
     parser.add_argument("--intensity", choices=["light", "strong", "strong-v2"], default="light")
     parser.add_argument("--max-cost-usd", type=float, default=0.5, help="예상 비용 상한")
@@ -118,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         resolution=args.resolution,
         max_cost_usd=args.max_cost_usd,
         garment_text=args.garment_text,
+        subject=args.subject,
         allow_resubmit=args.resubmit,
     )
     request = PortRequest(
@@ -130,7 +139,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     dry = FalRealizer(client=_NoCalls(), artifacts_dir=artifacts, work_dir=work, options=options)
-    plan = dry.plan(request, garment)
+    try:
+        plan = dry.plan(request, garment)
+    except ValueError as error:
+        print(f"설정 오류: {error}", file=sys.stderr)
+        return EXIT_SETUP
     plan.pop("settings")
     (out / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), "utf-8")
     render_frame = save_representative_frame(clip, out / "frame_render.png")
@@ -141,7 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         f"입력: {inp['width']}×{inp['height']}, {inp['fps']:g}fps, {inp['frame_count']}프레임 · "
         f"의류 {garment.id}"
     )
-    print(f"프롬프트: {plan['arguments_preview']['prompt']}")
+    prompt = plan["arguments_preview"]["prompt"]
+    print(f"프롬프트({PROMPT_VERSION}, 대상 {options.subject}): {prompt}")
     print(
         f"설정: {options.intensity}, {options.resolution}, {estimate['frames']}프레임, 오디오 끔 · "
         f"예상 비용(상한) ${estimate['usd']:.4f} / 한도 ${options.max_cost_usd:.2f}"
@@ -192,7 +206,10 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_FAILED
 
     video = artifacts / f"{result.output_artifact_ids[0]}.mp4"
-    real_frame = save_representative_frame(video, out / "frame_real.png")
+    pair = save_frame_pair(video, clip, out / "frame_real.png", out / "frame_render_matched.png")
+    (out / "frames.json").write_text(
+        json.dumps(pair.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     m = result.metrics
     print(f"완료: request_id={m.get('external_request_id')} · 재시도 {m.get('retries', 0)}회")
     print(
@@ -201,7 +218,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"비용(출력 기준): ${m.get('cost_usd')} (예상 상한 ${m.get('estimated_cost_usd')})")
     print(f"실사 영상: {video}")
-    print(f"실사 대표 프레임: {real_frame.index}번 → {real_frame.path.name}")
+    match = pair.match
+    print(
+        f"실사 대표 프레임: {match.real_index}번({match.real_time_s:g}초) → "
+        f"렌더 {match.render_index}번({match.render_time_s:g}초, {match.mode}) · "
+        "frame_real.png / frame_render_matched.png"
+    )
     return EXIT_OK
 
 

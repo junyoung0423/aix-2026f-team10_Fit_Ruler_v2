@@ -8,7 +8,7 @@ stage_timeouts_s:
   DRAPE: 600         # config/drape time_limits_s.drape와 같다(명세서 12장 착장 10분)
   RENDER: 300        # C5 전이라 가정값
   REALIZE: 600       # D1 실측 전체 73초, fal 대기열 변동을 넉넉히
-  VALIDATE: 120      # D5·D6 전이라 가정값
+  VALIDATE: 120      # D6 실측: C5 크기 합성 영상 11프레임 약 15초(docs/visual-check.md 3절), 넉넉히
 
 # 감시 시간 = 단계 시간 제한 + 이 값. 어댑터가 시간 제한을 넘기고도 돌아오지 않으면 그 단계를 실패로 끝낸다.
 # 어댑터가 정상적으로 시간 제한을 넘길 수 있는 단계는 그만큼 크게 둔다.

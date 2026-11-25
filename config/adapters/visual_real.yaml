@@ -1,0 +1,18 @@
+# 영상 경로 5단계를 모두 실제 어댑터로 돌리는 설정 (D5·D6, #10 #11).
+#
+# 몸(D3 SMPL) → 착장(C4 Blender) → 렌더(C5 Blender) → 실사화(D4 fal) → 검증(D6 색·실루엣).
+# Blender·GarmentCode·SMPL 모델·FAL_KEY가 모두 있는 PC에서만 시작한다(없으면 이유를 알리고 멈춤).
+# 필요한 환경변수는 docs/adapters.md의 착장·렌더·실사화 절과 docs/body-fit.md에 있다.
+#
+#   python -m tools.run_fitting_once --adapters visual_real --consent --yes   # fal 비용 발생(약 $0.2)
+#
+# 검증은 명세서 7장 기준(config/validate/visual_check_v1.json)으로 11프레임을 비교해 PASS·FAIL·
+# UNVERIFIABLE을 낸다(docs/visual-check.md). PASS가 아니면 영상 경로는 검증 단계에서 실패로 끝나지만
+# 실사 영상과 두 프레임 파일은 남는다. default.yaml은 바꾸지 않는다(전환 시점은 팀 결정).
+version: adapters_v0
+ports:
+  body: "fitting.adapters.smpl.factory:make_body_builder"      # D3 SMPL 몸 생성 (D)
+  drape: "fitting.adapters.blender.draper:make_draper"          # C4 Blender 착장 (C)
+  render: "fitting.adapters.blender.renderer:make_renderer"     # C5 정면 렌더 클립 (C)
+  realize: "fitting.adapters.fal_ltx.factory:make_realizer"     # D4 fal/LTX 실사화 (D)
+  validate: "fitting.adapters.media.factory:make_validator"     # D5 프레임 + D6 색·실루엣 판정 (D)
