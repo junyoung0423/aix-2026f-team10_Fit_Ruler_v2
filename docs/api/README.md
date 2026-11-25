@@ -182,7 +182,7 @@ FIT_FAKE_STAGE_DELAY_S=1.5 FIT_FAKE_PLACEHOLDERS=1 uvicorn server.app:app --port
   - `CONSENT_NOT_GIVEN`: 실사화(외부 전송)에 동의하지 않았습니다(`realize_consent: false`, 기본값). 렌더까지 하고 `visual.status`는 `SUCCEEDED`, `visual.stage`는 `RENDER`, 작업 `status`도 `SUCCEEDED`입니다. 3D 미리보기와 렌더 클립을 보여 줍니다.
 - `report.summary`·`report.warnings`는 핏 리포트의 요약 줄과 경고입니다. 예: `DEMO_GARMENT`면 "시연용 의류"를 표시합니다.
 - `visual.render_frame_artifact_id`는 대표 프레임(`frame_artifact_id`)에 대응하는 렌더 프레임입니다. 두 장을 나란히 보여 줍니다(#11).
-- `visual.quality_metrics`는 검증 숫자 지표입니다. 예: `color_delta_e`(색 차이), `silhouette_iou`(실루엣 겹침). 검증을 하지 않았으면 `null`입니다. 예시의 값은 가짜입니다.
+- `visual.quality_metrics`는 검증 숫자 지표입니다. 예: `color_delta_e`(색 차이), `silhouette_iou`(실루엣 겹침). 검증을 하지 않았으면 `null`입니다. 예시의 값은 가짜입니다. D6 검증 어댑터는 `width_change_ratio`(가슴·밑단 폭 변화 비율)와 `frames_passed`(11프레임 중 통과 수)도 보내고, 앞의 세 값은 측정된 프레임의 중앙값입니다(`docs/visual-check.md`).
 - 산출물 ID(`*_artifact_id`)는 `GET /api/artifacts/{artifact_id}`로 파일을 받습니다(아래 "산출물 파일"). 예시의 ID는 가짜라서 그 파일은 없습니다.
 
 ## 산출물 파일
