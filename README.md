@@ -50,17 +50,110 @@ docs/          plan/(활동지·3주 계획), 명세서, decisions.md, spikes/, 
 
 폴더별 담당과 협업 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)에 있습니다.
 
-## 개발 환경
+## 설치
 
-```bash
+처음 받는 사람이 위에서부터 따라 하면 됩니다. 핏 리포트·가짜 피팅·테스트는 1~3단계만으로 돌고, 실제 착장·렌더·몸·실사화는 쓰는 단계에 필요한 것만 더 받습니다. 무엇이 빠졌는지는 4단계 `check_env`가 알려 줍니다.
+
+**Windows**: 저장소는 `C:\dev\...`처럼 영어·공백 없는 경로에 둡니다. Blender·OpenCV·C 확장이 한글 경로에서 실패한 적이 있습니다.
+
+### 1. 필요한 프로그램
+
+| 쓰는 곳 | 필요한 것 | 받는 법 |
+|---|---|---|
+| 핏 리포트, 가짜 피팅, 테스트 | Python 3.10 이상(3.13에서 확인), git | python.org |
+| 웹 화면 | Node 20 이상 | [web/README.md](web/README.md) |
+| 착장·렌더 (C4·C5) | Blender 5.2, GarmentCode와 그 Python 3.9 가상환경 | [docs/spikes/garmentcode-blender.md](docs/spikes/garmentcode-blender.md) 6절 |
+| 몸 (D3) | SMPL 중성 모델. **각자** 가입·라이선스 동의 후 받고, 공유·커밋하지 않습니다 | [docs/spikes/smpl-body-measure.md](docs/spikes/smpl-body-measure.md) 4절 |
+| 실사화 (D4) | fal API 키 `FAL_KEY`. 호출마다 비용이 듭니다 | 팀 담당자 |
+
+### 2. Python 패키지
+
+```powershell
 python -m venv .venv
-.venv\Scripts\activate      # macOS/Linux: source .venv/bin/activate
-pip install -e ".[dev]"
-ruff check .
-pytest
+.venv\Scripts\activate                          # macOS/Linux: source .venv/bin/activate
+pip install -e ".[dev,garment,realize,body]"    # CI와 같은 묶음
 ```
 
-`.env.example`을 `.env`로 복사해 `FAL_KEY` 등을 채웁니다. `.env`는 커밋하지 않습니다.
+선택 의존성 묶음은 `garment`(착장 계산: numpy·scipy·trimesh), `realize`(실사화·검증: fal-client·OpenCV), `body`(SMPL 몸: numpy·scipy·OpenCV)입니다. 전체 테스트는 CI처럼 네 묶음을 모두 깔고 돌립니다.
+
+### 3. 환경변수 (`.env`)
+
+```powershell
+copy .env.example .env      # 쓸 값만 채운다. .env는 커밋하지 않는다
+```
+
+- `.env`는 **서버(`uvicorn server.app:app`)와 `tools.run_fitting_once`·`tools.check_env`·`tools.prepare_garments`** 가 시작할 때 읽습니다. 비어 있는 환경변수만 채우고, 이미 있는 환경변수가 우선합니다(명령 인자 > 환경변수 > `.env` > 기본값). 빈 값(`FAL_KEY=`)은 넣지 않습니다.
+- 그 밖의 명령(`build_sample_catalog`, `build_body`, `render_clip` 등)은 `.env`를 읽지 않으니 환경변수나 인자로 줍니다. `realize_clip`·`spike_fal_ltx`는 원래대로 `FAL_KEY`를 `.env`에서 읽습니다.
+- Blender 경로는 **`BLENDER_PATH`** 하나만 씁니다(예전 이름 `BLENDER_EXE`도 받지만 `check_env`가 주의를 띄웁니다).
+- 다른 파일을 쓰려면 환경변수 `FIT_ENV_FILE`에 경로를, 끄려면 `off`를 줍니다(테스트는 `off`로 돕니다).
+- 웹 화면 설정은 따로 `web/.env`입니다([web/README.md](web/README.md)).
+
+### 4. 점검
+
+```powershell
+python -m tools.check_env                                   # 기본 설정(지금은 전부 가짜)
+python -m tools.check_env --adapters drape_render_blender   # 착장·렌더까지 실제
+python -m tools.check_env --adapters visual_real            # 영상 경로 5단계 모두 실제
+```
+
+고른 어댑터 설정에 필요한 것만(Python·선택 의존성, Blender, GarmentCode 루트·Python 3.9, 준비된 의류, 개발용 몸, SMPL 모델 파일, `FAL_KEY`, Node) 표로 보여 주고, 빠진 것마다 고치는 방법을 한 줄씩 적습니다. 모두 있으면 서버와 같은 팩토리로 어댑터를 실제로 만들어 봅니다(fal은 부르지 않음). `FAL_KEY`는 **있음/없음만** 출력합니다. 빠진 것이 있으면 종료 코드 1입니다. 표는 마크다운이라 PR에 그대로 붙일 수 있습니다.
+
+### 5. 린트·테스트
+
+```powershell
+$env:PYTHONUTF8 = "1"                  # Windows 권장 (아래)
+ruff check .
+pytest --basetemp=C:/dev/_pt/pt        # 사용자 폴더 이름에 한글이 있으면 영어 경로를 준다
+```
+
+- **Windows 출력 인코딩**: 한국어 Windows는 출력을 파일·파이프로 돌릴 때 cp949를 씁니다. `tools/` 명령은 시작할 때 출력을 UTF-8로 바꾸므로 `PYTHONUTF8` 없이도 "—" 같은 문자에서 멈추지 않습니다. 그래도 다른 스크립트의 cp949 문제를 피하려고 `PYTHONUTF8=1`을 켜 두기를 권합니다.
+- **PowerShell 5.1에서 출력을 파일로 저장할 때**(`python -m tools.check_env > out.txt`): PowerShell이 명령 출력을 cp949로 다시 읽어 한국어가 깨질 수 있습니다. 먼저 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`을 실행하거나 PowerShell 7을 씁니다.
+- **한글 경로**: pytest 임시 폴더가 `C:\Users\<한글 이름>\...`이면 OpenCV가 그 경로를 읽지 못해 테스트 1개(`test_media_frames`)가 실패합니다. `--basetemp`에 영어 경로를 줍니다(`check_env`가 "임시 폴더" 주의로 알려 줌).
+- Blender·GarmentCode·SMPL·fal이 필요한 테스트는 마커로 빠집니다. 준비된 PC에서는 `pytest -m blender`(또는 `garmentcode`, `smpl`)로 돌립니다. **`-m fal`은 실제 호출이라 비용이 듭니다.**
+
+## 의류 사전 준비 (견본집 → 등록 → 검색 → 최적화)
+
+3D 착장 전에 한 번 해 두는 일입니다. 견본집과 시연 의류 2벌의 준비 결과는 저장소에 이미 있어서, **기준 사례만 돌릴 때는 건너뛰어도 됩니다.** AI Hub 의류를 새로 넣거나 설정을 바꿀 때 순서대로 다시 합니다. 단계마다 쓰는 Python이 다르고(1단계만 GarmentCode용 3.9) 입력이 저장소 밖에 있어서, 묶는 명령은 따로 두지 않았습니다.
+
+| 단계 | 명령 (저장소 맨 위에서) | 입력 | 출력 | 걸리는 시간 | 필요한 것 |
+|---|---|---|---|---|---|
+| 1. 견본집 (#4) | `<GarmentCode venv>\Scripts\python.exe -m tools.build_sample_catalog --config config\samples\tee_gc_v1.yaml --jobs 4`<br>확인: `python -m tools.check_sample_catalog data\samples\tee_gc_v1` | `config/samples/tee_gc_v1.yaml`, GarmentCode | `data/samples/tee_gc_v1/` (견본 12개, 커밋함) | 약 43분(`--jobs 4`, i5-1135G7). 확인은 수 초 | GarmentCode, Python 3.9 |
+| 2. 의류 등록 (#3) | `python -m tools.register_aihub_garment <라벨.json> --out C:\dev\aihub\garments`<br>확인: `python -m tools.check_garments C:\dev\aihub\garments --min-ready 10` | AI Hub 라벨 JSON(저장소 밖) | `{out}/{id}.json` 1벌 | 1벌 수 초 | 없음 |
+| 3. 견본 검색 (#5) | `python -m tools.search_sample --samples data\samples\tee_gc_v1\catalog.json --garment data\garments\tee_regular_m_navy_v1.json` | 의류 JSON, `catalog.json` | 표준 출력에 고른 견본·순위 JSON | 수 초 | 없음 (4단계가 같은 검색을 다시 하므로 확인용) |
+| 4. 최적화 (착장 준비, #6) | `python -m tools.prepare_garments [--garments C:\dev\aihub\garments --out C:\dev\aihub\prepared] [--jobs 4] [--only ID ...]` | 의류 폴더, 견본집 | `{준비 폴더}/{id}/prep.json`·`design.yaml`·`specification.json` | 1벌 수 분~십수 분 (입력이 같으면 건너뜀) | GarmentCode, Python 3.9 (`FIT_GC_PYTHON`, `FIT_RULER_GC_ROOT`) |
+
+- 시연 의류 2벌은 `data/garments/`·`data/prepared/`에 있습니다. AI Hub 의류와 그 준비 결과는 저장소 밖에 두고 `FIT_GARMENTS_DIR`·`FIT_PREPARED_DIR`로 알려 줍니다(이용 조건 확인 전까지 커밋하지 않음, `docs/decisions.md`).
+- 준비 실패(`prep.json`의 `status: FAILED`)는 그 의류의 3D 착장만 못 한다는 뜻입니다. 핏 리포트는 됩니다. 기록 키는 [data/prepared/README.md](data/prepared/README.md), 견본집은 [data/samples/README.md](data/samples/README.md)에 있습니다.
+
+## 피팅 1회 실행 (기준 사례)
+
+서버 없이 한 프로세스 안에서 기준 사례(신체 1: 175·100·80·40·56 cm × `tee_regular_m_navy_v1`) 피팅을 끝까지 돌립니다. 어댑터 설정을 아래 표 순서로 하나씩 늘려 가며 확인하고, 돌리기 전에 같은 `--adapters`로 `check_env`를 먼저 돌립니다.
+
+```powershell
+python -m tools.check_env --adapters drape_render_blender
+python -m tools.run_fitting_once --adapters drape_render_blender
+```
+
+| `--adapters` | 실제로 도는 단계 | 더 필요한 것 (`check_env`가 보는 것) | 더 생기는 결과 | 걸리는 시간 | 비용 |
+|---|---|---|---|---|---|
+| `fake` (지금 `default`와 같음) | 없음 (핏 리포트만 실제) | Python 패키지만 | 핏 리포트, 단계별 상태 | 수 초 | 없음 |
+| `drape_blender` | 착장 | Blender(`BLENDER_PATH`), GarmentCode 루트·Python 3.9, 준비된 의류, 개발용 몸 `FIT_DRAPE_BODY_OBJ`(몸이 가짜라 몸 메시가 없음) | `*_drape_result.blend`, `*_drape_preview.png` | 보통 4~8분 | 없음 |
+| `drape_render_blender` | 착장 · 렌더 | 위와 같음 | + `*_render_clip.mp4`, `*_render_mask.png` | + 약 1분 | 없음 |
+| `smpl_body` | 몸 | SMPL 모델(`SMPL_MODEL_DIR`), `.[body]` | `*_body_mesh.obj` | 약 20초 | 없음 |
+| `visual_real` | 몸 · 착장 · 렌더 · 실사화 · 검증 | 위 전부(개발용 몸은 비움) + `FAL_KEY`, `.[realize]` | + `*_video.mp4`, `*_frame.png`, `*_render_frame.png`, 검증 PASS·FAIL | 약 10분 [추정: 끝까지 돌린 기록 없음] | 실사화 1회 약 $0.2. `--consent --yes`가 있어야 돈다 |
+
+```powershell
+python -m tools.run_fitting_once                                   # 기본 어댑터, 실사화 미동의(렌더까지)
+python -m tools.run_fitting_once --adapters fake --consent
+python -m tools.run_fitting_once --body 175,100,80,40,56 --garment-id tee_regular_m_navy_v1 --out C:\dev\_runs\run1
+python -m tools.run_fitting_once --adapters visual_real --consent --yes   # fal 비용 발생
+```
+
+- `--consent` 없이 돌리면 실사화·검증은 하지 않고 렌더까지입니다(실사화 미동의). 실제 실사화를 `--consent`로 돌리려면 `--yes`가 있어야 합니다. 없으면 아무것도 실행하지 않고 안내만 합니다.
+- 단계가 바뀔 때마다 한 줄씩 출력하고, 끝나면 요약(핏 판정, 단계별 상태, 산출물 파일 위치와 있는지)을 출력해 결과 폴더(`artifacts/runs/{job_id}/`)의 `request.json`·`report.json`·`status.json`·`summary.txt`에도 씁니다. 산출물은 그 안의 `artifacts/`, 중간 파일은 `FIT_WORK_DIR`(기본 `artifacts/work/{job_id}/`)에 생깁니다.
+- 종료 코드는 0 성공, 3 영상 경로 실패(핏 리포트는 있음), 2 작업 실패, 1 설정·입력 오류입니다.
+- 어댑터별 환경변수·실패 코드는 [docs/adapters.md](docs/adapters.md), 몸은 [docs/body-fit.md](docs/body-fit.md), 실사화는 [docs/realize.md](docs/realize.md), 검증은 [docs/visual-check.md](docs/visual-check.md)에 있습니다.
+- 견본 검색은 `python -m tools.search_sample --garment data/garments/tee_regular_m_navy_v1.json --samples tests/fixtures/catalog/samples_v0.json`으로 확인합니다([견본 검색](docs/api/README.md)).
 
 ## 서버 실행
 
@@ -80,6 +173,7 @@ uvicorn server.app:app --reload   # http://127.0.0.1:8000/docs 에서 OpenAPI �
 | `FIT_FAKE_STAGE_DELAY_S` | 0 | 가짜 영상 단계마다 쉬는 초 (화면에서 진행 상태를 볼 때). 영상 포트가 모두 가짜일 때만 |
 | `FIT_FAKE_PLACEHOLDERS` | 꺼짐 (`1`이면 켬) | 가짜 모드에서 이미지 산출물에 단색 자리표시 PNG를 쓴다. 영상 포트가 모두 가짜일 때만 |
 | `FIT_GARMENTS_DIR` | `data/garments/` | 등록 의류 폴더 |
+| `FIT_ENV_FILE` | 저장소 맨 위 `.env` | 시작할 때 읽을 `.env`. `off`면 읽지 않는다(설치 3단계) |
 
 ```bash
 FIT_FAKE_STAGE_DELAY_S=1.5 FIT_FAKE_PLACEHOLDERS=1 uvicorn server.app:app --port 8000
@@ -94,21 +188,7 @@ FIT_ADAPTERS=fake uvicorn server.app:app --port 8000          # config/adapters/
 FIT_ADAPTERS=/내/경로/mixed.yaml uvicorn server.app:app       # 일부만 실제로 섞은 내 설정
 ```
 
-팩토리 약속·산출물 파일 이름·연결 방법은 [docs/adapters.md](docs/adapters.md)에 있습니다. 필요한 환경변수는 `.env.example`(`BLENDER_PATH`, `SMPL_MODEL_DIR`, `FAL_KEY`)에 있습니다.
-
-## 피팅 1회 실행
-
-서버 없이 한 프로세스 안에서 기준 사례(신체 1 × 티셔츠 1) 피팅을 끝까지 돌립니다.
-
-```bash
-python -m tools.run_fitting_once                          # 기본 어댑터, 실사화 미동의(렌더까지)
-python -m tools.run_fitting_once --adapters fake --consent
-python -m tools.run_fitting_once --body 175,100,80,40,56 --garment-id tee_regular_m_navy_v1 --out /tmp/run1
-```
-
-단계가 바뀔 때마다 한 줄씩 출력하고, 끝나면 요약(핏 판정, 단계별 상태, 산출물 파일 위치와 있는지)을 출력해 결과 폴더(`artifacts/runs/{job_id}/`)의 `request.json`·`report.json`·`status.json`·`summary.txt`에도 씁니다. 종료 코드는 0 성공, 3 영상 경로 실패(핏 리포트는 있음), 2 작업 실패, 1 설정·입력 오류입니다. 실제 실사화(비용)를 `--consent`로 돌리려면 `--yes`가 있어야 합니다.
-
-견본 검색은 `python -m tools.search_sample --garment data/garments/tee_regular_m_navy_v1.json --samples tests/fixtures/catalog/samples_v0.json`으로 확인합니다([견본 검색](docs/api/README.md)).
+팩토리 약속·산출물 파일 이름·연결 방법은 [docs/adapters.md](docs/adapters.md)에 있습니다. 필요한 환경변수는 `.env.example`(`BLENDER_PATH`, `SMPL_MODEL_DIR`, `FAL_KEY` 등)에 있고, 빠진 것은 `python -m tools.check_env --adapters <설정>`으로 봅니다.
 
 ## 팀 공유 드라이브
 

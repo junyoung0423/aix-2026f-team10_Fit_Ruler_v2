@@ -33,6 +33,7 @@ from fitting.adapters.meshcheck import (
     write_record,
 )
 from fitting.verify import FAIL, PASS, DrapeCheckResult
+from tools.console import use_utf8_output
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "config" / "drape" / "drape_v1.json"
@@ -163,4 +164,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())

@@ -10,6 +10,7 @@
 둘 다 없으면 실행하지 않고 멈춘다. 출력 폴더가 이미 있으면 덮어쓰지 않고 멈춘다.
 오류 코드(명세서 12장): export 실패 GARMENT_NOT_READY, 착장 검사 실패·시간 초과 DRAPE_INVALID.
 같은 입력으로 자동 반복하지 않는다(명세서 11장).
+--skip-analyze면 3단계(Blender 없이 지표 재계산, 판정에 쓰지 않음)를 건너뛴다. 서버 착장 어댑터가 쓴다.
 Blender 실행 파일은 --blender, 없으면 환경변수 BLENDER_EXE, 그것도 없으면 Blender 5.2 기본 설치 경로.
 """
 import argparse
@@ -75,6 +76,8 @@ def main():
     ap.add_argument('--max-frames', type=int, help='짧은 시험용. thresholds.max_frames 이하만 허용')
     ap.add_argument('--gc-root', default=str(DEFAULT_GC_ROOT))
     ap.add_argument('--blender', default=str(DEFAULT_BLENDER))
+    ap.add_argument('--skip-analyze', action='store_true',
+                    help='착장 뒤 analyze(판정에 쓰지 않는 지표 재계산·패널 요약)를 건너뛴다')
     args = ap.parse_args()
 
     spec, body, cfg_path = (Path(p).resolve() for p in (args.spec, args.body, args.config))
@@ -98,6 +101,7 @@ def main():
         'versions': {'repo_commit': git_head(HERE), 'garmentcode_commit': git_head(gc_root),
                      'python': sys.version.split()[0], 'blender_exe': str(blender)},
         'max_frames_override': args.max_frames,
+        'analyze_skipped': args.skip_analyze,
         'steps': [],
         'status': None,
         'error_code': None,
@@ -136,15 +140,16 @@ def main():
     m = json.loads(metrics_path.read_text(encoding='utf-8'))
     summary['drape_metrics'] = m
 
-    # 3) Blender 없이 지표 재계산 + 패널·봉제선별 요약
+    # 3) Blender 없이 지표 재계산 + 패널·봉제선별 요약. 판정은 위 Blender 지표로 하므로 건너뛰어도 결과는 같다.
     # analyze_drape는 패키지 모듈이라 cwd를 저장소 루트로 두고 -m으로 실행한다(입출력 경로는 절대경로)
-    rec = run_step('analyze', [sys.executable, '-m', 'fitting.adapters.blender.analyze_drape',
-                               out, '--config', cfg_path],
-                   out / 'analyze_log.txt', cwd=str(REPO_ROOT))
-    summary['steps'].append(rec)
-    if rec['returncode'] == 0:
-        a = json.loads((out / 'analysis.json').read_text(encoding='utf-8'))
-        summary['offline_matches_blender'] = a['matches_blender_metrics']
+    if not args.skip_analyze:
+        rec = run_step('analyze', [sys.executable, '-m', 'fitting.adapters.blender.analyze_drape',
+                                   out, '--config', cfg_path],
+                       out / 'analyze_log.txt', cwd=str(REPO_ROOT))
+        summary['steps'].append(rec)
+        if rec['returncode'] == 0:
+            a = json.loads((out / 'analysis.json').read_text(encoding='utf-8'))
+            summary['offline_matches_blender'] = a['matches_blender_metrics']
 
     if m['drape_ok']:
         finish('SUCCEEDED')

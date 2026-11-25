@@ -80,3 +80,13 @@ def _fake_adapters(monkeypatch):
     돈다. 어댑터 선택을 시험하는 테스트(`test_wiring.py` 등)는 이 값을 직접 바꾼다.
     """
     monkeypatch.setenv("FIT_ADAPTERS", "fake")
+
+
+@pytest.fixture(autouse=True)
+def _no_env_file(monkeypatch):
+    """개발자의 저장소 `.env`가 테스트에 섞이지 않게 `.env` 읽기를 끈다(B6, `server/env_file.py`).
+
+    하위 프로세스로 도구를 돌리는 테스트도 이 환경을 물려받는다. `.env` 읽기를 시험하는 테스트는
+    파일 경로를 직접 넘긴다.
+    """
+    monkeypatch.setenv("FIT_ENV_FILE", "off")
