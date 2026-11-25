@@ -31,6 +31,7 @@ from fitting.catalog.search import (
     search_sample,
 )
 from fitting.domain import GarmentMeasurements, GarmentVariant
+from tools.console import use_utf8_output
 
 EXIT_OK = 0
 EXIT_INPUT_ERROR = 1
@@ -151,4 +152,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())

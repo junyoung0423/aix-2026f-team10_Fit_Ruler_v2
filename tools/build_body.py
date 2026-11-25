@@ -30,6 +30,7 @@ from fitting.body.fit import FIELD_LABEL, FIELDS
 from fitting.domain import BodyInput
 from fitting.ports import PortFailure, PortRequest
 from server.wiring import AdapterConfigError, AdapterSettings
+from tools.console import use_utf8_output
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -154,4 +155,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    use_utf8_output()
     sys.exit(main())
