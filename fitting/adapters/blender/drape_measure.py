@@ -10,6 +10,13 @@
 import numpy as np
 
 N_SAMPLES = 200
+MAX_SNAP_CM = 1.0
+# [제안] 기장선(HPS -> 밑단 수직선)만 허용 오차를 키운다. 앞판 목둘레가 원호이고 그 원의 중심이 앞 중심선
+# 위(HPS보다 아래)에 있어서, 원의 가장 넓은 곳이 HPS보다 바깥이다. 그래서 HPS에서 내린 수직선이 목 구멍
+# 안을 (목둘레 반지름 - HPS x)만큼 지난다. tee_gc_v1 견본은 HPS x가 10.82 cm로 같고 반지름만 가슴에 따라
+# 커져 깊이가 0.62(가슴 100) ~ 1.51 cm(가슴 130)다. 1 cm를 넘는 가슴 약 115 cm 이상에서 예외가 났다
+# (docs/spikes/garmentcode-blender.md 7·10절). 메시 근사 오차가 아니라 측정선 정의 문제라 기장선에만 적용한다.
+LENGTH_LINE_MAX_SNAP_CM = 2.0
 
 
 def _bary(p, a, b, c):
@@ -42,7 +49,7 @@ class PanelMap:
         self.pov = np.asarray(garment['panel_of_vertex'], int)
         self.names = [p['name'] for p in garment['panels']]
 
-    def locate(self, panel, p2, tol=1e-6, max_snap_cm=1.0):
+    def locate(self, panel, p2, tol=1e-6, max_snap_cm=MAX_SNAP_CM):
         """2D 점을 담은 삼각형과 무게중심 좌표. 곡선 경계를 현으로 근사한 메시 밖에 놓인 점은
         가장 가까운 삼각형 위 최근접점으로 옮긴다(max_snap_cm 초과면 오류). 최대 이동 거리를 self.max_snap_cm에 남긴다."""
         pi = self.names.index(panel)
@@ -64,13 +71,14 @@ class PanelMap:
         lam = np.clip(_bary(q, *self.uv[t]), 0, None)
         return t, lam / lam.sum()
 
-    def to3d(self, panel, p2, coords):
-        t, lam = self.locate(panel, p2)
+    def to3d(self, panel, p2, coords, max_snap_cm=MAX_SNAP_CM):
+        t, lam = self.locate(panel, p2, max_snap_cm=max_snap_cm)
         return lam @ np.asarray(coords, float)[t]
 
-    def polyline(self, panel, a2, b2, coords, n=N_SAMPLES):
+    def polyline(self, panel, a2, b2, coords, n=N_SAMPLES, max_snap_cm=MAX_SNAP_CM):
         a2, b2 = np.asarray(a2, float), np.asarray(b2, float)
-        pts = [self.to3d(panel, a2 + (b2 - a2) * k / (n - 1), coords) for k in range(n)]
+        pts = [self.to3d(panel, a2 + (b2 - a2) * k / (n - 1), coords, max_snap_cm)
+               for k in range(n)]
         return np.asarray(pts)
 
 
@@ -95,7 +103,7 @@ def measure_draped(garment, landmarks, coords):
     for side in ('left', 'right'):
         name = f'{side}_ftorso'
         hps, hem = landmarks[f'{name}_length_line']
-        poly = pm.polyline(name, hps, hem, coords)
+        poly = pm.polyline(name, hps, hem, coords, max_snap_cm=LENGTH_LINE_MAX_SNAP_CM)
         lens.append(_length(poly) * 100)
         drops.append(float(poly[0, 2] - poly[-1, 2]) * 100)
         detail[f'{side}_length_surface_cm'] = round(lens[-1], 3)
