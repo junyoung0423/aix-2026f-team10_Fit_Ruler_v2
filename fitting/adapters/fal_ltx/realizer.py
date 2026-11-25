@@ -60,6 +60,7 @@ from typing import Any, Protocol
 from fitting.domain import SCHEMA_VERSION, ErrorCode, GarmentVariant, Stage
 from fitting.ports import REALIZE_OUTPUTS, PortError, PortFailure, PortRequest, PortResult
 
+from .prompt import PROMPT_VERSION, Subject, build_prompt
 from .render_to_real import (
     ENDPOINT,
     MAX_SECONDS,
@@ -78,12 +79,7 @@ RECORD_DIR = "realize"
 SUMMARY_NAME = "realize.json"
 MAX_ATTEMPTS = 2  # 외부 호출마다 처음 1번 + 재시도 1번
 
-# D1 스파이크와 같은 프롬프트. 얼굴 처리(턱 아래) 문구 조정은 D5에서 한다.
-PROMPT_TEMPLATE = (
-    "A realistic photo of a person wearing a {garment}, front view from the neck down, "
-    "plain light gray studio background, soft even lighting, natural fabric folds. "
-    "Keep the garment color and shape exactly as in the render."
-)
+# 프롬프트(의류 색·원단, 얼굴 처리)는 D5 템플릿(`prompt.py`)이 만든다.
 
 # 상태 이름 (realize.json의 state)
 SUBMITTED, COMPLETED, SUCCEEDED, FAILED, TIMEOUT, UNKNOWN = (
@@ -177,15 +173,6 @@ def submit_rejected(error: BaseException) -> bool:
     )
 
 
-def garment_description(garment: GarmentVariant) -> str:
-    """프롬프트에 넣을 옷 설명(영어). 원단 설명이 있으면 쓰고, 없으면 색으로 만든다."""
-    fabric = garment.fabric.description_en if garment.fabric else None
-    if fabric:
-        return f"{fabric.strip().rstrip('.')} short-sleeve crew-neck T-shirt"
-    color = "" if garment.color == "unknown" else f"{garment.color} "
-    return f"plain {color}short-sleeve crew-neck cotton T-shirt"
-
-
 @dataclass(frozen=True)
 class RealizeOptions:
     intensity: Intensity = "light"
@@ -196,6 +183,7 @@ class RealizeOptions:
     poll_interval_s: float = 2.0
     wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
     garment_text: str | None = None  # 프롬프트 옷 설명(시험용). 없으면 의류에서 만든다
+    subject: Subject = "person"  # 프롬프트 대상(prompt.SUBJECTS). 렌더 몸 재질과 함께 정한다
     # 접수 여부를 모르는 이전 제출(요청 ID 없음)이 있어도 다시 제출한다. 비용이 두 번 나갈 수 있어
     # 기본은 끔이다. 사람이 fal 대시보드를 확인한 뒤 명시적으로만 켠다
     # (`tools.realize_clip --resubmit`).
@@ -273,10 +261,10 @@ class FalRealizer:
         limit = int(math.floor(MAX_SECONDS[options.resolution] * options.output_fps))
         max_frames = max(9, (limit - 1) // 8 * 8 + 1)
         frames = min(frames_for_clip(info.frame_count, info.fps, options.output_fps), max_frames)
+        prompt = build_prompt(garment, subject=options.subject, garment_text=options.garment_text)
         settings = RenderToRealSettings(
-            prompt=PROMPT_TEMPLATE.format(
-                garment=options.garment_text or garment_description(garment)
-            ),
+            prompt=prompt.text,
+            negative_prompt=prompt.negative_prompt,
             intensity=options.intensity,
             resolution=options.resolution,
             num_frames=frames,
@@ -292,6 +280,7 @@ class FalRealizer:
         return {
             "endpoint": ENDPOINT,
             "input": {"path": clip.name, **info.to_dict()},
+            "prompt": prompt.to_dict(),
             "settings": settings,
             "arguments_preview": settings.to_arguments("<업로드 후 fal 주소>"),
             "estimate": {
@@ -312,6 +301,7 @@ class FalRealizer:
             "fal_endpoint": ENDPOINT,
             "fal_client": self.client_version,
             "realize": REALIZE_VERSION,
+            "prompt": PROMPT_VERSION,
             "price_checked_on": PRICE_CHECKED_ON,
         }
 
@@ -449,6 +439,17 @@ class FalRealizer:
                 state=FAILED,
                 error=error,
                 stage="input",
+            ) from error
+        except ValueError as error:  # 클립을 읽지 못함, 프롬프트 설정(대상·옷 설명)이 틀림 등
+            raise self._fail(
+                record,
+                record_dir,
+                code=ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                retryable=False,
+                message="실사화 요청을 준비하지 못해 요청하지 않았습니다.",
+                state=FAILED,
+                error=error,
+                stage="prepare",
             ) from error
         settings: RenderToRealSettings = plan.pop("settings")
         _write_json(record_dir / "plan.json", plan)
