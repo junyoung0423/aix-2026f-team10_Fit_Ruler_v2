@@ -36,17 +36,17 @@ def media(tmp_path_factory) -> dict[str, Path]:
     }
 
 
-def test_dry_run_plans_four_steps_without_calling_fal(tmp_path, media, capsys):
+def test_dry_run_plans_three_steps_without_calling_fal(tmp_path, media, capsys):
     code = tool.main(["--input", str(media["render"]), "--name", "f1", "--out-dir",
                       str(tmp_path / "out")])
 
     assert code == tool.EXIT_OK
     out = tmp_path / "out" / "f1"
     plan = json.loads((out / "plan.json").read_text(encoding="utf-8"))
-    assert list(plan["endpoints"]) == ["photo", "transfer", "pose", "turn"]
+    assert list(plan["endpoints"]) == ["photo", "transfer", "turn"]  # ③은 기본으로 건너뜀
     assert plan["turn_model"] == "fast"
     assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)  # 8초 x $0.10 (Veo 3.1 Fast)
-    assert plan["estimate_usd"]["total"] > 1.0
+    assert plan["estimate_usd"]["total"] > 0.9
     assert plan["prompts"]["pants"] == "light beige chino trousers"
     assert (out / "artifacts" / "f1_render_clip.mp4").is_file()
     assert not (out / "work").exists()  # fal을 부르지 않아 기록도 없다
@@ -77,6 +77,16 @@ def test_turn_model_option_selects_the_standard_veo(tmp_path, media, capsys):
         tool.main([*args, "--turn-model", "ultra"])
 
 
+def test_pose_step_option_adds_the_arm_photo_to_the_plan(tmp_path, media, capsys):
+    out = str(tmp_path / "out")
+    args = ["--input", str(media["render"]), "--name", "f7", "--out-dir", out, "--pose-step"]
+    assert tool.main(args) == tool.EXIT_OK
+    plan = json.loads((tmp_path / "out" / "f7" / "plan.json").read_text(encoding="utf-8"))
+    assert plan["steps"] == ["photo", "transfer", "pose", "turn"]
+    assert plan["estimate_usd"]["pose"] == pytest.approx(0.15)
+    assert "4단계" in capsys.readouterr().out
+
+
 def test_real_call_needs_the_key(tmp_path, media, monkeypatch, capsys):
     monkeypatch.delenv("FAL_KEY", raising=False)
     code = tool.main(["--input", str(media["render"]), "--name", "f3", "--out-dir",
@@ -102,8 +112,9 @@ def test_real_call_with_a_fake_client_saves_the_video_and_strip(tmp_path, media,
 
     assert code == tool.EXIT_OK
     out = tmp_path / "out" / "f4"
-    for name in ("realize_photo.png", "realize_fit_frame.png", "realize_pose.png", "video.mp4"):
+    for name in ("realize_photo.png", "realize_fit_frame.png", "video.mp4"):
         assert (out / "artifacts" / f"f4_{name}").is_file()
+    assert not (out / "artifacts" / "f4_realize_pose.png").exists()
     assert (out / "strip.png").is_file()
     assert client.submits[-1][1]["duration"] == "6s"  # 도구 옵션이 어댑터에 들어간다
     printed = capsys.readouterr().out

@@ -149,7 +149,7 @@ def test_fitting_room_style_and_random_seed_are_shown_in_the_dry_run(tmp_path, c
     code = tool.main([*args, "--style", "fitting_room", "--seed", "random"])
     assert code == tool.EXIT_OK
     printed = capsys.readouterr().out
-    assert "realize_prompt_v2" in printed and "fitting room" in printed
+    assert "realize_prompt_v3" in printed and "fitting room" in printed
     assert "부정 프롬프트: (보내지 않음" not in printed
     assert "시드: (보내지 않음" in printed
     preview = json.loads((tmp_path / "out" / "t7" / "plan.json").read_text("utf-8"))[

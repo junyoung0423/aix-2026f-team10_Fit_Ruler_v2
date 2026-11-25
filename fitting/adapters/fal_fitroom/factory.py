@@ -2,7 +2,8 @@
 
     realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"
 
-실제 호출은 비용이 든다(작업 1건 약 $1.3, 표준판 ④면 약 $2.1). `tools.run_fitting_once`는
+실제 호출은 비용이 든다(작업 1건 약 $1.0, ③ 자세를 켜면 +$0.15, ④ 표준판이면 +$0.80).
+`tools.run_fitting_once`는
 실사화 포트가 가짜가 아니면 `--consent`로 돌릴 때 `--yes`를 요구한다. 제출할 때 fal_client 내부
 재시도를 끄는 클라이언트는 D4 팩토리의 `FalQueueClient`를 그대로 쓴다.
 """

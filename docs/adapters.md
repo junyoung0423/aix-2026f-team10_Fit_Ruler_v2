@@ -240,11 +240,11 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 
 ## 피팅룸 실사화 어댑터 (`fitting.adapters.fal_fitroom.factory:make_fitroom_realizer`)
 
-`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 한 바퀴(앞 → 옆 → 뒤 → 반대쪽 옆 → 앞) 도는 8초 영상을 만듭니다. `FAL_KEY`가 필요하고 작업 1건에 약 $1.3·6~8분이 듭니다.
+`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 한 바퀴(앞 → 옆 → 뒤 → 반대쪽 옆 → 앞) 도는 8초 영상을 만듭니다. `FAL_KEY`가 필요하고 작업 1건에 약 $1.0·약 4분이 듭니다(실제 1회 $1.0246·256초).
 
-- 흐름(모두 fal): ① 렌더 첫 프레임 → 실사 사진(Nano Banana Pro 편집) ② 렌더 클립 + ① 사진으로 render-to-real(LTX-2.3)해 렌더 핏을 입힌 마지막 프레임 ③ 팔을 내린 정면 사진(Nano Banana Pro 편집) ④ 시작·끝을 ③으로 고정한 회전 영상(Veo 3.1 Fast first-last-frame, 720×1280. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, 약 $2.1)
+- 흐름(모두 fal): ① 렌더 첫 프레임 → 실사 사진(Nano Banana Pro 편집) ② 렌더 클립 앞 2초 + ① 사진으로 render-to-real(LTX-2.3)해 렌더 핏을 입힌 마지막 프레임 ④ 시작·끝을 ②로 고정한 회전 영상(Veo 3.1 Fast first-last-frame, 720×1280. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, +$0.80). ③ 팔을 내린 정면 사진(Nano Banana Pro 편집)은 옵션(`pose_step`·`--pose-step`, +$0.15)
 - 입력: `input_artifact_ids[0]`(렌더 클립)의 `artifacts_dir/{id}.mp4`
-- 출력: 계약 출력 `{job_id}_video.mp4`(`REALIZE_OUTPUTS`). 계약 밖 중간 사진 `{job_id}_realize_photo.png`·`{job_id}_realize_fit_frame.png`(검증 어댑터가 씀)·`{job_id}_realize_pose.png`
+- 출력: 계약 출력 `{job_id}_video.mp4`(`REALIZE_OUTPUTS`). 계약 밖 중간 사진 `{job_id}_realize_photo.png`·`{job_id}_realize_fit_frame.png`(검증 어댑터가 씀), ③을 켜면 `{job_id}_realize_pose.png`
 - 재시도·재조회: D4 규칙을 단계마다 씁니다. 같은 `job_id`로 다시 불리면 끝난 단계는 건너뛰고 진행 중인 단계만 같은 요청 ID로 다시 조회합니다. 오류 코드는 `EXTERNAL_SUBMIT_UNKNOWN`·`BUDGET_LIMIT`·`REALIZE_TIMEOUT`·`REALIZE_FAILED`(검은 영상 포함)
 - 지표: `external_request_id`(④), `cost_usd`·`estimated_cost_usd`, 단계별 시간 `photo_s`·`transfer_s`·`pose_s`·`turn_s`, `retries`, `video_width`·`video_height`
 - 기록: `FIT_WORK_DIR/{job_id}/realize/realize.json`과 단계별 요청·응답

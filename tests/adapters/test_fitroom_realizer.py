@@ -151,29 +151,30 @@ def record(tmp_path: Path) -> dict[str, Any]:
     return json.loads((tmp_path / "work" / JOB / "realize" / "realize.json").read_text("utf-8"))
 
 
-def test_four_steps_run_in_order_and_save_every_output(tmp_path, media):
+def test_default_three_steps_run_in_order_and_save_every_output(tmp_path, media):
     client = FakeFal()
     realizer = make(tmp_path, media, client)
     result = realizer.realize(request(), GARMENT)
 
     assert isinstance(result, PortResult)
-    assert [e for e, _ in client.submits] == [PHOTO_ENDPOINT, TRANSFER_ENDPOINT, PHOTO_ENDPOINT,
-                                             TURN_ENDPOINT]
+    assert realizer.steps() == ("photo", "transfer", "turn")  # ③ 자세는 기본으로 건너뛴다
+    assert [e for e, _ in client.submits] == [PHOTO_ENDPOINT, TRANSFER_ENDPOINT, TURN_ENDPOINT]
     assert result.output_artifact_ids == [f"{JOB}_video"]
     outputs = realizer.outputs(JOB)
-    assert all(path.is_file() for path in outputs.values())
+    assert all(outputs[s].is_file() for s in ("photo", "transfer", "turn"))
+    assert not outputs["pose"].exists()
     fit = cv2.imread(str(outputs["transfer"]))
     assert fit.shape[1] / fit.shape[0] == pytest.approx(0.75, abs=0.01)  # 검은 띠를 잘라 3:4
     assert fit[:, :3].mean() > 20  # 왼쪽 가장자리가 검지 않다
     m = result.metrics
-    assert m["external_request_id"] == "req-turn-4"
+    assert m["external_request_id"] == "req-turn-3"
     assert m["realize_photo_artifact_id"] == f"{JOB}_realize_photo"
     assert m["realize_fit_frame_artifact_id"] == f"{JOB}_{FIT_FRAME_ROLE}"
-    assert m["realize_pose_artifact_id"] == f"{JOB}_realize_pose"
+    assert "realize_pose_artifact_id" not in m and "pose_s" not in m
     transfer_cost = record(tmp_path)["steps"]["transfer"]["cost_usd"]
-    assert m["cost_usd"] == pytest.approx(0.15 + 0.15 + 0.80 + transfer_cost, abs=1e-3)
-    # 사진 2장 $0.30 + 회전 8초 $0.80(Veo 3.1 Fast) + 핏 옮기기(작은 시험 클립)
-    assert m["estimated_cost_usd"] > 1.0
+    assert m["cost_usd"] == pytest.approx(0.15 + 0.80 + transfer_cost, abs=1e-3)
+    # 사진 1장 $0.15 + 회전 8초 $0.80(Veo 3.1 Fast) + 핏 옮기기(작은 시험 클립)
+    assert m["estimated_cost_usd"] > 0.9
     assert result.tool_versions["realize"] == REALIZE_VERSION
     assert result.tool_versions["turn_endpoint"] == TURN_ENDPOINT
     assert record(tmp_path)["state"] == "done"
@@ -182,7 +183,7 @@ def test_four_steps_run_in_order_and_save_every_output(tmp_path, media):
 def test_step_arguments_follow_the_experiments(tmp_path, media):
     client = FakeFal()
     make(tmp_path, media, client).realize(request(), GARMENT)
-    photo, transfer, pose, turn = (a for _, a in client.submits)
+    photo, transfer, turn = (a for _, a in client.submits)
 
     assert photo["aspect_ratio"] == "3:4" and photo["num_images"] == 1
     assert "fitting room" in photo["prompt"] and "light beige chino trousers" in photo["prompt"]
@@ -191,10 +192,12 @@ def test_step_arguments_follow_the_experiments(tmp_path, media):
     assert transfer["image_url"] == f"https://fal.example/upload/{JOB}_realize_photo.png"
     assert transfer["video_url"].endswith(f"{JOB}_render_clip.mp4")
     assert transfer["generate_audio"] is False
-    assert "Lower" not in pose["prompt"] and "lower both arms" in pose["prompt"]
-    assert pose["image_urls"] == [f"https://fal.example/upload/{JOB}_{FIT_FRAME_ROLE}.png"]
+    assert transfer["num_frames"] == 25  # 49프레임까지, 시험 클립은 25프레임뿐이라 25
+    assert "hands not touching the shirt" in transfer["prompt"]  # realize_prompt_v3: 손동작 없음
+    assert "tugging" not in transfer["prompt"]
+    assert "motionless frame" not in transfer["negative_prompt"]
     assert turn["first_frame_url"] == turn["last_frame_url"]
-    assert turn["first_frame_url"].endswith(f"{JOB}_realize_pose.png")
+    assert turn["first_frame_url"].endswith(f"{JOB}_{FIT_FRAME_ROLE}.png")  # ② 프레임을 바로 쓴다
     assert turn["duration"] == "8s" and turn["generate_audio"] is False and turn["seed"] == 42
     assert "360-degree" in turn["prompt"] and "face" in turn["negative_prompt"]
 
@@ -204,14 +207,14 @@ def test_calling_again_after_success_does_not_call_fal(tmp_path, media):
     realizer = make(tmp_path, media, client)
     first = realizer.realize(request(), GARMENT)
     second = realizer.realize(request(), GARMENT)
-    assert len(client.submits) == 4
+    assert len(client.submits) == 3
     assert first.output_artifact_ids == second.output_artifact_ids
 
 
 def test_budget_over_the_limit_stops_before_uploading(tmp_path, media):
     client = FakeFal()
     with pytest.raises(PortFailure) as caught:
-        make(tmp_path, media, client, max_cost_usd=1.0).realize(request(), GARMENT)
+        make(tmp_path, media, client, max_cost_usd=0.5).realize(request(), GARMENT)
     assert caught.value.error.code == ErrorCode.BUDGET_LIMIT
     assert caught.value.error.retryable is False
     assert client.submits == [] and client.uploads == []
@@ -225,31 +228,31 @@ def test_timeout_keeps_the_step_id_and_the_next_call_resumes_without_resubmittin
     error = caught.value.error
     assert (error.code, error.retryable, error.stage) == (ErrorCode.REALIZE_TIMEOUT, True,
                                                         Stage.REALIZE)
-    assert error.external_request_id == "req-turn-4"
+    assert error.external_request_id == "req-turn-3"
 
     client.statuses["turn"] = []  # 그 사이 fal에서 생성이 끝났다
     result = realizer.realize(request(), GARMENT)
-    assert len(client.submits) == 4  # 끝난 단계는 건너뛰고 회전도 다시 제출하지 않았다
-    assert result.metrics["external_request_id"] == "req-turn-4"
+    assert len(client.submits) == 3  # 끝난 단계는 건너뛰고 회전도 다시 제출하지 않았다
+    assert result.metrics["external_request_id"] == "req-turn-3"
 
 
 def test_unknown_submit_is_not_sent_again_unless_allowed(tmp_path, media):
-    client = FakeFal(submit_errors={"pose": [ReadTimeout("no response")]})
+    client = FakeFal(submit_errors={"transfer": [ReadTimeout("no response")]})
     realizer = make(tmp_path, media, client)
     with pytest.raises(PortFailure) as caught:
         realizer.realize(request(), GARMENT)
     assert caught.value.error.code == ErrorCode.EXTERNAL_SUBMIT_UNKNOWN
     assert caught.value.error.retryable is False
-    assert record(tmp_path)["steps"]["pose"]["state"] == "unknown"
+    assert record(tmp_path)["steps"]["transfer"]["state"] == "unknown"
 
     with pytest.raises(PortFailure) as again:
         realizer.realize(request(), GARMENT)
     assert "다시 보내지 않았습니다" in again.value.error.safe_message
-    assert len(client.submits) == 2  # 사진·핏 옮기기만
+    assert len(client.submits) == 1  # 사진만
 
     realizer.options.allow_resubmit = True
     realizer.realize(request(), GARMENT)
-    assert [e for e, _ in client.submits][2:] == [PHOTO_ENDPOINT, TURN_ENDPOINT]
+    assert [e for e, _ in client.submits][1:] == [TRANSFER_ENDPOINT, TURN_ENDPOINT]
 
 
 def test_black_turn_video_fails_without_creating_the_contract_output(tmp_path, media):
@@ -279,23 +282,58 @@ def test_download_failing_twice_is_finished_on_the_next_call_without_generating(
     with pytest.raises(PortFailure) as caught:
         realizer.realize(request(), GARMENT)
     assert caught.value.error.retryable is True
-    assert caught.value.error.external_request_id == "req-turn-4"
+    assert caught.value.error.external_request_id == "req-turn-3"
     realizer.realize(request(), GARMENT)
-    assert len(client.submits) == 4
+    assert len(client.submits) == 3
     assert realizer.outputs(JOB)["turn"].is_file()
 
 
 def test_plan_lists_steps_and_rejects_a_bad_duration(tmp_path, media):
     realizer = make(tmp_path, media, FakeFal())
     plan = realizer.plan(request(), GARMENT)
-    assert plan["endpoints"] == ENDPOINTS
+    assert plan["steps"] == ["photo", "transfer", "turn"]
+    assert plan["endpoints"] == {k: v for k, v in ENDPOINTS.items() if k != "pose"}
+    assert set(plan["estimate_usd"]) == {"photo", "transfer", "turn", "total"}
     assert plan["estimate_usd"]["total"] == pytest.approx(
         sum(v for k, v in plan["estimate_usd"].items() if k != "total"), abs=1e-4
     )
     assert plan["prompts"]["pants"] == "light beige chino trousers"
+    assert plan["transfer_prompt_version"] == "realize_prompt_v3"
     realizer.options.turn_duration_s = 5
     with pytest.raises(ValueError, match="Veo 길이"):
         realizer.plan(request(), GARMENT)
+    realizer.options.turn_duration_s = 8
+    realizer.options.transfer_frames = 50  # 8k+1이 아니다
+    with pytest.raises(ValueError, match="8k\\+1"):
+        realizer.plan(request(), GARMENT)
+
+
+def test_transfer_uses_at_most_the_configured_frames(tmp_path, media):
+    long_clip = vc.render_clip(tmp_path / "long.mp4", frames=121)[0]
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / f"{JOB}_render_clip.mp4").write_bytes(long_clip.read_bytes())
+    realizer = make(tmp_path, media, FakeFal())
+    assert realizer.plan(request(), GARMENT)["transfer_settings"]["num_frames"] == 49  # 2초
+    realizer.options.transfer_frames = 121
+    assert realizer.plan(request(), GARMENT)["transfer_settings"]["num_frames"] == 121
+
+
+def test_pose_step_option_adds_the_arm_photo_before_the_turn(tmp_path, media):
+    client = FakeFal()
+    realizer = make(tmp_path, media, client, pose_step=True)
+    result = realizer.realize(request(), GARMENT)
+
+    assert realizer.steps() == ("photo", "transfer", "pose", "turn")
+    assert [e for e, _ in client.submits] == [PHOTO_ENDPOINT, TRANSFER_ENDPOINT, PHOTO_ENDPOINT,
+                                             TURN_ENDPOINT]
+    _, _, pose, turn = (a for _, a in client.submits)
+    assert "lower both arms" in pose["prompt"]
+    assert pose["image_urls"] == [f"https://fal.example/upload/{JOB}_{FIT_FRAME_ROLE}.png"]
+    assert turn["first_frame_url"].endswith(f"{JOB}_realize_pose.png")
+    assert result.metrics["realize_pose_artifact_id"] == f"{JOB}_realize_pose"
+    assert result.metrics["external_request_id"] == "req-turn-4"
+    assert realizer.outputs(JOB)["pose"].is_file()
 
 
 def test_default_turn_model_is_veo_fast(tmp_path, media):
@@ -337,7 +375,7 @@ def test_resumed_turn_is_queried_with_the_model_it_was_submitted_to(tmp_path, me
     client.queries.clear()
     realizer.options.turn_model = "fast"  # 다시 부를 때 옵션이 바뀌어도 같은 요청을 본다
     realizer.realize(request(), GARMENT)
-    assert len(client.submits) == 4
+    assert len(client.submits) == 3
     assert {model for model, _ in client.queries} == {"fal-ai/veo3.1/first-last-frame-to-video"}
 
 

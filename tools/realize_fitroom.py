@@ -1,7 +1,7 @@
 """렌더 클립 하나를 피팅룸 실사화 어댑터로 회전 영상으로 만든다(서버 없이, 같은 어댑터).
 
     python -m tools.realize_fitroom --input path/to/render_clip.mp4         # 드라이런(비용 없음)
-    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출(약 $1.3)
+    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출(약 $1.0)
     python -m tools.realize_fitroom --name <이전 이름> --yes                 # 이어 받기(끝난 단계
     건너뜀)
 
@@ -11,10 +11,11 @@
 
 결과는 `artifacts/realize/<이름>/`에 남는다(커밋 금지).
 - `artifacts/<이름>_render_clip.mp4`(입력 사본), `<이름>_realize_photo.png`(① 사진),
-  `<이름>_realize_fit_frame.png`(② 핏 옮긴 프레임), `<이름>_realize_pose.png`(③ 자세),
+  `<이름>_realize_fit_frame.png`(② 핏 옮긴 프레임), `<이름>_realize_pose.png`(③ 자세,
+  `--pose-step`일 때만),
   `<이름>_video.mp4`(④ 회전 영상)
 - `work/<이름>/realize/`: `plan.json`, 단계별 `*_request.json`·`*_response.json`, `realize.json`
-- `strip.png`: 렌더 첫 프레임 · ① · ② · ③ · 영상 0~8초 프레임을 나란히 놓은 확인 그림
+- `strip.png`: 렌더 첫 프레임 · ① · ② · (③) · 영상 0~8초 프레임을 나란히 놓은 확인 그림
 
 종료 코드: 0 성공(드라이런 포함), 3 어댑터 실패(`PortFailure`), 2 입력·설정 오류.
 """
@@ -85,8 +86,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=DEFAULT_TURN_MODEL,
         help="④ 회전 모델: fast(Veo 3.1 Fast, 초당 $0.10, 기본)·standard(Veo 3.1, 초당 $0.20)",
     )
-    parser.add_argument("--max-cost-usd", type=float, default=3.0, help="4단계 예상 비용 합 상한")
-    parser.add_argument("--timeout", type=int, default=900, help="4단계 전체 대기 상한(초)")
+    parser.add_argument(
+        "--pose-step",
+        action="store_true",
+        help="③ 팔 내리기 사진을 만든다(기본은 ② 프레임을 ④에 바로 씀, $0.15·약 30초 추가)",
+    )
+    parser.add_argument("--max-cost-usd", type=float, default=3.0, help="예상 비용 합 상한")
+    parser.add_argument("--timeout", type=int, default=900, help="전체 대기 상한(초)")
     parser.add_argument("--out-dir", type=Path, help="결과 상위 폴더 (기본 artifacts/realize)")
     parser.add_argument("--yes", action="store_true", help="실제로 fal을 호출한다 (비용 발생)")
     parser.add_argument(
@@ -148,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         allow_resubmit=args.resubmit,
         turn_duration_s=args.duration,
         turn_model=args.turn_model,
+        pose_step=args.pose_step,
     )
     request = PortRequest(
         job_id=name,
@@ -167,7 +174,9 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SETUP
     (out / "plan.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2), "utf-8")
     inp, cost = plan["input"], plan["estimate_usd"]
-    print(f"{name}: 피팅룸 실사화 4단계 · 의류 {garment.id} · 바지 {plan['prompts']['pants']}")
+    steps = plan["steps"]
+    pants = plan["prompts"]["pants"]
+    print(f"{name}: 피팅룸 실사화 {len(steps)}단계 · 의류 {garment.id} · 바지 {pants}")
     print(f"입력: {inp['width']}×{inp['height']}, {inp['fps']:g}fps, {inp['frame_count']}프레임")
     for step, endpoint in plan["endpoints"].items():
         print(f"  {step:8s} {endpoint}  예상 ${cost[step]:.4f}")
@@ -194,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_SETUP
     realizer.options = options
 
-    print("\nfal 호출 중… (4단계, 모두 6~8분쯤 걸립니다)")
+    print(f"\nfal 호출 중… ({len(steps)}단계, 모두 3~5분쯤 걸립니다)")
     try:
         result = realizer.realize(request, garment)
     except PortFailure as failure:
@@ -212,17 +221,22 @@ def main(argv: list[str] | None = None) -> int:
     write_png(
         out / "strip.png",
         strip_image(
-            clip, [outputs["photo"], outputs["transfer"], outputs["pose"]], outputs["turn"]
+            clip,
+            [outputs[s] for s in ("photo", "transfer", "pose") if s in realizer.steps()],
+            outputs["turn"],
         ),
     )
     print(
         f"완료: 비용 약 ${m.get('cost_usd')} (예상 ${m.get('estimated_cost_usd')}) · 재시도 "
         f"{m.get('retries', 0)}회"
     )
-    print(
-        f"시간: 사진 {m.get('photo_s')}초 · 핏 옮기기 {m.get('transfer_s')}초 · "
-        f"자세 {m.get('pose_s')}초 · 회전 {m.get('turn_s')}초"
+    labels = (
+        ("photo_s", "사진"),
+        ("transfer_s", "핏 옮기기"),
+        ("pose_s", "자세"),
+        ("turn_s", "회전"),
     )
+    print("시간: " + " · ".join(f"{label} {m[key]}초" for key, label in labels if key in m))
     print(f"회전 영상: {outputs['turn']} ({m.get('video_width')}×{m.get('video_height')})")
     print(f"확인 그림: {out / 'strip.png'}")
     return EXIT_OK

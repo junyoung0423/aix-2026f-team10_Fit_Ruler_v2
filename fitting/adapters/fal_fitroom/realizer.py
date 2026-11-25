@@ -6,9 +6,10 @@
 1. `photo`: 렌더 클립 첫 프레임 → 실사 사진 `{job}_realize_photo.png` (Nano Banana Pro 편집)
 2. `transfer`: 렌더 클립 + 1의 사진(첫 프레임 기준 `image_url`) → LTX render-to-real. 렌더 구조를
    따라가며 렌더 핏이 입혀진 **마지막 프레임**에서 좌우 검은 띠를 잘라 `{job}_realize_fit_frame.png`
-3. `pose`: 2의 프레임에서 팔을 내린 정면 사진 `{job}_realize_pose.png` (Nano Banana Pro 편집)
-4. `turn`: 시작·끝을 3의 사진으로 둔 8초 회전 영상 `{job}_video.mp4` (Veo 3.1 Fast first-last-frame,
-   `turn_model="standard"`이면 Veo 3.1 표준판)
+3. `pose`(옵션 `pose_step`, 기본 끔): 2의 프레임에서 팔을 내린 정면 사진 `{job}_realize_pose.png`
+   (Nano Banana Pro 편집). 기본은 2의 문장이 팔을 내린 채 숨쉬기만 시켜 2의 프레임을 4에 바로 쓴다
+4. `turn`: 시작·끝을 2의 프레임(3을 켜면 3의 사진)으로 둔 8초 회전 영상 `{job}_video.mp4`
+   (Veo 3.1 Fast first-last-frame, `turn_model="standard"`이면 Veo 3.1 표준판)
 
 계약 출력은 `REALIZE_OUTPUTS`(실사 영상)이고, 중간 사진 3장은 계약 밖 산출물로 같은 폴더에 두고 지표
 (`realize_*_artifact_id`)로 알린다(C5 옷 마스크와 같은 방식). 검증 어댑터가 이름 규칙으로 찾는다.
@@ -81,6 +82,7 @@ from .steps import (
 REALIZE_VERSION = "realize_fitroom_v1"
 RECORD_DIR = "realize"
 SUMMARY_NAME = "realize.json"
+# 단계 순서. `pose`는 옵션(`FitRoomOptions.pose_step`)이고 기본은 건너뛴다
 STEPS = ("photo", "transfer", "pose", "turn")
 # 계약 밖 중간 산출물 역할(지표로 ID를 알린다). 검증 어댑터가 같은 이름으로 찾는다
 PHOTO_ROLE, FIT_FRAME_ROLE, POSE_ROLE = "realize_photo", "realize_fit_frame", "realize_pose"
@@ -109,13 +111,16 @@ Downloader = Callable[[str, Path], None]
 @dataclass
 class FitRoomOptions:
     seed: int | None = 42  # ②·④에 보내는 시드(①·③ 사진 편집은 fal이 고른다)
-    max_cost_usd: float = 3.0  # 4단계 예상 비용 합 상한(기본 흐름 약 $1.3, 표준판 ④면 약 $2.1)
-    poll_interval_s: float = 3.0
+    max_cost_usd: float = 3.0  # 예상 비용 합 상한(기본 흐름 약 $1.0)
+    poll_interval_s: float = 2.0
     wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
     garment_text: str | None = None  # 프롬프트 옷 설명(시험용)
     allow_resubmit: bool = False  # 접수 여부를 모르는 이전 제출이 있어도 다시 보낸다(비용 위험)
     photo_resolution: str = "2K"
     transfer_intensity: str = "strong-v2"
+    # ② 프레임 수(8k+1). 마지막 프레임만 쓰고, 렌더 핏은 2초(48프레임)쯤 수렴했다(실험 q3)
+    transfer_frames: int = 49
+    pose_step: bool = False  # ③ 팔 내리기 사진. 끄면 ② 프레임을 ④의 시작·끝으로 바로 쓴다
     turn_duration_s: int = 8
     turn_resolution: str = "720p"
     turn_model: str = "fast"  # "fast": Veo 3.1 Fast(초당 $0.10) · "standard": 표준판($0.20)
@@ -185,9 +190,14 @@ class FitRoomRealizer:
             "turn": directory / f"{job_id}_{REALIZE_OUTPUTS[0]}.mp4",
         }
 
+    def steps(self) -> tuple[str, ...]:
+        """옵션에 맞춘 단계(순서대로)."""
+        return tuple(s for s in STEPS if s != "pose" or self.options.pose_step)
+
     def endpoints(self) -> dict[str, str]:
         """옵션에 맞춘 단계별 fal 모델. Raises: ValueError — 모르는 회전 모델이다."""
-        return {**ENDPOINTS, "turn": turn_endpoint(self.options.turn_model)}
+        models = {**ENDPOINTS, "turn": turn_endpoint(self.options.turn_model)}
+        return {step: models[step] for step in self.steps()}
 
     # --- 계획(드라이런) ---------------------------------------------------------------------
 
@@ -221,9 +231,11 @@ class FitRoomRealizer:
             "pose": PHOTO_USD,
             "turn": turn_cost(self.options.turn_duration_s, self.options.turn_model),
         }
+        estimate = {step: estimate[step] for step in self.steps()}
         return {
             "version": REALIZE_VERSION,
             "input": {"path": clip.name, **info},
+            "steps": list(self.steps()),
             "endpoints": endpoints,
             "turn_model": self.options.turn_model,
             "prompts": prompts.to_dict(),
@@ -238,8 +250,12 @@ class FitRoomRealizer:
         prompt = build_prompt(
             garment, subject="person", garment_text=self.options.garment_text, style="fitting_room"
         )
+        wanted = self.options.transfer_frames
+        if wanted < 9 or (wanted - 1) % 8:
+            raise ValueError(f"② 프레임 수는 9 이상의 8k+1이어야 합니다: {wanted}")
         limit = int(MAX_SECONDS["720p"] * 24)
         frames = min(
+            wanted,
             frames_for_clip(int(info["frame_count"]), float(info["fps"]) or 24.0, 24.0),
             max(9, (limit - 1) // 8 * 8 + 1),
         )
@@ -276,7 +292,8 @@ class FitRoomRealizer:
         record_dir = Path(self.work_dir) / request.job_id / RECORD_DIR
         record = _Record(record_dir / SUMMARY_NAME, self._load(record_dir))
         outputs = self.outputs(request.job_id)
-        if record.data.get("state") == DONE and all(p.is_file() for p in outputs.values()):
+        needed = [outputs[step] for step in self.steps()]
+        if record.data.get("state") == DONE and all(p.is_file() for p in needed):
             return self._result(request.job_id, record)
 
         started = self.clock()
@@ -341,7 +358,7 @@ class FitRoomRealizer:
             "record_dir": record_dir,
             "deadline": deadline,
         }
-        for name in STEPS:
+        for name in self.steps():
             self._run_step(name, record, context)
         record.save(state=DONE, error=None)
         return self._result(request.job_id, record)
@@ -392,7 +409,8 @@ class FitRoomRealizer:
         if name == "pose":
             url = self._upload(name, ctx["outputs"]["transfer"], record, ctx)
             return photo_arguments(url, prompts.pose, resolution=self.options.photo_resolution)
-        url = self._upload(name, ctx["outputs"]["pose"], record, ctx)
+        start = ctx["outputs"]["pose" if self.options.pose_step else "transfer"]
+        url = self._upload(name, start, record, ctx)
         return turn_arguments(
             url,
             prompts.turn,
@@ -727,7 +745,9 @@ class FitRoomRealizer:
             return round(float(step["completed_at"]) - float(step["submitted_at"]), 2)
 
         estimate = record.data.get("estimate") or {}
-        cost = sum(float(steps.get(n, {}).get("cost_usd") or estimate.get(n) or 0.0) for n in STEPS)
+        cost = sum(
+            float(steps.get(n, {}).get("cost_usd") or estimate.get(n) or 0.0) for n in self.steps()
+        )
         video = steps.get("turn", {}).get("video") or {}
         metrics: dict[str, Any] = {
             "external_request_id": steps.get("turn", {}).get("request_id"),
@@ -742,7 +762,7 @@ class FitRoomRealizer:
             "video_height": video.get("height"),
             "realize_photo_artifact_id": outputs["photo"].stem,
             "realize_fit_frame_artifact_id": outputs["transfer"].stem,
-            "realize_pose_artifact_id": outputs["pose"].stem,
+            "realize_pose_artifact_id": outputs["pose"].stem if self.options.pose_step else None,
         }
         return PortResult(
             schema_version=SCHEMA_VERSION,

@@ -68,15 +68,23 @@ def test_garment_text_overrides_and_must_not_be_blank():
         build_fitroom_prompts(NAVY, garment_text="  ")
 
 
-def test_d5_fitting_room_style_is_version_2_with_the_fal_default_negative():
+def test_d5_fitting_room_style_is_version_3_still_with_arms_down():
     studio = build_prompt(NAVY)
     room = build_prompt(NAVY, style="fitting_room")
     assert studio.version == PROMPT_VERSION == STYLE_VERSIONS["studio"]
     assert studio.negative_prompt is None  # v1은 fal 기본값을 그대로 둔다
-    assert room.version == STYLE_VERSIONS["fitting_room"] == "realize_prompt_v2"
+    assert room.version == STYLE_VERSIONS["fitting_room"] == "realize_prompt_v3"
     assert "fitting room" in room.text and "from the neck down" in room.text
-    assert room.negative_prompt.startswith(FAL_DEFAULT_NEGATIVE_PROMPT)
-    assert "mannequin" in room.negative_prompt and "face" in room.negative_prompt
+    assert "arms hanging naturally" in room.text
+    assert "only movement is gentle breathing" in room.text
+    assert "tugging" not in room.text and "smoothing" not in room.text  # v2의 손동작을 뺐다
+    terms = room.negative_prompt.split(", ")
+    # fal 기본값을 앞에 두되 움직임을 부추기는 낱말만 뺀다
+    assert {"static", "still", "motionless frame"}.isdisjoint(terms)
+    motion = {"static", "still", "motionless frame"}
+    base = [t for t in FAL_DEFAULT_NEGATIVE_PROMPT.split(", ") if t not in motion]
+    assert terms[: len(base)] == base  # 나머지 기본값은 순서 그대로 앞에 둔다
+    assert {"mannequin", "face", "hand gestures", "hands on hips"} <= set(terms)
 
 
 def test_d5_fitting_room_style_rejects_unknown_style_and_mannequin():
