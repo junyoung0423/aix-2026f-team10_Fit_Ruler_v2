@@ -73,7 +73,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--seed",
         type=seed_value,
         default=42,
-        help="②·④ 시드(0 이상 정수). random이면 보내지 않는다",
+        help="회전 영상 시드(0 이상 정수). random이면 보내지 않는다",
     )
     parser.add_argument(
         "--duration", type=int, choices=[4, 6, 8], default=4, help="회전 영상 길이(초)"
@@ -82,7 +82,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--turn-model",
         choices=sorted(TURN_MODELS),
         default=DEFAULT_TURN_MODEL,
-        help="④ 회전 모델: fast(Veo 3.1 Fast, 초당 $0.10, 기본)·standard(Veo 3.1, 초당 $0.20)",
+        help="회전 모델: fast(Veo 3.1 Fast, 초당 $0.10, 기본)·standard(Veo 3.1, 초당 $0.20)",
     )
     parser.add_argument(
         "--pose-step",

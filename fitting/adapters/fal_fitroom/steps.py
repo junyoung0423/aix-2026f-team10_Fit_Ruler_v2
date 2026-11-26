@@ -24,7 +24,7 @@ import numpy as np
 from fitting.adapters.media.frames import read_frames, read_video_info
 
 PHOTO_ENDPOINT = "fal-ai/nano-banana-pro/edit"
-# ④ 회전 모델: 이름 → (fal 모델, 초당 가격). 입력 형식은 둘이 같다
+# 회전 모델: 이름 → (fal 모델, 초당 가격). 입력 형식은 둘이 같다
 TURN_MODELS = {
     "fast": ("fal-ai/veo3.1/fast/first-last-frame-to-video", 0.10),
     "standard": ("fal-ai/veo3.1/first-last-frame-to-video", 0.20),

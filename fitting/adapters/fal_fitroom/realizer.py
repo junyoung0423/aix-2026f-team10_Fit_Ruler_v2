@@ -79,7 +79,7 @@ STEPS = ("photo", "pose", "turn")
 # 계약 밖 중간 산출물 역할(지표로 ID를 알린다). 1의 사진이 핏 확인 프레임이고 검증 어댑터가 같은
 # 이름으로 찾는다
 FIT_FRAME_ROLE, POSE_ROLE = "realize_fit_frame", "realize_pose"
-# 기본 옵션(④ Veo 3.1 Fast) 기준 단계별 모델. 옵션에 맞춘 값은 `FitRoomRealizer.endpoints()`
+# 기본 옵션(회전 Veo 3.1 Fast) 기준 단계별 모델. 옵션에 맞춘 값은 `FitRoomRealizer.endpoints()`
 ENDPOINTS = {
     "photo": PHOTO_ENDPOINT,
     "pose": PHOTO_ENDPOINT,
