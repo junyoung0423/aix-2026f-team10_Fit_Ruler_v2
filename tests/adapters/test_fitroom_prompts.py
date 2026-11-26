@@ -1,4 +1,4 @@
-"""피팅룸 실사화 문장(`fitroom_prompt_v2`)과 D5 프롬프트의 피팅룸 판(`realize_prompt_v2`) 테스트."""
+"""피팅룸 실사화 문장(`fitroom_prompt_v3`)과 D5 프롬프트의 피팅룸 판(`realize_prompt_v2`) 테스트."""
 
 from pathlib import Path
 
@@ -44,12 +44,20 @@ def test_pants_contrast_with_the_garment():
 
 def test_prompts_keep_the_fit_framing_and_face_rule():
     p = build_fitroom_prompts(NAVY)
-    assert p.version == FITROOM_PROMPT_VERSION == "fitroom_prompt_v2"
+    assert p.version == FITROOM_PROMPT_VERSION == "fitroom_prompt_v3"
     assert p.garment == "plain navy cotton jersey short-sleeve crew-neck T-shirt with a regular fit"
+    # 사진 문장에는 핏 이름을 넣지 않는다(정돈된 레귤러 핏으로 끌 수 있어서, q17)
+    assert p.photo_garment == "plain navy cotton jersey short-sleeve crew-neck T-shirt"
+    assert p.photo_garment in p.photo and "with a regular fit" not in p.photo
+    assert p.garment in p.pose and p.garment in p.turn
     for text in (p.photo, p.pose, p.turn):
         assert "neck" in text and "face" in text  # 목 아래, 얼굴은 화면 밖
         assert p.pants in text
     assert "same looseness at the chest and waist" in p.photo
+    # v3: 형상은 그대로, 화면 위치·A자세·박스형 핏을 지킨다
+    assert "changing only the materials, the skin, the background and the lighting" in p.photo
+    assert "Do not zoom in or out" in p.photo and "Do not lower the arms" in p.photo
+    assert "boxy" in p.photo and "Do not tailor, slim down or tidy the shirt" in p.photo
     assert "same shoulder seam position" in p.photo
     assert "fitting room" in p.photo
     assert "lower both arms" in p.pose
@@ -61,8 +69,8 @@ def test_prompts_keep_the_fit_framing_and_face_rule():
     negative = set(p.turn_negative.split(", "))
     assert {"face", "head", "zoom in", "walking"} <= negative
     assert {"full rotation", "back view", "the other side profile"} <= negative
-    assert set(p.to_dict()) == {"version", "garment", "pants", "photo", "pose", "turn",
-                                "turn_negative"}
+    assert set(p.to_dict()) == {"version", "garment", "photo_garment", "pants", "photo", "pose",
+                                "turn", "turn_negative"}
 
 
 def test_garment_text_overrides_and_must_not_be_blank():

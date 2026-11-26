@@ -1,10 +1,12 @@
-"""피팅룸 실사화 프롬프트 (`fitroom_prompt_v2`).
+"""피팅룸 실사화 프롬프트 (`fitroom_prompt_v3`).
 
 단계마다 문장이 다르다. 문장을 바꾸면 판을 올린다. 문장은 2026-11-25 실험에서 결과를 보고 고른
 것이다(docs/realize-fitroom.md 2절).
 
-- 사진(`photo`): 렌더 정지 프레임을 매장 피팅룸의 실제 사람 사진으로 바꾼다. 구도·체형·자세와 옷의
-  핏(색·기장·가슴·허리 여유·어깨선·소매)은 렌더 그대로 둔다. 이 사진이 핏 확인 프레임이다.
+- 사진(`photo`): 렌더 정지 프레임을 매장 피팅룸의 실제 사람 사진으로 바꾼다. 재질·피부·배경·조명만
+  바꾸고 구도(화면 위치)·체형·자세(A자세)와 옷의 핏(박스형 몸판·넓은 소매·기장)은 렌더 그대로 둔다.
+  옷 설명에는 핏 이름을 넣지 않는다(정돈된 핏으로 끌 수 있어서). 이 사진이 핏 확인 프레임이다.
+  v2는 같은 뜻을 짧게 적었고, 신체 1 렌더에서 팔을 내리고 확대했다(v3로 바꾼 이유).
 - 자세(`pose`, 기본 켬): 사진에서 팔을 자연스럽게 내리고 나머지는 그대로 둔다.
 - 회전(`turn`): 고정 카메라, 숨쉬기만, 몸의 왼쪽으로 1/4 바퀴 돌아 오른쪽 옆모습을 보인 뒤 같은 길을
   되짚어 정면으로 돌아와 끝남(v1은 앞 → 옆 → 뒤 → 반대쪽 옆 → 앞 한 바퀴).
@@ -24,11 +26,16 @@ from dataclasses import dataclass
 import numpy as np
 
 from fitting.adapters.aihub.tables import COLOR_HEX
-from fitting.adapters.fal_ltx.prompt import garment_description
+from fitting.adapters.fal_ltx.prompt import (
+    DEFAULT_FAMILY_TEXT,
+    FAMILY_TEXT,
+    garment_description,
+    material_description,
+)
 from fitting.domain import GarmentVariant
 from fitting.verify.visual_check import delta_e_2000, srgb_to_lab
 
-FITROOM_PROMPT_VERSION = "fitroom_prompt_v2"
+FITROOM_PROMPT_VERSION = "fitroom_prompt_v3"
 
 # 바지 후보: (프롬프트 문구, sRGB hex). 옷과 대비되는 쪽을 고른다
 PANTS: tuple[tuple[str, str], ...] = (
@@ -36,17 +43,29 @@ PANTS: tuple[tuple[str, str], ...] = (
     ("dark charcoal trousers", "#33333a"),
 )
 
+# 사진: 형상은 그대로 두고 재질·피부·배경·조명만 바꾼다(v3). v2 문장으로 신체 1 렌더를 넣으니 사진
+# 모델이 팔을 내리고 약 1.3배 확대하고 박스형 핏을 다듬었다(핏 확인 IoU 0.577). 화면 위치·A자세·
+# 박스형 핏을 적고 옷 설명에서 핏 이름을 빼자 IoU 0.989로 렌더를 지켰다(q17, docs/realize-fitroom.md
+# 2.8절)
 PHOTO_TEMPLATE = (
-    "Convert this 3D render into a realistic photograph. Keep the exact same camera framing, crop "
-    "and composition: front view, the image starts at the neck and the head and face are outside "
-    "the frame. Keep the exact same body shape, body proportions and pose. Keep the {garment} "
-    "exactly as it fits in the render: the same color, the same length and hem position, the same "
-    "looseness at the chest and waist, the same shoulder seam position and the same sleeve length "
-    "and width. Make it a real person with natural skin on the neck and arms, wearing plain "
-    "{pants}, "
-    "standing in a bright modern retail clothing store fitting room with a light beige curtain, "
-    "white walls and clothes hooks, lit by warm overhead store lighting with soft natural shadows. "
-    "Photorealistic, natural fabric texture, high detail."
+    "Convert this 3D render into a realistic photograph by changing only the materials, the "
+    "skin, the background and the lighting. The geometry must stay identical to the render: "
+    "do not move, zoom, re-crop, re-pose or re-shape anything. Camera: keep the exact same "
+    "framing, crop and scale: front view, the image starts at the neck and the head and face "
+    "are outside the frame. The collar, the shoulders, the sleeve hems and the bottom hem of "
+    "the shirt stay at exactly the same positions in the image as in the render, and the "
+    "same length of the thighs stays visible below the hem. Do not zoom in or out. Pose: "
+    "keep the exact same A-pose: both arms stay raised away from the body at the same angle "
+    "as in the render, reaching toward the sides of the image. Do not lower the arms and do "
+    "not bring them closer to the body. Shirt: keep the {garment} exactly as it is draped in "
+    "the render: the same color, the same boxy, loose silhouette that hangs straight down "
+    "from the chest, the same length and hem position, the same looseness at the chest and "
+    "waist, the same shoulder seam position, and the same short, wide sleeves that stand "
+    "away from the upper arms. Do not tailor, slim down or tidy the shirt into a neater "
+    "regular fit. Make it a real person with natural skin on the neck and arms, wearing "
+    "plain {pants}, standing in a bright modern retail clothing store fitting room with a "
+    "light beige curtain, white walls and clothes hooks, lit by warm overhead store lighting "
+    "with soft natural shadows. Photorealistic, natural fabric texture, high detail."
 )
 
 POSE_TEMPLATE = (
@@ -93,7 +112,8 @@ class FitRoomPrompts:
     """한 의류에 대한 단계별 문장."""
 
     version: str
-    garment: str  # 옷 설명(영어)
+    garment: str  # 옷 설명(영어), 자세·회전 문장
+    photo_garment: str  # 사진 문장의 옷 설명(핏 이름 없이)
     pants: str
     photo: str
     pose: str
@@ -104,6 +124,7 @@ class FitRoomPrompts:
         return {
             "version": self.version,
             "garment": self.garment,
+            "photo_garment": self.photo_garment,
             "pants": self.pants,
             "photo": self.photo,
             "pose": self.pose,
@@ -133,6 +154,12 @@ def pants_for(garment: GarmentVariant) -> str:
     return max(PANTS, key=lambda p: float(delta_e_2000(garment_lab, _lab(p[1]))))[0]
 
 
+def plain_garment_description(garment: GarmentVariant) -> str:
+    """핏 이름 없는 옷 설명(색·원단 + 의류군). 사진 문장에 쓴다."""
+    family = FAMILY_TEXT.get(garment.garment_family, DEFAULT_FAMILY_TEXT)
+    return f"{material_description(garment)} {family}"
+
+
 def build_fitroom_prompts(
     garment: GarmentVariant, *, garment_text: str | None = None
 ) -> FitRoomPrompts:
@@ -144,12 +171,14 @@ def build_fitroom_prompts(
     if garment_text is not None and not garment_text.strip():
         raise ValueError("garment_text가 비었습니다")
     described = garment_text.strip() if garment_text else garment_description(garment)
+    photo_described = garment_text.strip() if garment_text else plain_garment_description(garment)
     pants = pants_for(garment)
     return FitRoomPrompts(
         version=FITROOM_PROMPT_VERSION,
         garment=described,
+        photo_garment=photo_described,
         pants=pants,
-        photo=PHOTO_TEMPLATE.format(garment=described, pants=pants),
+        photo=PHOTO_TEMPLATE.format(garment=photo_described, pants=pants),
         pose=POSE_TEMPLATE.format(garment=described, pants=pants),
         turn=TURN_TEMPLATE.format(garment=described, pants=pants),
         turn_negative=TURN_NEGATIVE,
