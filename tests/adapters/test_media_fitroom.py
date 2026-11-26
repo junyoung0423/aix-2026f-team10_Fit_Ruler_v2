@@ -1,6 +1,7 @@
 """피팅룸 결과 검증(측정 + 검증 어댑터 분기)과 D6 화면비 맞추기 테스트. 합성 그림·영상만 쓴다."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ np = pytest.importorskip("numpy")
 
 from fitting.adapters.media.fitroom_measure import (  # noqa: E402
     DEFAULT_FITROOM_CONFIG,
+    FitAlign,
     check_fitroom,
     load_fitroom_config,
     measure_video,
@@ -89,9 +91,24 @@ def media(tmp_path_factory) -> dict:
 
 
 def test_config_loads():
-    assert FITROOM.source == "fitroom_check_v1@1.0.0"
+    assert FITROOM.source == "fitroom_check_v1@1.1.0"
     assert FITROOM.path == "config/validate/fitroom_check_v1.json"
     assert DEFAULT_FITROOM_CONFIG.is_file()
+    assert FITROOM.align == FitAlign(0.9, 1.15, 0.01, 0.08)  # 사진 맞춤 범위
+    assert FITROOM.to_record()["fit_frame_align"]["scale_max"] == 1.15
+
+
+def test_fit_align_range_is_checked():
+    assert FitAlign.from_config({}) == FitAlign()  # 블록이 없으면 맞추지 않는다
+    block = {"align_scale_min": 0.9, "align_scale_max": 1.15, "align_scale_step": 0.01,
+             "align_shift_max_frac": 0.08}
+    for key, value in (("align_scale_min", 1.1), ("align_scale_max", 0.95),
+                       ("align_scale_step", 0), ("align_shift_max_frac", 0.5)):
+        with pytest.raises(ValueError, match="fit_frame"):
+            FitAlign.from_config({"fit_frame": {**block, key: value}})
+    with pytest.raises(ValueError, match="align_scale_step"):
+        FitAlign.from_config({"fit_frame": {k: v for k, v in block.items()
+                                             if k != "align_scale_step"}})
 
 
 def test_steady_video_has_small_end_gap_and_lightness_range(media):
@@ -103,6 +120,7 @@ def test_steady_video_has_small_end_gap_and_lightness_range(media):
     assert len(measure.lightness) == 4
     assert measure.end_frame_gap < 4.0
     assert measure.lightness_range < 6.0
+    assert measure.jump_ratio <= FITROOM.video.jump_ratio_max
 
 
 def test_lightened_garment_raises_the_lightness_range(media):
@@ -117,11 +135,30 @@ def test_recolored_garment_is_counted_as_missing_not_skipped(media):
     assert len(measure.lightness) == 2
 
 
+def test_jump_is_found_at_the_frame_that_changed_at_once(media):
+    measure, _, _ = measure_video(media["recolor"], FITROOM.video)
+    assert measure.jump_ratio > FITROOM.video.jump_ratio_max
+    assert measure.jump_at_s == 0.83  # 20번째 프레임(24fps)에서 빨강으로 바뀐다
+
+
+def test_smooth_motion_passes_and_a_cut_is_a_jump(tmp_path):
+    """옆으로 1픽셀씩 움직이는 영상은 통과, 중간에 60픽셀 끊겨 넘어가면 화면 튐."""
+    base = vc.draw(TURN_SIZE, real=True, seed=1)[0]
+    smooth = [np.roll(base, i, axis=1) for i in range(TURN_FRAMES)]
+    cut = [np.roll(base, i + (60 if i >= 36 else 0), axis=1) for i in range(TURN_FRAMES)]
+    calm, _, _ = measure_video(vc.write_clip(tmp_path / "smooth.mp4", smooth), FITROOM.video)
+    jumped, _, _ = measure_video(vc.write_clip(tmp_path / "cut.mp4", cut), FITROOM.video)
+    assert calm.jump_ratio <= FITROOM.video.jump_ratio_max
+    assert jumped.jump_ratio > FITROOM.video.jump_ratio_max
+    assert jumped.jump_at_s == 1.5  # 36번째 프레임
+
+
 def test_black_video_is_detected(media):
     measure, _, _ = measure_video(media["black"], FITROOM.video)
     assert measure.black is True
     assert measure.end_frame_gap is None
     assert measure.garment_missing == 0  # 검은 영상은 검은 화면 하나로만 실패시킨다
+    assert measure.jump_ratio is None
 
 
 @pytest.mark.parametrize(
@@ -130,8 +167,9 @@ def test_black_video_is_detected(media):
         ("fit", "steady", PASS, ()),
         ("fit_red", "steady", FAIL, ("fit_frame",)),
         ("fit", "flicker", FAIL, ("lightness_range",)),
-        ("fit", "recolor", FAIL, ("garment_missing",)),
-        ("fit", "unfinished", FAIL, ("end_frame_gap",)),
+        # 아래 둘은 한 프레임 만에 바뀌는 합성 영상이라 화면 튐으로도 잡힌다
+        ("fit", "recolor", FAIL, ("garment_missing", "frame_jump")),
+        ("fit", "unfinished", FAIL, ("end_frame_gap", "frame_jump")),
         ("fit", "black", FAIL, ("black",)),
     ],
 )
@@ -141,6 +179,26 @@ def test_reference_cases(media, fit, video, status, fails):
     assert run.result.status == status
     assert run.result.fails == fails
     assert run.fit_frame.shape[:2] == media["mask_array"].shape
+
+
+def test_a_zoomed_out_fit_photo_is_aligned_before_measuring(tmp_path, media):
+    """사진 모델이 10 % 멀리 찍은 사진(q13)은 크기를 맞춘 뒤 재서 통과한다. 맞추지 않으면 실패."""
+    photo = vc.draw(vc.RENDER_SIZE, real=True, seed=5)[0]
+    h, w = photo.shape[:2]
+    far = cv2.warpAffine(photo, np.float32([[0.9, 0, 0.05 * w], [0, 0.9, 0.05 * h]]), (w, h),
+                         borderMode=cv2.BORDER_REPLICATE)
+    path = png(tmp_path / "far.png", far)
+    run = check_fitroom(media["render"], media["mask_array"], path, media["steady"], CONFIG,
+                        FITROOM)
+    assert run.result.status == PASS
+    align = run.segment_info["alignment"]
+    assert align["scale"] == pytest.approx(1 / 0.9, abs=0.03)  # 1/4 크기에서 찾아 몇 단계 어긋난다
+    assert align["iou_aligned_search"] > align["iou_before"]
+    fixed = replace(FITROOM, align=FitAlign())
+    run = check_fitroom(media["render"], media["mask_array"], path, media["steady"], CONFIG,
+                        fixed)
+    assert run.result.fails == ("fit_frame",)
+    assert run.segment_info["alignment"]["scale"] == 1.0  # 맞추지 않은 것도 기록에 남는다
 
 
 # --- 검증 어댑터 분기 ----------------------------------------------------------------------
@@ -173,7 +231,7 @@ def test_validator_uses_the_fitroom_check_when_the_fit_frame_exists(tmp_path, me
     result = setup(tmp_path, media).validate(request(), GARMENT)
     assert result.metrics["quality_status"] == QualityStatus.PASS.value
     assert {"color_delta_e", "silhouette_iou", "width_change_ratio", "end_frame_gap",
-            "garment_lightness_range"} <= set(result.metrics)
+            "garment_lightness_range", "frame_jump_ratio"} <= set(result.metrics)
     assert "frames_passed" not in result.metrics  # 11프레임 규칙을 쓰지 않는다
     frame, render_frame = (tmp_path / "artifacts" / f"{i}.png" for i in result.output_artifact_ids)
     assert cv2.imread(str(frame)).shape == (TURN_SIZE[1], TURN_SIZE[0], 3)  # 영상 첫 프레임
@@ -184,11 +242,11 @@ def test_validator_uses_the_fitroom_check_when_the_fit_frame_exists(tmp_path, me
     assert data["check"]["check_version"] == "fitroom_check_v1"
     assert data["check"]["human_review_required"] is True
     assert data["check"]["video_times"] == [0.0, 1.0, 2.0, 3.0]
-    assert data["fitroom_config"]["source"] == "fitroom_check_v1@1.0.0"
+    assert data["fitroom_config"]["source"] == "fitroom_check_v1@1.1.0"
     directory = tmp_path / "work" / JOB / "validate"
     assert (directory / "fitroom_sheet.png").is_file()
     assert (directory / "masks" / "fit_frame.png").is_file()
-    assert result.tool_versions["fitroom_config"] == "fitroom_check_v1@1.0.0"
+    assert result.tool_versions["fitroom_config"] == "fitroom_check_v1@1.1.0"
 
 
 @pytest.mark.parametrize(

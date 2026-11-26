@@ -22,7 +22,7 @@ from fitting.verify.visual_check import (
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = json.loads((ROOT / "config" / "validate" / "fitroom_check_v1.json").read_text("utf-8"))
-VIDEO = FitRoomVideoCriteria.from_config(CONFIG, source="fitroom_check_v1@1.0.0")
+VIDEO = FitRoomVideoCriteria.from_config(CONFIG, source="fitroom_check_v1@1.1.0")
 FRAME = VisualCriteria.from_config(
     json.loads((ROOT / "config" / "validate" / "visual_check_v1.json").read_text("utf-8"))
 )
@@ -37,23 +37,30 @@ def fit(**values):
 
 
 def video(**values):
-    base = dict(black=False, end_frame_gap=2.0, lightness=(20.0, 21.0, 22.5, 20.5), seconds=8.0,
-                size=(720, 1280))
+    base = dict(black=False, end_frame_gap=2.0, lightness=(20.0, 21.0, 22.5, 20.5), seconds=4.0,
+                size=(720, 1280), jump_ratio=2.1, jump_at_s=1.2)
     base.update(values)
     return VideoMeasure(**base)
 
 
 def test_criteria_come_from_the_experiments():
-    assert VIDEO.end_frame_gap_max == 4.0  # Veo 1.0~2.7 · LTX 5.4~6.5
+    assert VIDEO.end_frame_gap_max == 6.0  # 4초 1/4 바퀴 왕복 1.8~5.0 (1.0.0은 8초 한 바퀴 4.0)
+    assert VIDEO.jump_ratio_max == 3.5  # 정상 1.6~3.0 · 장면이 끊긴 영상 4.0~4.3
+    assert VIDEO.jump_median_floor == 2.0  # 실제 회전 영상 중앙값 3.1~4.4
     assert VIDEO.lightness_range_max == 6.0  # Veo 2.7~5.0 · LTX 6.4~8.9
     assert VIDEO.lightness_weight == 2.55
     assert VIDEO.garment_min_fraction == 0.01  # 9편 시점마다 옷 비율 최소 0.094
-    assert VIDEO.to_record()["source"] == "fitroom_check_v1@1.0.0"
+    assert VIDEO.to_record()["source"] == "fitroom_check_v1@1.1.0"
+    assert VIDEO.to_record()["jump_ratio_max"] == 3.5
     with pytest.raises(ValueError, match="video"):
         FitRoomVideoCriteria.from_config({})
     broken = json.loads(json.dumps(CONFIG))
     del broken["video"]["end_frame_gap_max"]
     with pytest.raises(ValueError, match="end_frame_gap_max"):
+        FitRoomVideoCriteria.from_config(broken)
+    broken = json.loads(json.dumps(CONFIG))
+    del broken["video"]["jump_ratio_max"]
+    with pytest.raises(ValueError, match="jump_ratio_max"):
         FitRoomVideoCriteria.from_config(broken)
 
 
@@ -68,10 +75,12 @@ def test_good_fit_and_steady_video_pass_with_human_review_flag():
         "width_change_ratio": 0.01,
         "end_frame_gap": 2.0,
         "garment_lightness_range": 2.5,
+        "frame_jump_ratio": 2.1,
     }
     record = result.to_record()
     assert record["side_back_fit_check"] == "not_automated"
     assert record["video"]["garment_missing_samples"] == 0
+    assert record["video"]["jump_ratio"] == 2.1 and record["video"]["jump_at_s"] == 1.2
     assert record["fit_frame"]["status"] == PASS
 
 
@@ -82,7 +91,9 @@ def test_good_fit_and_steady_video_pass_with_human_review_flag():
         ({}, {"end_frame_gap": 6.5}, ("end_frame_gap",)),
         ({}, {"lightness": (20.0, 12.5, 21.0)}, ("lightness_range",)),
         ({}, {"lightness": (20.0, 21.0), "garment_missing": 2}, ("garment_missing",)),
-        ({}, {"black": True, "end_frame_gap": None, "lightness": ()}, ("black",)),
+        ({}, {"jump_ratio": 4.3, "jump_at_s": 2.4}, ("frame_jump",)),
+        ({}, {"black": True, "end_frame_gap": None, "lightness": (), "jump_ratio": None},
+         ("black",)),
         ({"delta_e": 12.0}, {"end_frame_gap": 19.2}, ("fit_frame", "end_frame_gap")),
     ],
 )
@@ -95,7 +106,8 @@ def test_measured_violations_fail(fit_values, video_values, fails):
 
 
 def test_limits_are_inclusive():
-    result = judge_fitroom(fit(), video(end_frame_gap=4.0, lightness=(20.0, 26.0)), VIDEO)
+    measured = video(end_frame_gap=6.0, lightness=(20.0, 26.0), jump_ratio=3.5)
+    result = judge_fitroom(fit(), measured, VIDEO)
     assert result.status == PASS
 
 

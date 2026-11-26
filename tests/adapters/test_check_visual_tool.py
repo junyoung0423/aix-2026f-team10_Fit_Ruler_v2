@@ -115,9 +115,10 @@ def test_fit_frame_switches_to_the_fitroom_check(tmp_path, clips, fitroom, capsy
     assert record["check_version"] == "fitroom_check_v1"
     assert record["status"] == "PASS"
     assert record["video_times"] == [0.0, 1.0, 2.0]
-    assert record["fitroom_config"]["source"] == "fitroom_check_v1@1.0.0"
+    assert record["fitroom_config"]["source"] == "fitroom_check_v1@1.1.0"
     printed = capsys.readouterr().out
     assert "피팅룸 검사 판정: PASS" in printed and "첫·끝 차이" in printed
+    assert "화면 튐" in printed
 
 
 def test_run_folder_with_a_fit_frame_uses_the_fitroom_check(tmp_path, clips, fitroom):

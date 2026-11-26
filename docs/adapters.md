@@ -240,9 +240,9 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 
 ## 피팅룸 실사화 어댑터 (`fitting.adapters.fal_fitroom.factory:make_fitroom_realizer`)
 
-`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 한 바퀴(앞 → 옆 → 뒤 → 반대쪽 옆 → 앞) 도는 8초 영상을 만듭니다. `FAL_KEY`가 필요하고 작업 1건에 $1.10·약 3분이 듭니다(사진 53초·회전 73초 실측, 자세 약 40초 추정. 이 어댑터로 한 번에 돌린 기록은 아직 없음).
+`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 1/4 바퀴 돌아 오른쪽 옆모습을 보이고, 같은 길로 정면에 돌아오는 4초 영상을 만듭니다(2026-11-26, 그 전에는 8초 한 바퀴). `FAL_KEY`가 필요하고 작업 1건에 $0.70·약 2분 10초가 듭니다(사진 39~53초·자세 36초·회전 49초, 단계마다 따로 잰 값. 이 어댑터로 한 번에 돌린 기록은 아직 없음).
 
-- 흐름(모두 fal): 사진(렌더 첫 프레임 → 실사 사진, Nano Banana Pro 편집. 체형·자세·구도·옷 핏은 렌더 그대로) → 자세(팔을 내린 정면 사진, Nano Banana Pro 편집, $0.15) → 회전(시작·끝을 자세 사진으로 고정한 영상, Veo 3.1 Fast first-last-frame, 720×1280. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, +$0.80). 자세는 기본으로 켜고, 끄면(`pose_step=False`·`--no-pose-step`) 사진을 바로 써서 팔을 벌린 채 시작·끝납니다. 예전의 핏 옮기기(LTX render-to-real)는 뺐습니다(docs/realize-fitroom.md 2.6절)
+- 흐름(모두 fal): 사진(렌더 첫 프레임 → 실사 사진, Nano Banana Pro 편집. 체형·자세·구도·옷 핏은 렌더 그대로) → 자세(팔을 내린 정면 사진, Nano Banana Pro 편집, $0.15) → 회전(시작·끝을 자세 사진으로 고정한 4초 영상, Veo 3.1 Fast first-last-frame, 720×1280, $0.40. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, +$0.40. 길이는 `turn_duration_s`·`--duration`). 자세는 기본으로 켜고, 끄면(`pose_step=False`·`--no-pose-step`) 사진을 바로 써서 팔을 벌린 채 시작·끝납니다. 예전의 핏 옮기기(LTX render-to-real)는 뺐습니다(docs/realize-fitroom.md 2.6절)
 - 입력: `input_artifact_ids[0]`(렌더 클립)의 `artifacts_dir/{id}.mp4`
 - 출력: 계약 출력 `{job_id}_video.mp4`(`REALIZE_OUTPUTS`). 계약 밖 중간 사진 `{job_id}_realize_fit_frame.png`(실사 사진, 검증 어댑터가 핏 확인에 씀), 자세 사진 `{job_id}_realize_pose.png`(자세를 끄면 없음)
 - 재시도·재조회: D4 규칙을 단계마다 씁니다. 같은 `job_id`로 다시 불리면 끝난 단계는 건너뛰고 진행 중인 단계만 같은 요청 ID로 다시 조회합니다. 오류 코드는 `EXTERNAL_SUBMIT_UNKNOWN`·`BUDGET_LIMIT`·`REALIZE_TIMEOUT`·`REALIZE_FAILED`(검은 영상 포함)
@@ -262,7 +262,7 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 - 기록: `FIT_WORK_DIR/{job_id}/validate/validate.json`(`internal_details_ref`), 같은 폴더의 `contact_sheet.png`(11프레임 사람 확인용)·`masks/`(프레임별 실사 옷 영역)
 - 실패(`PortFailure`): 입력이 없거나 읽지 못하면 `VALIDATION_UNVERIFIABLE`, `retryable=false`
 - 중대한 변형·얼굴은 자동으로 찾지 않습니다. `PASS`에도 기록에 `human_review_required: true`가 남습니다
-- **피팅룸 실사화 결과**: `artifacts_dir/{job_id}_realize_fit_frame.png`가 있으면 11프레임 대신 피팅룸 검사를 합니다(`config/validate/fitroom_check_v1.json`). 렌더 ↔ 실사화 사진(핏 확인 사진)을 명세서 7장 프레임 기준으로 보고, 영상은 검은 화면·첫·끝 프레임 차이·시점마다 옷 색을 찾았는지·옷 밝기 흔들림을 봅니다. 대표 프레임은 영상 첫 프레임, 대응 렌더 프레임은 렌더 첫 프레임이고, 지표는 `color_delta_e`·`silhouette_iou`·`width_change_ratio`·`end_frame_gap`·`garment_lightness_range`입니다(`frames_passed` 없음). 기록은 `validate.json`(`state: checked_fitroom`)·`fitroom_sheet.png`. 이미 있는 결과는 `python -m tools.check_visual --run <폴더> --mask <마스크> [--fit-frame <사진>]`으로 다시 판정합니다(docs/realize-fitroom.md 3절)
+- **피팅룸 실사화 결과**: `artifacts_dir/{job_id}_realize_fit_frame.png`가 있으면 11프레임 대신 피팅룸 검사를 합니다(`config/validate/fitroom_check_v1.json`). 렌더 ↔ 실사화 사진(핏 확인 사진)을 명세서 7장 프레임 기준으로 보고, 영상은 검은 화면·첫·끝 프레임 차이·시점마다 옷 색을 찾았는지·옷 밝기 흔들림·화면 튐(연속 프레임 변화)을 봅니다. 핏 확인 사진은 크기·위치를 렌더 마스크에 맞춘 뒤 잽니다(설정 1.1.0). 대표 프레임은 영상 첫 프레임, 대응 렌더 프레임은 렌더 첫 프레임이고, 지표는 `color_delta_e`·`silhouette_iou`·`width_change_ratio`·`end_frame_gap`·`garment_lightness_range`·`frame_jump_ratio`입니다(`frames_passed` 없음). 기록은 `validate.json`(`state: checked_fitroom`)·`fitroom_sheet.png`. 이미 있는 결과는 `python -m tools.check_visual --run <폴더> --mask <마스크> [--fit-frame <사진>]`으로 다시 판정합니다(docs/realize-fitroom.md 3절)
 
 `default.yaml`의 `validate`는 아직 `fake`입니다(바꿀 시점은 팀 결정, `docs/visual-check.md` 6절). 영상 경로 5단계를 모두 실제로 돌리는 설정은 `config/adapters/visual_real.yaml`입니다(몸 D3 · 착장 C4 · 렌더 C5 · 실사화 D4 · 검증 D6). Blender·GarmentCode·SMPL 모델·FAL_KEY가 모두 있어야 시작합니다.
 

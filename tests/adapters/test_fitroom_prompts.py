@@ -1,4 +1,4 @@
-"""피팅룸 실사화 문장(`fitroom_prompt_v1`)과 D5 프롬프트의 피팅룸 판(`realize_prompt_v2`) 테스트."""
+"""피팅룸 실사화 문장(`fitroom_prompt_v2`)과 D5 프롬프트의 피팅룸 판(`realize_prompt_v2`) 테스트."""
 
 from pathlib import Path
 
@@ -44,7 +44,7 @@ def test_pants_contrast_with_the_garment():
 
 def test_prompts_keep_the_fit_framing_and_face_rule():
     p = build_fitroom_prompts(NAVY)
-    assert p.version == FITROOM_PROMPT_VERSION == "fitroom_prompt_v1"
+    assert p.version == FITROOM_PROMPT_VERSION == "fitroom_prompt_v2"
     assert p.garment == "plain navy cotton jersey short-sleeve crew-neck T-shirt with a regular fit"
     for text in (p.photo, p.pose, p.turn):
         assert "neck" in text and "face" in text  # 목 아래, 얼굴은 화면 밖
@@ -53,10 +53,14 @@ def test_prompts_keep_the_fit_framing_and_face_rule():
     assert "same shoulder seam position" in p.photo
     assert "fitting room" in p.photo
     assert "lower both arms" in p.pose
-    assert "360-degree rotation" in p.turn and "breathing" in p.turn
+    assert "a quarter turn, exactly 90 degrees" in p.turn and "breathing" in p.turn
+    # 1/4 바퀴 왕복: 몸의 왼쪽으로 돌아 오른쪽 옆모습, 같은 길로 정면에 돌아와 끝난다(q16)
+    assert "toward the person's own left" in p.turn
+    assert "retracing the same path" in p.turn and "never shows the back" in p.turn
     assert "No hand gestures" in p.turn
-    assert p.turn.index("side profile") < p.turn.index("the back")
-    assert {"face", "head", "zoom in", "walking"} <= set(p.turn_negative.split(", "))
+    negative = set(p.turn_negative.split(", "))
+    assert {"face", "head", "zoom in", "walking"} <= negative
+    assert {"full rotation", "back view", "the other side profile"} <= negative
     assert set(p.to_dict()) == {"version", "garment", "pants", "photo", "pose", "turn",
                                 "turn_negative"}
 

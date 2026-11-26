@@ -1,7 +1,7 @@
 """렌더 클립 하나를 피팅룸 실사화 어댑터로 회전 영상으로 만든다(서버 없이, 같은 어댑터).
 
     python -m tools.realize_fitroom --input path/to/render_clip.mp4         # 드라이런(비용 없음)
-    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출($1.10)
+    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출($0.70)
     python -m tools.realize_fitroom --name <이전 이름> --yes                 # 이어 받기(끝난 단계
     건너뜀)
 
@@ -13,7 +13,7 @@
 - `artifacts/<이름>_render_clip.mp4`(입력 사본), `<이름>_realize_fit_frame.png`(실사 사진, 핏 확인
   프레임), `<이름>_realize_pose.png`(자세, `--no-pose-step`이면 없음), `<이름>_video.mp4`(회전 영상)
 - `work/<이름>/realize/`: `plan.json`, 단계별 `*_request.json`·`*_response.json`, `realize.json`
-- `strip.png`: 렌더 첫 프레임 · 사진 · (자세) · 영상 0~8초 프레임을 나란히 놓은 확인 그림
+- `strip.png`: 렌더 첫 프레임 · 사진 · (자세) · 영상 1초 간격 프레임을 나란히 놓은 확인 그림
 
 종료 코드: 0 성공(드라이런 포함), 3 어댑터 실패(`PortFailure`), 2 입력·설정 오류.
 """
@@ -76,7 +76,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="②·④ 시드(0 이상 정수). random이면 보내지 않는다",
     )
     parser.add_argument(
-        "--duration", type=int, choices=[4, 6, 8], default=8, help="회전 영상 길이(초)"
+        "--duration", type=int, choices=[4, 6, 8], default=4, help="회전 영상 길이(초)"
     )
     parser.add_argument(
         "--turn-model",

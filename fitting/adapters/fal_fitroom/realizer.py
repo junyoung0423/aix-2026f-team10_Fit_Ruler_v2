@@ -6,7 +6,7 @@
    체형·자세·구도·옷 핏은 렌더 그대로 두라고 지시하고, 검증 어댑터가 이 사진을 렌더와 겹쳐 핏을 본다
 2. `pose`(`pose_step`, 기본 켬): 1의 사진에서 팔을 내린 정면 사진 `{job}_realize_pose.png`
    (Nano Banana Pro 편집). 1의 사진은 렌더의 A자세라 팔이 벌어져 있다
-3. `turn`: 시작·끝을 2의 사진(끄면 1의 사진)으로 둔 8초 회전 영상 `{job}_video.mp4`
+3. `turn`: 시작·끝을 2의 사진(끄면 1의 사진)으로 둔 4초 1/4 바퀴 왕복 영상 `{job}_video.mp4`
    (Veo 3.1 Fast first-last-frame, `turn_model="standard"`이면 Veo 3.1 표준판)
 
 예전에 있던 "핏 옮기기"(렌더 클립 + 사진 → LTX render-to-real의 마지막 프레임)는 뺐다. 사진 문장에
@@ -71,7 +71,7 @@ from .steps import (
     write_png,
 )
 
-REALIZE_VERSION = "realize_fitroom_v2"  # v1은 핏 옮기기(LTX)가 있던 흐름
+REALIZE_VERSION = "realize_fitroom_v3"  # v2는 8초 한 바퀴, v1은 핏 옮기기(LTX)가 있던 흐름
 RECORD_DIR = "realize"
 SUMMARY_NAME = "realize.json"
 # 단계 순서. `pose`는 `FitRoomOptions.pose_step`(기본 켬)으로 끌 수 있다
@@ -103,7 +103,7 @@ Downloader = Callable[[str, Path], None]
 @dataclass
 class FitRoomOptions:
     seed: int | None = 42  # 회전 영상에 보내는 시드(사진 편집은 fal이 고른다)
-    max_cost_usd: float = 3.0  # 예상 비용 합 상한(기본 흐름 $1.10)
+    max_cost_usd: float = 3.0  # 예상 비용 합 상한(기본 흐름 $0.70)
     poll_interval_s: float = 2.0
     wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
     garment_text: str | None = None  # 프롬프트 옷 설명(시험용)
@@ -111,7 +111,7 @@ class FitRoomOptions:
     photo_resolution: str = "2K"
     # 팔 내리기 사진. 끄면 1의 사진(팔을 벌린 A자세)을 회전 영상의 시작·끝으로 바로 쓴다
     pose_step: bool = True
-    turn_duration_s: int = 8
+    turn_duration_s: int = 4  # 1/4 바퀴 왕복(8초는 한 바퀴 문장 때의 값)
     turn_resolution: str = "720p"
     turn_model: str = "fast"  # "fast": Veo 3.1 Fast(초당 $0.10) · "standard": 표준판($0.20)
 

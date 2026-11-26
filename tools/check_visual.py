@@ -187,7 +187,8 @@ def _fitroom(
     video = result.video
     print(
         f"  영상: 첫·끝 차이 {video.end_frame_gap} · 옷 밝기 범위 {video.lightness_range} · "
-        f"옷 못 찾은 시점 {video.garment_missing} · 검은 화면 {video.black}"
+        f"옷 못 찾은 시점 {video.garment_missing} · 검은 화면 {video.black} · "
+        f"화면 튐 {video.jump_ratio}배({video.jump_at_s}초)"
     )
     print(f"지표: {json.dumps(result.metrics(), ensure_ascii=False)}")
     print(f"결과 폴더: {out}")

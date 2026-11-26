@@ -44,8 +44,8 @@ def test_dry_run_plans_photo_pose_and_turn_without_calling_fal(tmp_path, media, 
     plan = json.loads((out / "plan.json").read_text(encoding="utf-8"))
     assert list(plan["endpoints"]) == ["photo", "pose", "turn"]  # 팔 내린 자세 사진이 기본
     assert plan["turn_model"] == "fast"
-    assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)  # 8초 x $0.10 (Veo 3.1 Fast)
-    assert plan["estimate_usd"]["total"] == pytest.approx(1.10)
+    assert plan["estimate_usd"]["turn"] == pytest.approx(0.4)  # 4초 x $0.10 (Veo 3.1 Fast)
+    assert plan["estimate_usd"]["total"] == pytest.approx(0.70)
     assert plan["prompts"]["pants"] == "light beige chino trousers"
     assert (out / "artifacts" / "f1_render_clip.mp4").is_file()
     assert not (out / "work").exists()  # fal을 부르지 않아 기록도 없다
@@ -56,9 +56,9 @@ def test_dry_run_plans_photo_pose_and_turn_without_calling_fal(tmp_path, media, 
 def test_duration_and_seed_go_into_the_plan(tmp_path, media):
     out = str(tmp_path / "out")
     args = ["--input", str(media["render"]), "--name", "f2", "--out-dir", out]
-    assert tool.main([*args, "--duration", "4", "--seed", "random"]) == tool.EXIT_OK
+    assert tool.main([*args, "--duration", "8", "--seed", "random"]) == tool.EXIT_OK
     plan = json.loads((tmp_path / "out" / "f2" / "plan.json").read_text(encoding="utf-8"))
-    assert plan["estimate_usd"]["turn"] == pytest.approx(0.4)
+    assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)  # 기본 4초 대신 8초
     with pytest.raises(SystemExit):
         tool.main([*args, "--duration", "5"])
     with pytest.raises(SystemExit):
@@ -71,7 +71,7 @@ def test_turn_model_option_selects_the_standard_veo(tmp_path, media, capsys):
     assert tool.main([*args, "--turn-model", "standard"]) == tool.EXIT_OK
     plan = json.loads((tmp_path / "out" / "f6" / "plan.json").read_text(encoding="utf-8"))
     assert plan["endpoints"]["turn"] == "fal-ai/veo3.1/first-last-frame-to-video"
-    assert plan["estimate_usd"]["turn"] == pytest.approx(1.6)
+    assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)  # 4초 x $0.20
     with pytest.raises(SystemExit):
         tool.main([*args, "--turn-model", "ultra"])
 
@@ -83,7 +83,7 @@ def test_no_pose_step_option_skips_the_arm_photo(tmp_path, media, capsys):
     plan = json.loads((tmp_path / "out" / "f7" / "plan.json").read_text(encoding="utf-8"))
     assert plan["steps"] == ["photo", "turn"]
     assert "pose" not in plan["estimate_usd"]
-    assert plan["estimate_usd"]["total"] == pytest.approx(0.95)
+    assert plan["estimate_usd"]["total"] == pytest.approx(0.55)
     assert "2단계" in capsys.readouterr().out
 
 

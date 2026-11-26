@@ -158,9 +158,9 @@ def test_default_photo_pose_turn_saves_every_output(tmp_path, media):
     assert m["realize_fit_frame_artifact_id"] == f"{JOB}_{FIT_FRAME_ROLE}"
     assert m["realize_pose_artifact_id"] == f"{JOB}_realize_pose"
     assert "realize_photo_artifact_id" not in m and "transfer_s" not in m
-    assert m["cost_usd"] == pytest.approx(0.15 + 0.15 + 0.80)  # 사진 2장 + 회전 8초
-    assert m["estimated_cost_usd"] == pytest.approx(1.10)
-    assert result.tool_versions["realize"] == REALIZE_VERSION == "realize_fitroom_v2"
+    assert m["cost_usd"] == pytest.approx(0.15 + 0.15 + 0.40)  # 사진 2장 + 회전 4초
+    assert m["estimated_cost_usd"] == pytest.approx(0.70)
+    assert result.tool_versions["realize"] == REALIZE_VERSION == "realize_fitroom_v3"
     assert result.tool_versions["turn_endpoint"] == TURN_ENDPOINT
     assert "transfer_endpoint" not in result.tool_versions
     assert record(tmp_path)["state"] == "done"
@@ -179,8 +179,9 @@ def test_step_arguments_follow_the_experiments(tmp_path, media):
     assert "lower both arms" in pose["prompt"]
     assert pose["image_urls"] == [f"https://fal.example/upload/{JOB}_{FIT_FRAME_ROLE}.png"]
     assert turn["first_frame_url"].endswith(f"{JOB}_realize_pose.png")  # 팔 내린 자세에서 시작
-    assert turn["duration"] == "8s" and turn["generate_audio"] is False and turn["seed"] == 42
-    assert "360-degree" in turn["prompt"] and "face" in turn["negative_prompt"]
+    assert turn["duration"] == "4s" and turn["generate_audio"] is False and turn["seed"] == 42
+    assert "a quarter turn" in turn["prompt"] and "face" in turn["negative_prompt"]
+    assert "back view" in turn["negative_prompt"]  # 1/4 바퀴에서 뒤로 넘어가지 않게
 
 
 def test_calling_again_after_success_does_not_call_fal(tmp_path, media):
@@ -272,11 +273,11 @@ def test_download_failing_twice_is_finished_on_the_next_call_without_generating(
 def test_plan_lists_steps_and_rejects_a_bad_duration(tmp_path, media):
     realizer = make(tmp_path, media, FakeFal())
     plan = realizer.plan(request(), GARMENT)
-    assert plan["version"] == "realize_fitroom_v2"
+    assert plan["version"] == "realize_fitroom_v3"
     assert plan["steps"] == ["photo", "pose", "turn"]
     assert plan["endpoints"] == ENDPOINTS
     assert set(plan["estimate_usd"]) == {"photo", "pose", "turn", "total"}
-    assert plan["estimate_usd"]["total"] == pytest.approx(1.10)
+    assert plan["estimate_usd"]["total"] == pytest.approx(0.70)
     assert plan["prompts"]["pants"] == "light beige chino trousers"
     assert "transfer_settings" not in plan
     realizer.options.turn_duration_s = 5
@@ -296,7 +297,7 @@ def test_pose_step_off_turns_straight_from_the_photo(tmp_path, media):
     m = result.metrics
     assert "realize_pose_artifact_id" not in m and "pose_s" not in m
     assert m["external_request_id"] == "req-turn-2"
-    assert m["cost_usd"] == pytest.approx(0.95)
+    assert m["cost_usd"] == pytest.approx(0.55)
     assert not realizer.outputs(JOB)["pose"].exists()
 
 
@@ -305,7 +306,7 @@ def test_default_turn_model_is_veo_fast(tmp_path, media):
     assert plan["turn_model"] == "fast"
     assert plan["endpoints"]["turn"] == TURN_ENDPOINT
     assert TURN_ENDPOINT == "fal-ai/veo3.1/fast/first-last-frame-to-video"
-    assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)  # 8초 x $0.10
+    assert plan["estimate_usd"]["turn"] == pytest.approx(0.4)  # 4초 x $0.10
 
 
 def test_standard_turn_model_uses_the_standard_veo_and_price(tmp_path, media):
@@ -313,7 +314,7 @@ def test_standard_turn_model_uses_the_standard_veo_and_price(tmp_path, media):
     realizer = make(tmp_path, media, client, turn_model="standard")
     plan = realizer.plan(request(), GARMENT)
     assert plan["endpoints"]["turn"] == TURN_MODELS["standard"][0]
-    assert plan["estimate_usd"]["turn"] == pytest.approx(1.6)  # 8초 x $0.20
+    assert plan["estimate_usd"]["turn"] == pytest.approx(0.8)  # 4초 x $0.20
     result = realizer.realize(request(), GARMENT)
     assert client.submits[-1][0] == "fal-ai/veo3.1/first-last-frame-to-video"
     assert result.tool_versions["turn_endpoint"] == "fal-ai/veo3.1/first-last-frame-to-video"
@@ -402,4 +403,4 @@ def test_media_factory_turns_on_the_fitroom_check(tmp_path):
 
     validator = make_validator(settings_for(tmp_path, key=False))
     assert validator.fitroom is not None
-    assert validator.tool_versions()["fitroom_config"] == "fitroom_check_v1@1.0.0"
+    assert validator.tool_versions()["fitroom_config"] == "fitroom_check_v1@1.1.0"
