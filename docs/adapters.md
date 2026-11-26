@@ -137,12 +137,13 @@ python -m tools.run_fitting_once --adapters drape_blender
 - 개발용 몸: D3 전에는 가짜 몸에 메시 파일이 없어서 `FIT_DRAPE_BODY_OBJ`(GarmentCode `mean_all.obj`)를 씁니다. 사용자 몸이 아니며 개발·시연용입니다. 지표 `body_source`·`body_sha256`에 남습니다. GarmentCode·SMPL 몸 파일은 저장소에 넣지 않습니다.
 - 의류: `{FIT_PREPARED_DIR}/{garment_id}/prep.json`과 `specification.json`.
 - 옷 패널 첫 위치: GarmentCode는 패턴을 만든 몸(준비 기록의 `generation_body`, 지금은 `mean_all`) 둘레에 패널을 놓습니다. 다른 몸에 그대로 입히면 어깨 높이가 달라 봉제가 닫히지 않습니다(기준 신체 1은 어깨 끝이 약 5 cm 높음). 그래서 export가 패널마다 평행 이동만 해서 입력 몸의 어깨에 맞춥니다(`garmentcode/placement.py`). 모든 패널은 어깨 끝 높이 차(좌우 중 큰 쪽) + 봉제 여유 1 cm만큼, 소매는 그쪽 어깨 끝의 옆 위치 차만큼 옮깁니다. 패널 모양·치수는 그대로이고(R06), 패턴을 만든 몸과 같은 몸이면 옮기지 않습니다. 옮긴 거리는 작업 폴더 `drape_input.json`의 `placement`에, 기준 몸은 `drape_record.json`의 `placement_reference_body`에 남습니다.
+- 팔 내리기(2026-11-26): D3가 몸 메시 옆에 `{job_id}_body_arms_path.npy`(같은 체형으로 팔만 45° → 58° 6단계)를 썼으면 `--arms-path`로 넘깁니다(개발용 몸에는 쓰지 않음). export가 명세서 좌표로 바꿔 작업 폴더에 `body_arms_path_spec.npy`로 쓰고, Blender 착장이 A자세 착장이 안정된 뒤 이 길을 따라 96프레임 동안 팔을 내리고 24프레임 자리 잡게 합니다(`drape_v1` 1.1.0 `arms_down`). 끝 상태가 같은 검사(안정·관통·늘어남·봉제)를 모두 통과하면 그 상태로, 하나라도 넘으면 A자세 상태로 `.blend`를 저장합니다. 판정·지표·옷 OBJ는 A자세 결과 그대로이고, 팔을 내렸는지는 `drape_record.json`의 `arms_down`과 `.blend` 장면 값(`fit_arms_down`, `fit_a_pose_frame`)에 남습니다. 착장 시간은 팔 내리기만큼(A자세 시뮬레이션의 약 0.9배) 늘어납니다(docs/body-fit.md 8절).
 
 **실행**: GarmentCode용 Python으로 `python -m fitting.adapters.blender.run_drape`(export → Blender 착장 → 분석)를 저장소 루트에서 돌립니다. 작업 폴더는 `FIT_WORK_DIR/{job_id}/drape/`, 기록은 `FIT_WORK_DIR/{job_id}/drape_record.json`(`internal_details_ref`)입니다. 시간 제한은 `request.timeout_seconds`와 설정 `time_limits_s.drape`(600초) 중 작은 값이고, 넘으면 Blender까지 프로세스 트리를 끝냅니다(`DRAPE_INVALID`). 착장이 끝난 뒤의 analyze(Blender 없이 지표를 다시 계산, 판정에 쓰지 않음)는 **기본으로 건너뜁니다**(`--skip-analyze`). 판정은 처음부터 Blender의 `drape_metrics.json`으로 하므로 결과는 같고, 서버 착장 단계가 analyze 시간(C3 실측 40~430초)만큼 짧아집니다. `FIT_DRAPE_ANALYZE=on`으로 켜면 analyze에 같은 길이의 한도를 따로 주고, 넘으면 analyze만 끝내고 판정은 `drape_metrics.json`으로 합니다. 이때는 의류 1벌이 최대 약 2배 한도까지 걸릴 수 있습니다.
 
 **원단 → 물성**: `config/drape/fabric_map_v0.yaml`([제안] 값)로 신축성 → 강성 배율, 섬유 → 면밀도를 정해 작업 폴더에 파생 설정(`drape_config_fabric.json`, `parent`·`changes` 기록)을 씁니다. `drape_v1.json`은 고치지 않고, 바뀌는 값이 없으면 `drape_v1`을 그대로 씁니다. 검사 기준은 바꾸지 않습니다.
 
-**출력** (`DRAPE_OUTPUTS` 순서): `{job_id}_drape_result.blend`(착장 장면), `{job_id}_drape_preview.png`(정면 확인 이미지, Workbench. 렌더 클립이 아님).
+**출력** (`DRAPE_OUTPUTS` 순서): `{job_id}_drape_result.blend`(착장 장면. 팔 내리기를 통과했으면 팔 내린 상태로 저장), `{job_id}_drape_preview.png`(정면 확인 이미지, Workbench. 렌더 클립이 아님).
 
 **지표** (`PortResult.metrics`, 숫자 또는 문자열. 불리언은 1/0, 목록은 쉼표로 이은 문자열)
 
@@ -193,6 +194,8 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 **입력**: `request.input_artifact_ids[0]`의 `artifacts_dir/{id}.blend`(착장 결과). 옷 색은 `garment.color_hex` > 색 키 `garment.color`로 찾은 `COLOR_HEX`(AI Hub 색 표) > 중립 회색(경고를 지표·기록에 남김).
 
 **실행**: Blender를 `--background --factory-startup <착장 .blend> --python fitting/adapters/blender/blender_render.py`로 하위 프로세스로 돌립니다. 작업 폴더는 `FIT_WORK_DIR/{job_id}/render/`, 기록은 `FIT_WORK_DIR/{job_id}/render_record.json`(`internal_details_ref`), 로그는 `FIT_WORK_DIR/{job_id}/render_log.txt`입니다. 시간 제한은 `request.timeout_seconds`와 설정 `time_limits_s.render`(300초) 중 작은 값이고, 넘으면 프로세스 트리를 끝냅니다. 이 PC 실측 40~62초입니다. 같은 작업을 다시 부르면 그 작업의 예전 렌더 산출물을 먼저 지웁니다.
+
+**구도**: 착장이 팔을 내렸으면(장면 값 `fit_arms_down`) 구도·조명은 A자세 프레임(`fit_a_pose_frame`)의 옷·몸으로 잡고, 그 카메라로 팔 내린 상태를 찍습니다. Blender 지표 `framing_frame`·`arms_down`에 남습니다.
 
 **출력**
 - `{job_id}_render_clip.mp4` (`RENDER_OUTPUTS`): 768 × 1024, 24 fps, 121프레임, H264, 무음. **정지 클립**(한 번 렌더한 프레임을 반복, 모든 프레임 동일).

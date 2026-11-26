@@ -83,10 +83,12 @@ class FakeRunDrape:
         timed_out=False,
         write_summary=True,
         analyze_timed_out=False,
+        arms_down=None,
     ):
         self.status, self.error_code, self.failed = status, error_code, list(failed)
         self.rc, self.timed_out, self.write_summary = rc, timed_out, write_summary
         self.analyze_timed_out = analyze_timed_out
+        self.arms_down = arms_down
         self.calls = []
 
     def __call__(self, cmd, cwd, env, timeout_s, log_path):
@@ -106,6 +108,8 @@ class FakeRunDrape:
             "blender": "5.2.3 LTS",
             "failed_checks": self.failed,
         }
+        if self.arms_down is not None:
+            metrics["arms_down"] = self.arms_down
         (out / "drape_metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
         if self.analyze_timed_out:
             (out / "drape.blend").write_bytes(b"BLEND")
@@ -213,7 +217,7 @@ def test_demo_fabric_keeps_drape_v1(env):
     result = _draper(env, runner).drape(_request(), g)
     args = dict(zip(runner.calls[0]["cmd"][3::2], runner.calls[0]["cmd"][4::2], strict=False))
     assert Path(args["--config"]) == dr.DEFAULT_DRAPE_CONFIG
-    assert result.metrics["drape_config"] == "drape_v1@1.0.0"
+    assert result.metrics["drape_config"] == "drape_v1@1.1.0"
     assert result.metrics["fabric_stiffness_multiplier"] == 1.0
 
 
@@ -229,7 +233,7 @@ def test_other_fabric_writes_a_derived_config(env):
     assert derived["weld"]["areal_density_kg_m2"] == 0.15
     base = json.loads(dr.DEFAULT_DRAPE_CONFIG.read_text(encoding="utf-8"))
     assert derived["thresholds"] == base["thresholds"]  # 검사 기준은 그대로
-    assert result.metrics["drape_config"] == "drape_v1_fabric@1.0.0+fabric_map_v0"
+    assert result.metrics["drape_config"] == "drape_v1_fabric@1.1.0+fabric_map_v0"
 
 
 def test_fabric_map_off_uses_drape_v1(env):
@@ -237,7 +241,7 @@ def test_fabric_map_off_uses_drape_v1(env):
     _prepare(env["prepared"], g)
     result = _draper(env, FakeRunDrape(), fabric_table=None).drape(_request(), g)
     assert result.metrics["fabric_map"] == "off"
-    assert result.metrics["drape_config"] == "drape_v1@1.0.0"
+    assert result.metrics["drape_config"] == "drape_v1@1.1.0"
 
 
 def test_timeout_is_the_smaller_of_request_and_config(env):
@@ -372,6 +376,51 @@ def test_without_the_pattern_body_obj_run_drape_uses_its_default(env):
     runner = FakeRunDrape()
     _draper(env, runner).drape(_request(), g)
     assert "--ref-body" not in runner.calls[0]["cmd"]
+
+
+def _arms_path(env):
+    path = env["art"] / f"{JOB}_{dr.ARMS_PATH_ROLE}.npy"
+    path.write_bytes(b"NPY")
+    return path
+
+
+def test_d3_arms_path_is_passed_to_run_drape_and_recorded(env):
+    """D3가 몸 메시 옆에 쓴 팔 내리는 길을 넘기고, 팔을 내렸는지는 기록에 남긴다(지표는 그대로)."""
+    g = _garment()
+    _prepare(env["prepared"], g)
+    arms = _arms_path(env)
+    used = {"enabled": True, "used": True, "reason": None, "end_frame": 230}
+    runner = FakeRunDrape(arms_down=used)
+    result = _draper(env, runner).drape(_request(), g)
+    cmd = runner.calls[0]["cmd"]
+    assert Path(cmd[cmd.index("--arms-path") + 1]) == arms
+    assert cmd[-1] == "--skip-analyze"
+    record = json.loads((env["work"] / JOB / "drape_record.json").read_text("utf-8"))
+    assert record["arms_path"]["path"] == str(arms)
+    assert record["arms_down"] == used
+    assert "arms_down" not in result.metrics  # 계약 지표는 A자세 결과 그대로
+
+
+def test_without_the_arms_path_run_drape_drapes_in_a_pose_only(env):
+    g = _garment()
+    _prepare(env["prepared"], g)
+    runner = FakeRunDrape()
+    _draper(env, runner).drape(_request(), g)
+    assert "--arms-path" not in runner.calls[0]["cmd"]
+    record = json.loads((env["work"] / JOB / "drape_record.json").read_text("utf-8"))
+    assert record["arms_path"] is None and record["arms_down"] is None
+
+
+def test_dev_body_does_not_use_the_arms_path(env):
+    """개발용 몸(FIT_DRAPE_BODY_OBJ)은 D3 몸이 아니라 같은 작업의 팔 내리는 길과 정점이 다르다."""
+    g = _garment()
+    _prepare(env["prepared"], g)
+    _arms_path(env)
+    dev = env["tmp"] / "dev_body.obj"
+    dev.write_text("v 0 0 0\n", encoding="utf-8")
+    runner = FakeRunDrape()
+    _draper(env, runner, dev_body_obj=dev).drape(_request(), g)
+    assert "--arms-path" not in runner.calls[0]["cmd"]
 
 
 def test_canonical_hash_matches_pattern_measure():

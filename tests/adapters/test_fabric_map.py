@@ -65,10 +65,17 @@ def test_derived_config_changes_only_material(table, tmp_path):
     base = json.loads(DRAPE_V1.read_text(encoding="utf-8"))
     props = fm.properties_for(FabricInfo(fibers=["nylon"], stretch="contain a lot"), table)
     cfg = fm.derive_config(base, "drape_v1.json", props, table)
-    assert cfg["parent"] == {"name": "drape_v1", "version": "1.0.0", "file": "drape_v1.json"}
+    assert cfg["parent"] == {"name": "drape_v1", "version": "1.1.0", "file": "drape_v1.json"}
     assert cfg["cloth"]["shear_stiffness"] == pytest.approx(9.0)
     assert cfg["weld"]["areal_density_kg_m2"] == 0.14
-    for block in ("thresholds", "time_limits_s", "schedule", "cloth_collision", "body_collision"):
+    for block in (
+        "thresholds",
+        "time_limits_s",
+        "schedule",
+        "cloth_collision",
+        "body_collision",
+        "arms_down",
+    ):
         assert cfg[block] == base[block]
     assert base["cloth"]["tension_stiffness"] == 15.0  # 원본 dict를 바꾸지 않는다
     sha = fm.write_config(cfg, tmp_path / "derived.json")

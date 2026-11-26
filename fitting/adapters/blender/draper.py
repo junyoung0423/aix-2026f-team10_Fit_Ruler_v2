@@ -15,6 +15,10 @@
    어깨에 맞추게 한다(`garmentcode/placement.py`). 작업 폴더는
    `work_dir/{job_id}/drape/`. 시간 제한은 `request.timeout_seconds`와 설정
    `time_limits_s.drape` 중 작은 값이고, 넘으면 프로세스 트리를 끝낸다.
+   D3가 몸 메시 옆에 팔 내리는 길(`{job_id}_body_arms_path.npy`)을 썼으면 `--arms-path`로 넘긴다.
+   Blender 착장이 A자세 착장 뒤 팔을 내려 보고, 검사 기준을 넘으면 A자세 상태로 저장한다
+   (설정 `arms_down`, `arms_down.py`). 판정·지표는 A자세 결과이고, 팔을 내렸는지는 기록
+   (`drape_record.json`의 `arms_down`)과 .blend 장면 값에 남는다. 개발용 몸에는 길이 없다.
    착장 뒤 analyze(Blender 없이 지표 재계산, 판정에 쓰지 않음)는 기본으로 건너뛴다
    (`--skip-analyze`). 판정은 Blender 지표로 하므로 결과는 같고, 서버 착장 단계가 analyze
    시간(C3 실측 40~430초)만큼 짧아진다. 켜려면 `analyze=True`(`FIT_DRAPE_ANALYZE=on`).
@@ -59,6 +63,8 @@ ANALYZE_ENV = "FIT_DRAPE_ANALYZE"  # "on"이면 착장 뒤 analyze까지 돌린�
 DEFAULT_DRAPE_CONFIG = REPO_ROOT / "config" / "drape" / "drape_v1.json"
 
 RUN_NAME = "drape"  # work_dir/{job_id}/drape/
+# D3(smpl/builder.py `ARMS_PATH_ROLE`)가 몸 메시 옆에 쓰는 팔 내리는 길 {job_id}_body_arms_path.npy
+ARMS_PATH_ROLE = "body_arms_path"
 RECORD_FILE = "drape_record.json"
 
 
@@ -314,6 +320,13 @@ class BlenderDraper:
             raise self._fail(ErrorCode.DRAPE_INVALID, "착장에 쓸 몸 메시가 없습니다.", ref, record)
         return path, f"artifact:{body_id}"
 
+    def _arms_path(self, request: PortRequest, body_source: str) -> Path | None:
+        """D3가 쓴 팔 내리는 길. 개발용 몸이거나 파일이 없으면 None(A자세로만 착장)."""
+        if not body_source.startswith("artifact:"):
+            return None
+        path = self.artifacts_dir / f"{request.job_id}_{ARMS_PATH_ROLE}.npy"
+        return path if path.is_file() else None
+
     # --- 포트 ---
 
     def drape(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
@@ -387,6 +400,12 @@ class BlenderDraper:
         if ref_body is not None:
             cmd += ["--ref-body", str(ref_body)]
         record["placement_reference_body"] = None if ref_body is None else str(ref_body)
+        arms = self._arms_path(request, body_source)
+        if arms is not None:
+            cmd += ["--arms-path", str(arms)]
+        record["arms_path"] = (
+            None if arms is None else {"path": str(arms), "sha256": _sha256_file(arms)}
+        )
         if not self.analyze:
             cmd.append("--skip-analyze")
         env = dict(os.environ, PYTHONIOENCODING="utf-8")
@@ -471,6 +490,8 @@ class BlenderDraper:
             "fabric_map": _num(fabric.get("map_version", "off")),
             "fabric_warnings": _num(fabric.get("warnings", [])),
         }
+        # 팔을 내렸는지(렌더가 쓰는 상태). 판정·지표는 A자세 결과다
+        record["arms_down"] = metrics_raw.get("arms_down")
         record.update(status="SUCCEEDED", output_artifact_ids=ids, metrics=metrics)
         ref.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
         versions = summary.get("versions") or {}

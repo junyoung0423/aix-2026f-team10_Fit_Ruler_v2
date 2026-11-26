@@ -169,3 +169,11 @@ def test_nothing_fits_or_no_garment_is_an_error():
         _solve(garment, body, distance_search_m=(0.5, 0.6))
     with pytest.raises(ValueError):
         _solve(np.empty((0, 3)), body)
+
+
+def test_framing_uses_the_a_pose_frame_only_when_the_drape_lowered_the_arms():
+    assert rf.framing_frame(True, 110, 230) == 110  # 팔 내린 상태(230)를 A자세 구도로 찍는다
+    assert rf.framing_frame(False, 110, 110) == 110
+    assert rf.framing_frame(False, 110, 230) == 230  # 팔을 안 내렸으면 지금 프레임
+    assert rf.framing_frame(None, None, 95) == 95  # 예전 .blend(장면 값 없음)
+    assert rf.framing_frame(1, 110.0, 230) == 110  # Blender 장면 값은 정수·실수로 올 수 있다

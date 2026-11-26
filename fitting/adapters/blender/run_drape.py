@@ -14,6 +14,8 @@
 Blender 실행 파일은 --blender, 없으면 환경변수 BLENDER_EXE, 그것도 없으면 Blender 5.2 기본 설치 경로.
 --ref-body는 패턴을 만든 몸이다(없으면 <gc-root>/assets/bodies/mean_all.obj, config/pattern의
 body_yaml과 같은 몸). export가 옷 패널 첫 위치를 --body의 어깨에 맞추는 기준으로 쓴다.
+--arms-path는 D3 팔 내리는 길이다. export가 명세서 좌표로 바꿔 쓰면 Blender 착장에 넘겨, A자세 착장이
+끝난 뒤 그 길을 따라 팔을 내린다(설정 arms_down 블록. 기준을 넘으면 A자세 결과를 쓴다).
 """
 import argparse
 import json
@@ -23,6 +25,7 @@ import sys
 import time
 from pathlib import Path
 
+from fitting.adapters.blender.arms_down import ARMS_PATH_SPEC_FILE
 from fitting.adapters.blender.drape_config import load_config, sha256_file
 
 HERE = Path(__file__).resolve().parent
@@ -80,6 +83,7 @@ def main():
     ap.add_argument('--blender', default=str(DEFAULT_BLENDER))
     ap.add_argument('--ref-body', help='패턴을 만든 몸 OBJ(옷 패널 첫 위치의 기준). '
                                        '없으면 <gc-root>/assets/bodies/mean_all.obj')
+    ap.add_argument('--arms-path', help='D3 팔 내리는 길 npy(몸 OBJ와 같은 좌표). 없으면 A자세만')
     ap.add_argument('--skip-analyze', action='store_true',
                     help='착장 뒤 analyze(판정에 쓰지 않는 지표 재계산·패널 요약)를 건너뛴다')
     args = ap.parse_args()
@@ -88,6 +92,7 @@ def main():
     gc_root, blender = Path(args.gc_root).resolve(), Path(args.blender)
     ref_body = (Path(args.ref_body) if args.ref_body
                 else gc_root / 'assets' / 'bodies' / 'mean_all.obj').resolve()
+    arms_path = Path(args.arms_path).resolve() if args.arms_path else None
     out_root = resolve_out_root(args.out_root)
     if out_root is None:
         sys.exit(f'output root not set: pass --out-root or set {RUNS_DIR_ENV} '
@@ -105,7 +110,10 @@ def main():
         'inputs': {'spec': str(spec), 'spec_sha256': sha256_file(spec),
                    'body': str(body), 'body_sha256': sha256_file(body),
                    'ref_body': str(ref_body),
-                   'ref_body_sha256': sha256_file(ref_body) if ref_body.is_file() else None},
+                   'ref_body_sha256': sha256_file(ref_body) if ref_body.is_file() else None,
+                   'arms_path': None if arms_path is None else str(arms_path),
+                   'arms_path_sha256': (sha256_file(arms_path)
+                                        if arms_path is not None and arms_path.is_file() else None)},
         'versions': {'repo_commit': git_head(HERE), 'garmentcode_commit': git_head(gc_root),
                      'python': sys.version.split()[0], 'blender_exe': str(blender)},
         'max_frames_override': args.max_frames,
@@ -127,8 +135,11 @@ def main():
 
     # 1) export (GarmentCode는 system.json 상대경로 때문에 cwd·PYTHONPATH를 GarmentCode 루트로.
     #    export_panels는 패키지 모듈이라 저장소 루트도 PYTHONPATH 뒤에 붙인다)
-    rec = run_step('export', [sys.executable, '-m', 'fitting.adapters.garmentcode.export_panels',
-                              spec, body, out, '--config', cfg_path, '--ref-body', ref_body],
+    export_cmd = [sys.executable, '-m', 'fitting.adapters.garmentcode.export_panels',
+                  spec, body, out, '--config', cfg_path, '--ref-body', ref_body]
+    if arms_path is not None:
+        export_cmd += ['--arms-path', arms_path]
+    rec = run_step('export', export_cmd,
                    out / 'export_log.txt', cwd=str(gc_root),
                    extra_env={'PYTHONPATH': os.pathsep.join([str(gc_root), str(REPO_ROOT)])})
     summary['steps'].append(rec)
@@ -141,6 +152,9 @@ def main():
            out / 'drape_input.json', out, cfg_path]
     if args.max_frames is not None:
         cmd.append(args.max_frames)
+    arms_spec = out / ARMS_PATH_SPEC_FILE
+    if arms_spec.is_file():
+        cmd += ['--arms-path', arms_spec]
     rec = run_step('drape', cmd, out / 'blender_log.txt', timeout=cfg['time_limits_s']['drape'])
     summary['steps'].append(rec)
     if rec['timed_out']:

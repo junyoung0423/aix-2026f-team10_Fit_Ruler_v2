@@ -5,14 +5,20 @@ export_panels.py가 만든 drape_input.json과 설정 파일(config/drape/drape_
   2) 몸에 충돌, 옷에 천(봉제 스프링, 자기 충돌)을 설정한 뒤
   3) 처음 sew_frames 동안은 중력 없이 봉제하고, 이후 중력을 켜 안정화한다.
   4) metrics.py로 안정·침투·신장·NaN을 검사하고 (기준값은 설정 thresholds 블록)
-  5) .blend, 옷 OBJ, 착장 좌표(.npy), 정면 확인 PNG, 지표 JSON을 저장한다.
+  5) 옷 OBJ와 착장 좌표(.npy)를 A자세 상태로 저장한다(판정·산출물은 A자세 기준).
+  6) --arms-path(D3 팔 내리는 길, 명세서 좌표)가 있고 설정 arms_down이 켜져 있으면 몸을 그 길을
+     따라 바꾸며 천 시뮬레이션을 잇는다. 끝 상태가 같은 검사를 통과하면 그 상태로, 넘으면 A자세
+     상태로 .blend·정면 확인 PNG를 저장하고 장면에 표시를 남긴다(arms_down.py). 몸을 바꾼 뒤의 천
+     캐시는 '오래됨'이 되므로 메모리 캐시를 그대로 구워(bake_from_cache) 프레임을 옮겨도 남게 한다.
+  7) 지표 JSON을 저장한다.
 
 시뮬레이션·재질·충돌 값은 모두 설정 파일에서 읽는다. 이 파일에 수치 상수를 두지 않는다.
 
 사용:
     blender --background --python fitting/adapters/blender/blender_drape.py -- \
-        <drape_input.json> <out_dir> <config.json> [max_frames]
+        <drape_input.json> <out_dir> <config.json> [max_frames] [--arms-path <npy>]
 """
+import argparse
 import json
 import math
 import sys
@@ -30,15 +36,21 @@ from mathutils.bvhtree import BVHTree
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-from fitting.adapters.blender import metrics, weld  # noqa: E402
+from fitting.adapters.blender import arms_down, metrics, weld  # noqa: E402
 from fitting.adapters.blender.drape_config import load_config, sha256_file  # noqa: E402
 
 
 def parse_args():
-    argv = sys.argv[sys.argv.index('--') + 1:]
-    in_path, out_dir, cfg_path = Path(argv[0]).resolve(), Path(argv[1]).resolve(), Path(argv[2]).resolve()
-    max_frames = int(argv[3]) if len(argv) > 3 else None
-    return in_path, out_dir, cfg_path, max_frames
+    ap = argparse.ArgumentParser(prog='blender_drape.py')
+    ap.add_argument('drape_input')
+    ap.add_argument('out_dir')
+    ap.add_argument('config')
+    ap.add_argument('max_frames', nargs='?', type=int)
+    ap.add_argument('--arms-path', help='팔 내리는 길 (K, N, 3) npy, 명세서 좌표')
+    a = ap.parse_args(sys.argv[sys.argv.index('--') + 1:])
+    arms = Path(a.arms_path).resolve() if a.arms_path else None
+    return (Path(a.drape_input).resolve(), Path(a.out_dir).resolve(), Path(a.config).resolve(),
+            a.max_frames, arms)
 
 
 def reset_scene():
@@ -228,6 +240,7 @@ def simulate(garment, cfg, max_frames, g):
             if metrics.stable_median(disp_hist, window) <= th['stable_median_m_per_frame']:
                 break
     weld_rec['_co_ref'], weld_rec['_ref_frame'] = co_ref, ref_frame
+    weld_rec['_vmap'] = vmap
     return prev, disp_hist, last, time.time() - t0, diag, garment, weld_rec
 
 
@@ -244,6 +257,99 @@ def signed_distances(bvh, points):
             continue
         out[i] = float(np.dot(p - np.asarray(loc), np.asarray(normal)))
     return out
+
+
+def lower_arms(body_obj, garment, path, body, g, cfg, arms_cfg, start, vmap, preweld):
+    """start(A자세 착장이 안정된 프레임)부터 몸을 팔 내리는 길을 따라 바꾸며 천 시뮬레이션을 잇는다.
+
+    몸에 절대 shape key(길의 자세마다 하나)를 넣고 eval_time을 move_frames 동안 처음 → 끝으로 바꾼 뒤
+    settle_frames 더 돌린다. 끝 상태를 A자세와 같은 검사(metrics.evaluate, 몸은 마지막 자세)로 잰다.
+    반환: (끝 좌표(원래 정점 번호), 검사 결과, 기록).
+    """
+    move, settle = arms_cfg['move_frames'], arms_cfg['settle_frames']
+    end = start + move + settle
+    body_obj.shape_key_add(name='Basis', from_mix=False)
+    for i, verts in enumerate(path):
+        key = body_obj.shape_key_add(name=f'arms_{i + 1}', from_mix=False)
+        key.data.foreach_set('co', np.asarray(verts, dtype=np.float32).ravel())
+    keys = body_obj.data.shape_keys
+    keys.use_relative = False  # 절대 shape key: eval_time이 Basis -> arms_1 -> ... 차례로 바꾼다
+    end_time = max(k.frame for k in keys.key_blocks)
+    keys.eval_time = 0.0
+    keys.keyframe_insert('eval_time', frame=start)
+    keys.eval_time = end_time
+    keys.keyframe_insert('eval_time', frame=start + move)
+    rest = np.asarray(g['vertices'])
+    tris, _ = metrics.triangles(g['faces'])
+    scene = bpy.context.scene
+    disp, prev = [], None
+    t0 = time.time()
+    for f in range(start + 1, end + 1):
+        scene.frame_set(f)
+        co = evaluated_coords(garment)
+        if vmap is not None:
+            co = co[vmap]
+        if prev is not None and f > start + move:  # 자리 잡는 동안의 움직임으로 안정을 본다
+            disp.append(metrics.frame_displacement_median(prev, co))
+        prev = co
+        if f % 10 == 0:
+            print(f'arms frame {f}: {time.time() - t0:.1f} s', flush=True)
+    final_body = {'vertices': np.asarray(path[-1], dtype=float).tolist(), 'faces': body['faces']}
+    sd = signed_distances(body_bvh(final_body), metrics.face_centers(prev, tris))
+    res = metrics.evaluate(rest, g['faces'], prev, g['stitch_pairs'], disp, sd,
+                           body['is_watertight'], cfg['thresholds'], preweld_gaps=preweld)
+    info = {'steps': int(len(path)), 'move_frames': move, 'settle_frames': settle,
+            'end_frame': end, 'seconds': round(time.time() - t0, 1)}
+    return prev, res, info
+
+
+def arms_down_phase(body_obj, garment, body, g, cfg, arms_path, start, max_frames, vmap, preweld,
+                    a_pose_ok, out_dir):
+    """팔 내리기를 할 수 있으면 하고, 장면을 저장할 상태의 프레임에 둔 뒤 기록을 돌려준다.
+
+    장면 값 fit_arms_down·fit_a_pose_frame을 늘 남긴다(렌더가 구도를 잡을 프레임을 고른다).
+    """
+    arms_cfg = arms_down.settings(cfg)
+    rec = {'enabled': arms_cfg is not None, 'path': None if arms_path is None else str(arms_path),
+           'used': False, 'reason': None, 'a_pose_frame': start}
+    if arms_cfg is None:
+        rec['reason'] = 'disabled'
+    elif arms_path is None:
+        rec['reason'] = 'no_arms_path'
+    elif not a_pose_ok:
+        rec['reason'] = 'a_pose_drape_failed'
+    else:
+        end, rec['reason'] = arms_down.plan_end_frame(start, arms_cfg['move_frames'],
+                                                      arms_cfg['settle_frames'], max_frames)
+        path = np.load(arms_path) if end is not None else None
+        if path is not None and (path.ndim != 3 or path.shape[1:] != (len(body['vertices']), 3)):
+            end, rec['reason'] = None, f'path shape {list(path.shape)} does not match body'
+        if end is not None:
+            co, res, info = lower_arms(body_obj, garment, path, body, g, cfg, arms_cfg, start, vmap,
+                                       preweld)
+            rec.update(info)
+            rec['checks'] = {k: res.get(k) for k in (
+                'stable_ok', 'stable_last10_median_mm', 'penetration_ok', 'penetration_area_ratio',
+                'stretch_ok', 'stretch_max', 'stretch_p99', 'seam_closed_ok', 'nan')}
+            rec['used'], rec['reason'] = arms_down.decide(res)
+            if rec['used']:
+                np.save(out_dir / 'garment_arms_down_co.npy', co)
+    scene = bpy.context.scene
+    frame = rec['end_frame'] if rec['used'] else start
+    scene.frame_set(frame)
+    if 'end_frame' in rec:
+        # 몸 모양을 바꾼 뒤의 천 캐시는 '오래됨'이라, 다시 연 장면에서 프레임을 옮기면(렌더가 A자세
+        # 프레임에서 구도를 잡을 때) 팔 내린 프레임을 잃고 A자세 옷이 나왔다. 메모리 캐시를 그대로 굽는다
+        cloth = next(m for m in garment.modifiers if m.type == 'CLOTH')
+        with bpy.context.temp_override(point_cache=cloth.point_cache, object=garment,
+                                       active_object=garment):
+            bpy.ops.ptcache.bake_from_cache()
+        rec['cache_baked'] = bool(cloth.point_cache.is_baked)
+    scene[arms_down.SCENE_ARMS_DOWN] = bool(rec['used'])
+    scene[arms_down.SCENE_A_POSE_FRAME] = int(start)
+    rec['saved_frame'] = frame
+    print(f"arms down: used={rec['used']} reason={rec['reason']}", flush=True)
+    return rec
 
 
 def setup_preview(cfg, out_png):
@@ -268,7 +374,7 @@ def setup_preview(cfg, out_png):
 
 
 def main():
-    in_path, out_dir, cfg_path, max_frames_arg = parse_args()
+    in_path, out_dir, cfg_path, max_frames_arg, arms_path = parse_args()
     out_dir.mkdir(parents=True, exist_ok=True)
     cfg, cfg_rec = load_config(cfg_path)
     th = cfg['thresholds']
@@ -279,7 +385,7 @@ def main():
     g, body = data['garment'], data['body']
 
     reset_scene()
-    setup_body(body, cfg)
+    body_obj = setup_body(body, cfg)
     garment = setup_garment(g, cfg, max_frames)
 
     # 초기 배치 침투(기록만). 오류 처리 기준은 아직 없다 -> C1 리뷰 '팀 합의 필요'.
@@ -294,6 +400,7 @@ def main():
     sd = signed_distances(bvh, metrics.face_centers(co, tris))
     preweld = weld_rec.pop('preweld_gaps_m', None)
     co_ref, ref_frame = weld_rec.pop('_co_ref'), weld_rec.pop('_ref_frame')
+    vmap = weld_rec.pop('_vmap')
     result = metrics.evaluate(rest, g['faces'], co, g['stitch_pairs'], disp_hist, sd,
                               body['is_watertight'], th, preweld_gaps=preweld)
     if weld_rec['enabled']:
@@ -333,8 +440,6 @@ def main():
         'drape_input_sha256': sha256_file(in_path),
         'body_is_watertight': body['is_watertight'],
     })
-    print(json.dumps(result, indent=2), flush=True)
-
     np.save(out_dir / 'garment_draped_co.npy', co)
     if co_ref is not None:
         np.save(out_dir / 'garment_ref_co.npy', co_ref)
@@ -343,15 +448,20 @@ def main():
          'stretch_max_per_frame': diag['stretch_max'], 'seam_gap_max_m_per_frame': diag['seam_gap_max_m'],
          'preweld_gaps_m': preweld}))
 
-    setup_preview(cfg, out_dir / 'front.png')
-    bpy.ops.render.render(write_still=True)
-
-    bpy.ops.wm.save_as_mainfile(filepath=str(out_dir / 'drape.blend'))
+    # 옷 OBJ는 A자세 상태(몸 메시 산출물과 같은 자세)로 낸다
     bpy.ops.object.select_all(action='DESELECT')
     garment.select_set(True)
     bpy.context.view_layer.objects.active = garment
     bpy.ops.wm.obj_export(filepath=str(out_dir / 'garment_draped.obj'), export_selected_objects=True,
                           apply_modifiers=True, forward_axis='Y', up_axis='Z', export_materials=False)
+
+    result['arms_down'] = arms_down_phase(body_obj, garment, body, g, cfg, arms_path, last_frame,
+                                          max_frames, vmap, preweld, result['drape_ok'], out_dir)
+    print(json.dumps(result, indent=2), flush=True)
+
+    setup_preview(cfg, out_dir / 'front.png')
+    bpy.ops.render.render(write_still=True)
+    bpy.ops.wm.save_as_mainfile(filepath=str(out_dir / 'drape.blend'))
     (out_dir / 'drape_metrics.json').write_text(json.dumps(result, indent=2))
 
 
