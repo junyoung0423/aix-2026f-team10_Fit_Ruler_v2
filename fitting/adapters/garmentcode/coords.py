@@ -27,6 +27,19 @@ def to_spec(v, scale):
     return (np.asarray(v, dtype=float) * scale) @ GC_TO_SPEC.T
 
 
+def arms_path_to_spec(path, n_body_vertices):
+    """D3 팔 내리는 길 (K, N, 3)(몸 OBJ와 같은 좌표, m)을 명세서 좌표로 바꾼다.
+
+    정점 수가 몸과 다르거나 값이 유한하지 않으면 ValueError.
+    """
+    p = np.asarray(path, dtype=float)
+    if p.ndim != 3 or p.shape[0] < 1 or p.shape[1:] != (n_body_vertices, 3):
+        raise ValueError(f'arms path shape {p.shape} does not match body ({n_body_vertices}, 3)')
+    if not np.isfinite(p).all():
+        raise ValueError('arms path has non-finite values')
+    return to_spec(p.reshape(-1, 3), BODY_SCALE).reshape(p.shape)
+
+
 def transform_record():
     """manifest에 남길 변환 기록."""
     return {

@@ -1,8 +1,8 @@
 {
   "name": "drape_v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "status": "draft",
-  "description": "C2 통과 설정(E08과 값 동일). drape_v0 대비: cloth.quality 6->12, self_distance_min 0.003->0.0015, 2단계 용접(80프레임, 용접 전 최대 10 mm 이하, 휴지 형상 = 패턴 길이 이완), 용접 뒤 질량 = 면밀도 0.18 kg/m2 [C 제안]. 봉제선 닫힘 [C 제안] 기준 추가. 초안: 사람 검수 전",
+  "description": "C2 통과 설정(E08과 값 동일). drape_v0 대비: cloth.quality 6->12, self_distance_min 0.003->0.0015, 2단계 용접(80프레임, 용접 전 최대 10 mm 이하, 휴지 형상 = 패턴 길이 이완), 용접 뒤 질량 = 면밀도 0.18 kg/m2 [C 제안]. 봉제선 닫힘 [C 제안] 기준 추가. 초안: 사람 검수 전 1.1.0: arms_down 블록 추가(A자세 착장이 안정된 뒤 D3 팔 내리는 길을 따라 팔을 수직 32°까지 내림, 기준을 넘으면 A자세 상태로 저장). 기존 값은 그대로",
   "thresholds": {
     "_note": "명세서 6장 초기 검증값. 검증된 성능이 아니며 완화하지 않는다.",
     "max_frames": 300,
@@ -101,5 +101,11 @@
     "relax_step": 1.0,
     "areal_density_kg_m2": 0.18,
     "_note": "용접 전 최대 벌어짐이 seam_gap_preweld_max_m를 넘으면 용접하지 않고 DRAPE_INVALID. 휴지 형상은 원래 패턴 변 길이에 맞춘 3D 이완 형상(rest_shape_key). 지표는 원래 정점으로 되돌려 패턴 길이 대비로 계산."
+  },
+  "arms_down": {
+    "_basis": "[제안] A자세 착장(안정 판정까지) 뒤 몸을 D3 팔 내리는 길(측정 자세 45° → 58°, 수직에서 32°, 6단계)로 move_frames 동안 바꾸고 settle_frames 더 돌린다. 끝 상태는 thresholds와 같은 검사(stable·penetration·stretch·seam)로 보고, 하나라도 넘으면 A자세 상태로 저장한다(drape_ok·산출물 OBJ는 늘 A자세 결과). 2026-11-25 기준 신체 1 시험: 48프레임에 내리면 늘어남 최대 2.05, 96프레임이면 1.82(상위 1 % 1.22), 관통 없음, 추가 시간 약 50초. 25°는 겨드랑이에서 천이 끼었다(3.6 cm 관통). settle_frames 24는 안정 판정 창(10프레임)보다 길게 둔 값. 근거 docs/body-fit.md 8절",
+    "enabled": true,
+    "move_frames": 96,
+    "settle_frames": 24
   }
 }

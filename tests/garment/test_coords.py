@@ -6,6 +6,7 @@ from fitting.adapters.garmentcode.coords import (  # noqa: E402
     BODY_SCALE,
     GARMENT_SCALE,
     GC_TO_SPEC,
+    arms_path_to_spec,
     to_spec,
     transform_record,
 )
@@ -32,6 +33,27 @@ def test_garment_cm_to_m():
     # GarmentCode 옷 점 (10 cm, 150 cm 높이, 앞 5 cm) -> (0.1, -0.05, 1.5) m
     assert GARMENT_SCALE == 0.01
     assert np.allclose(to_spec([[10, 150, 5]], GARMENT_SCALE), [[0.1, -0.05, 1.5]])
+
+
+def test_arms_path_is_turned_like_the_body_frame_by_frame():
+    path = np.array([[[0.1, 1.5, 0.05], [0.0, 0.0, 0.0]], [[0.2, 1.4, 0.0], [0.0, 1.0, 0.0]]])
+    spec = arms_path_to_spec(path, 2)
+    assert spec.shape == (2, 2, 3)
+    assert np.allclose(spec[0, 0], [0.1, -0.05, 1.5])
+    assert np.allclose(spec[1], to_spec(path[1], BODY_SCALE))
+
+
+@pytest.mark.parametrize("shape", [(2, 3, 3), (2, 2), (0, 2, 3), (2, 2, 4)])
+def test_arms_path_must_match_the_body_vertices(shape):
+    with pytest.raises(ValueError, match="does not match"):
+        arms_path_to_spec(np.zeros(shape), 2)
+
+
+def test_arms_path_must_be_finite():
+    path = np.zeros((1, 2, 3))
+    path[0, 1, 2] = np.inf
+    with pytest.raises(ValueError, match="non-finite"):
+        arms_path_to_spec(path, 2)
 
 
 def test_body_already_m():

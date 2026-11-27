@@ -416,6 +416,15 @@ def main():
         sys.exit(EXIT_OBJECTS)
 
     frame = scene.frame_current
+    # 착장이 팔을 내렸으면 구도·조명은 A자세 프레임의 옷·몸으로 잡고, 찍는 것은 지금 프레임이다.
+    # 착장이 천 캐시를 구워 두므로(blender_drape.arms_down_phase) 프레임을 옮겨도 모양이 남는다
+    arms_down = bool(scene.get("fit_arms_down", False))
+    framing_at = rf.framing_frame(arms_down, scene.get("fit_a_pose_frame"), frame)
+    frame_g = frame_b = None
+    if framing_at != frame:
+        scene.frame_set(framing_at)
+        frame_g, frame_b = world_co(garment), world_co(body)
+        scene.frame_set(frame)
     garment_obj, moved_mm = freeze_garment(garment)
     for obj in scene.objects:
         if obj not in (body, garment_obj) and obj.type in (
@@ -429,11 +438,13 @@ def main():
             obj.hide_render = True
     g_co = world_co(garment_obj)
     b_co = world_co(body)
+    if frame_g is None:
+        frame_g, frame_b = g_co, b_co
 
     c, fcfg = cfg["clip"], cfg["framing"]
     fr = rf.solve_framing(
-        g_co,
-        b_co,
+        frame_g,
+        frame_b,
         width=c["width"],
         height=c["height"],
         lens_mm=cfg["camera"]["lens_mm"],
@@ -464,9 +475,9 @@ def main():
             poly.use_smooth = True
 
     center = (
-        (g_co[:, 0].min() + g_co[:, 0].max()) / 2,
-        (g_co[:, 1].min() + g_co[:, 1].max()) / 2,
-        (g_co[:, 2].min() + g_co[:, 2].max()) / 2,
+        (frame_g[:, 0].min() + frame_g[:, 0].max()) / 2,
+        (frame_g[:, 1].min() + frame_g[:, 1].max()) / 2,
+        (frame_g[:, 2].min() + frame_g[:, 2].max()) / 2,
     )
     background_hex = job.get("background_srgb_hex") or cfg["world"]["background_srgb_hex"]
     setup_world(cfg, background_hex)
@@ -553,6 +564,8 @@ def main():
             "garment_delta_e00": de,
             "garment_object": garment.name,
             "drape_frame": frame,
+            "framing_frame": framing_at,
+            "arms_down": arms_down,
             "garment_moved_from_rest_median_mm": None if moved_mm is None else round(moved_mm, 2),
             "still_pixel_sha256": hashlib.sha256(rgb8.tobytes()).hexdigest(),
             "still_file_sha256": sha256_file(still),

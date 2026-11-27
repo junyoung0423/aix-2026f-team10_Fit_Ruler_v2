@@ -15,6 +15,8 @@ th = tv × 너비/높이. Blender 시프트는 센서 맞춤 방향(세로) 크�
   머리 정점 = 몸 정점 중 z가 옷 맨 위 + head_min_above_collar보다 높은 것. 위 경계를 화면 맨
   위에 맞춘다(가로가 더 좁게 맞으면 아래로 더 보인다).
 - 거리: 위 조건을 만족하는 가장 가까운 거리(이분 탐색).
+- 구도를 잡는 프레임: 착장이 팔을 내렸으면(장면 값 `fit_arms_down`) A자세 착장 프레임
+  (`fit_a_pose_frame`)에서 잡고, 그 카메라로 팔 내린 상태를 찍는다(`framing_frame`).
 """
 
 from __future__ import annotations
@@ -39,6 +41,17 @@ class Framing:
         d = asdict(self)
         d["camera_location_m"] = [round(v, 6) for v in self.camera_location_m]
         return d
+
+
+def framing_frame(arms_down: object, a_pose_frame: object, current: int) -> int:
+    """구도를 잡을 프레임. 착장이 팔을 내렸으면 A자세 착장 프레임, 아니면 지금 프레임.
+
+    팔 내린 상태로 구도를 잡은 시험 렌더(q13)는 목둘레 위쪽이 화면 위에서 잘렸고, 실사 사진 모델이
+    목둘레를 보이려고 약 10 % 멀리 찍은 사진을 만들었다. A자세 렌더는 목둘레가 들어왔다.
+    """
+    if arms_down and a_pose_frame is not None and int(a_pose_frame) != current:
+        return int(a_pose_frame)
+    return current
 
 
 def head_vertices(body_co: np.ndarray, garment_top_z: float, min_above_m: float) -> np.ndarray:

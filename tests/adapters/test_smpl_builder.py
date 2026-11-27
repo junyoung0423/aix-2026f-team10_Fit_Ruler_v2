@@ -13,6 +13,7 @@ np = pytest.importorskip("numpy")  # 선택 의존성 body가 없으면 건너�
 pytest.importorskip("scipy")
 
 from fitting.adapters.smpl import BODY_FIT_RECORD, SmplBodyBuilder  # noqa: E402
+from fitting.adapters.smpl.builder import ARMS_DOWN_DEG, arms_path_angles  # noqa: E402
 from fitting.adapters.smpl.factory import make_body_builder  # noqa: E402
 from fitting.body.fit import FitSettings  # noqa: E402
 from fitting.body.measure import BodyMeasurementsCm, MeasureDebug  # noqa: E402
@@ -86,6 +87,21 @@ class FakePosedBody:
 
     def describe(self):
         return {"kind": "fake"}
+
+
+class FakeArmsBody(FakePosedBody):
+    """팔 각도를 바꿀 수 있는 가짜 몸. 팔을 내릴수록 정점이 x로 조금씩 옮겨 간다."""
+
+    def __init__(self, nan_arms: bool = False, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.nan_arms = nan_arms
+
+    def vertices_at(self, betas, scale, arm_deg):
+        vertices, _ = self.mesh(betas, scale)
+        moved = vertices + np.array([arm_deg / 1000.0, 0.0, 0.0])
+        if self.nan_arms:
+            moved[0, 0] = np.nan
+        return moved
 
 
 def body_input(**overrides) -> BodyInput:
@@ -185,6 +201,44 @@ def test_mesh_is_moved_so_the_feet_are_at_zero(tmp_path):
     assert record["betas_at_bound"] == 0
 
 
+def test_arms_path_is_written_next_to_the_mesh_in_obj_coordinates(tmp_path):
+    """착장(C4)이 따라갈 팔 내리는 길: 45°에서 58°까지 6단계, OBJ와 같은 이동(발바닥 y = 0)."""
+    builder(tmp_path, FakeArmsBody(floor=-0.9)).build_body(request(), body_input())
+
+    path = np.load(tmp_path / "artifacts" / "job_ok_body_arms_path.npy")
+    assert path.shape == (6, 4, 3) and path.dtype == np.float32
+    angles = arms_path_angles()
+    assert angles[-1] == ARMS_DOWN_DEG == 58.0 and len(angles) == 6
+    assert angles[0] == pytest.approx(45.0 + 13.0 / 6)  # 측정 자세(45°) 다음부터
+    assert path[:, :, 1].min() == pytest.approx(0.0, abs=1e-6)  # OBJ처럼 발바닥이 0
+    assert path[-1, 0, 0] == pytest.approx(0.058, abs=1e-6)
+    record = read_record(tmp_path, "job_ok")["arms_path"]
+    assert record["artifact"] == "job_ok_body_arms_path.npy"
+    assert record["shape"] == [6, 4, 3] and record["angles_deg"][-1] == 58.0
+
+
+def test_drape_adapter_looks_for_the_same_arms_path_name():
+    from fitting.adapters.blender.draper import ARMS_PATH_ROLE as DRAPER_ROLE
+    from fitting.adapters.smpl.builder import ARMS_PATH_ROLE
+
+    assert DRAPER_ROLE == ARMS_PATH_ROLE == "body_arms_path"
+
+
+def test_a_body_model_without_arm_poses_writes_no_arms_path(tmp_path):
+    builder(tmp_path).build_body(request(), body_input())
+
+    assert not (tmp_path / "artifacts" / "job_ok_body_arms_path.npy").exists()
+    assert read_record(tmp_path, "job_ok")["arms_path"] is None
+
+
+def test_a_non_finite_arms_path_is_not_written_and_the_body_still_succeeds(tmp_path):
+    result = builder(tmp_path, FakeArmsBody(nan_arms=True)).build_body(request(), body_input())
+
+    assert result.output_artifact_ids == ["job_ok_body_mesh"]
+    assert not (tmp_path / "artifacts" / "job_ok_body_arms_path.npy").exists()
+    assert read_record(tmp_path, "job_ok")["arms_path"]["skipped"] == "non_finite"
+
+
 def test_betas_are_capped_to_what_the_model_has(tmp_path):
     model = FakePosedBody(num_betas=3)
     result = builder(tmp_path, model, settings=FitSettings(num_betas=10)).build_body(
@@ -201,6 +255,8 @@ def test_out_of_tolerance_fails_without_a_mesh(tmp_path):
     stale = tmp_path / "artifacts" / "job_arm_body_mesh.obj"  # 같은 작업의 예전 성공 결과
     stale.parent.mkdir(parents=True)
     stale.write_text("v 0 0 0", encoding="utf-8")
+    stale_arms = tmp_path / "artifacts" / "job_arm_body_arms_path.npy"
+    np.save(stale_arms, np.zeros((6, 4, 3), np.float32))
     with pytest.raises(PortFailure) as caught:
         builder(tmp_path, unreachable_arm()).build_body(
             request("job_arm"), body_input(arm_length_cm=70)
@@ -215,6 +271,7 @@ def test_out_of_tolerance_fails_without_a_mesh(tmp_path):
     assert str(tmp_path) not in error.safe_message  # 화면에 내부 경로를 보이지 않는다
     assert error.internal_details_ref == "job_arm/body_fit.json"
     assert not (tmp_path / "artifacts" / "job_arm_body_mesh.obj").exists()
+    assert not stale_arms.exists()  # 예전 팔 내리는 길도 남기지 않는다
 
     record = read_record(tmp_path, "job_arm")
     assert record["passed"] is False

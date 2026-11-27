@@ -7,10 +7,12 @@ BoxMesh는 봉제선 정점을 하나로 합쳐 저장하지만, Blender의 sewi
 좌표는 coords.py(명세서 6장 규약)로 바꾼다. 의류 실측은 바꾸지 않는다(R06): 축 회전과 cm->m만 한다.
 --ref-body(패턴을 만든 몸)를 주면 패널마다 평행 이동만 해서 첫 위치를 착장할 몸의 어깨에 맞춘다
 (placement.py). 패턴을 만든 몸과 다른 몸(D3 SMPL)에서 어깨 솔기가 몸 안을 지나지 않게 하려는 것이다.
+--arms-path(D3 팔 내리는 길, 몸 OBJ와 같은 좌표)를 주면 명세서 좌표로 바꿔 body_arms_path_spec.npy로
+쓴다. 정점 수가 몸과 다르면 쓰지 않고 기록만 한다(착장은 A자세 그대로).
 
 사용 (cwd=C:\\dev\\GarmentCode, PYTHONPATH=C:\\dev\\GarmentCode;<저장소 루트>, 가상환경 garmentcode):
     python -m fitting.adapters.garmentcode.export_panels <spec.json> <body.obj> <out_dir> \
-        --config <drape_vN.json> [--ref-body <패턴을 만든 몸.obj>]
+        --config <drape_vN.json> [--ref-body <패턴을 만든 몸.obj>] [--arms-path <팔 내리는 길.npy>]
 """
 import argparse
 import json
@@ -20,10 +22,12 @@ import numpy as np
 import trimesh
 from pygarment.meshgen.boxmeshgen import BoxMesh, Edge
 
+from fitting.adapters.blender.arms_down import ARMS_PATH_SPEC_FILE
 from fitting.adapters.blender.drape_config import load_config, sha256_file
 from fitting.adapters.garmentcode.coords import (
     BODY_SCALE,
     GARMENT_SCALE,
+    arms_path_to_spec,
     to_spec,
     transform_record,
 )
@@ -85,6 +89,21 @@ def export_garment(spec_path, res):
     return box, verts, faces, panel_of_vert, panels, stitch_pairs
 
 
+def write_arms_path(arms_path, n_body_vertices, out):
+    """팔 내리는 길을 명세서 좌표로 바꿔 out/ARMS_PATH_SPEC_FILE에 쓰고 기록을 돌려준다."""
+    record = {'path': str(arms_path), 'spec_file': None}
+    try:
+        record['sha256'] = sha256_file(arms_path)
+        spec = arms_path_to_spec(np.load(arms_path), n_body_vertices)
+    except (OSError, ValueError) as error:
+        record['skipped'] = str(error)
+        print(f'arms path skipped: {error}')
+        return record
+    np.save(out / ARMS_PATH_SPEC_FILE, spec.astype(np.float32))
+    record.update(spec_file=ARMS_PATH_SPEC_FILE, steps=int(spec.shape[0]))
+    return record
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('spec')
@@ -93,6 +112,8 @@ def main():
     ap.add_argument('--config', required=True)
     ap.add_argument('--ref-body', help='패턴을 만든 몸 OBJ(GarmentCode m, Y 위). 주면 옷 패널 첫 위치를 '
                                        '착장할 몸의 어깨에 맞춘다(placement.py)')
+    ap.add_argument('--arms-path', help='D3 팔 내리는 길 (K, N, 3) npy(몸 OBJ와 같은 좌표). 주면 '
+                                        '명세서 좌표로 바꿔 ' + ARMS_PATH_SPEC_FILE + '로 쓴다')
     args = ap.parse_args()
 
     cfg, cfg_rec = load_config(args.config)
@@ -115,6 +136,10 @@ def main():
         gv = apply_offsets(gv, panel_of_vert, offsets)
         placement.update(reference_body=str(ref_path), reference_body_sha256=sha256_file(ref_path))
 
+    arms = None
+    if args.arms_path:
+        arms = write_arms_path(Path(args.arms_path).resolve(), len(bv), out)
+
     data = {
         'units': 'm',
         'axes': {'up': '+Z', 'front': '-Y'},
@@ -125,6 +150,7 @@ def main():
         'config': cfg_rec,
         'transform_from_garmentcode': transform_record(),
         'placement': placement,
+        'arms_path': arms,
         'garment': {
             'vertices': gv.round(6).tolist(),
             'faces': gf.tolist(),

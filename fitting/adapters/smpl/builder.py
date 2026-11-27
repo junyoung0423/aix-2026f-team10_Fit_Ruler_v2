@@ -16,8 +16,12 @@
   몸을 **발바닥(정점 y 최솟값)이 y = 0이 되도록 위아래로만 옮겨** 저장한다. 착장(C4)의 GarmentCode
   패널이 바닥 0인 몸 기준 위치에 놓이기 때문이다. 옮긴 양은 기록의 `translation_m`이고, 기록의
   기준점(`landmarks`)도 옮긴 좌표로 적는다. 평행 이동이라 치수는 그대로다.
-- 실패하면 같은 작업의 이전 몸 메시(`{job_id}_body_mesh.obj`)가 남아 있어도 지운다. 실패한 작업에
-  예전 결과가 보이지 않게 하려는 것이다.
+- 팔 내리는 길: 몸 모델이 팔 각도를 바꿀 수 있으면(`vertices_at`) 같은 체형으로 팔을 측정 자세
+  45°에서 58°(수직에서 32°)까지 6단계로 내린 정점을 계약 밖 산출물
+  `{job_id}_body_arms_path.npy`(float32, (6, 정점 수, 3), OBJ와 같은 좌표·이동)로 함께 쓴다.
+  착장(C4)이 A자세 착장 뒤 이 길을 따라 팔을 내린다. 치수는 측정 자세 몸으로만 잰다.
+- 실패하면 같은 작업의 이전 몸 메시(`{job_id}_body_mesh.obj`)와 팔 내리는 길이 남아 있어도
+  지운다. 실패한 작업에 예전 결과가 보이지 않게 하려는 것이다.
 """
 
 from __future__ import annotations
@@ -53,11 +57,23 @@ from .model import SmplModel, a_pose, write_obj
 
 # 측정 자세: T자세에서 팔을 45° 내린 A자세 (measure_v1, D2와 같다)
 A_POSE_DEG = 45.0
+# 착장(C4)에서 팔을 내릴 때 따라갈 자세: 58°(수직에서 32°)까지 6단계. 더 내리면 겨드랑이에서
+# 천이 끼거나 팔이 소매를 뚫었다(25°·20°, docs/body-fit.md 8절)
+ARMS_DOWN_DEG = 58.0
+ARMS_PATH_STEPS = 6
+ARMS_PATH_ROLE = "body_arms_path"  # 계약 밖 산출물 {job_id}_body_arms_path.npy
 # 작업 폴더(work_dir/{job_id}/) 안의 기록 파일 이름
 BODY_FIT_RECORD = "body_fit.json"
 RECORD_VERSION = "body_fit_record_v1"
 # 산출물 ID 형식 (docs/adapters.md "산출물 파일 이름 규칙")
 _ARTIFACT_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def arms_path_angles(
+    start: float = A_POSE_DEG, end: float = ARMS_DOWN_DEG, steps: int = ARMS_PATH_STEPS
+) -> tuple[float, ...]:
+    """시작 자세 다음부터 끝 자세까지 같은 간격의 팔 각도(°, T자세에서 내린 각)."""
+    return tuple(start + (end - start) * (i + 1) / steps for i in range(steps))
 
 
 class PosedBodyModel(Protocol):
@@ -103,6 +119,12 @@ class SmplPosedBody:
     def mesh(self, betas: np.ndarray, scale: float) -> tuple[np.ndarray, np.ndarray]:
         out = self.model.forward(betas=np.asarray(betas, dtype=np.float64), body_pose=self._pose)
         return out.vertices * scale, out.joints * scale
+
+    def vertices_at(self, betas: np.ndarray, scale: float, arm_deg: float) -> np.ndarray:
+        """같은 체형으로 팔만 T자세에서 `arm_deg`만큼 내린 정점(미터)."""
+        pose = a_pose(arm_deg)
+        out = self.model.forward(betas=np.asarray(betas, dtype=np.float64), body_pose=pose)
+        return out.vertices * scale
 
     def measure(
         self, betas: np.ndarray, scale: float, *, round_cm: bool = True
@@ -187,11 +209,13 @@ class SmplBodyBuilder:
         floor = float(np.min(vertices[:, 1])) if mesh_finite else 0.0
         translation = np.array([0.0, -floor, 0.0])
         mesh_path = Path(self.artifacts_dir) / f"{artifact_id}.obj"
+        arms_file = self._arms_path_file(request.job_id)
 
         if not (judgement.passed and mesh_finite):
             stale = mesh_path.is_file()
             if stale:
                 mesh_path.unlink()  # 같은 작업의 예전 몸 메시가 실패한 작업에 남지 않게
+            arms_file.unlink(missing_ok=True)
             self._write_record(
                 request, body, fit, measured, debug, judgement, mesh_finite, settings, None,
                 translation=translation, removed_stale_mesh=stale,
@@ -217,9 +241,10 @@ class SmplBodyBuilder:
                 f"betas {' '.join(f'{b:.4f}' for b in fit.betas)}"
             ),
         )
+        arms = self._write_arms_path(arms_file, fit, translation)
         self._write_record(
             request, body, fit, measured, debug, judgement, mesh_finite, settings, artifact_id,
-            translation=translation, removed_stale_mesh=False,
+            translation=translation, removed_stale_mesh=False, arms_path=arms,
         )  # fmt: skip
         metrics: dict[str, float | int | str] = {
             **measured.fitted_metrics(body),
@@ -232,6 +257,32 @@ class SmplBodyBuilder:
             metrics=metrics,
             tool_versions=self.tool_versions(),
         )
+
+    def _arms_path_file(self, job_id: str) -> Path:
+        return Path(self.artifacts_dir) / f"{job_id}_{ARMS_PATH_ROLE}.npy"
+
+    def _write_arms_path(
+        self, path: Path, fit: BodyFitResult, translation: np.ndarray
+    ) -> dict[str, Any] | None:
+        """팔 내리는 길을 쓰고 기록할 설명을 돌려준다. 몸 모델이 팔 각도를 못 바꾸면 None.
+
+        값이 유한하지 않으면 쓰지 않는다(착장은 A자세 그대로 한다).
+        """
+        posed = getattr(self.body_model, "vertices_at", None)
+        if posed is None:
+            path.unlink(missing_ok=True)
+            return None
+        angles = arms_path_angles()
+        frames = np.stack([posed(fit.betas, fit.scale, a) + translation for a in angles])
+        record: dict[str, Any] = {
+            "angles_deg": [round(a, 4) for a in angles],
+            "frame": "OBJ (y up, z front, meters, feet at y=0)",
+        }
+        if not np.all(np.isfinite(frames)):
+            path.unlink(missing_ok=True)
+            return {**record, "artifact": None, "skipped": "non_finite"}
+        np.save(path, frames.astype(np.float32))
+        return {**record, "artifact": path.name, "shape": list(frames.shape), "dtype": "float32"}
 
     @staticmethod
     def _failure_message(judgement: Judgement, mesh_finite: bool, stopped_by: str = "") -> str:
@@ -264,6 +315,7 @@ class SmplBodyBuilder:
         *,
         translation: np.ndarray,
         removed_stale_mesh: bool,
+        arms_path: dict[str, Any] | None = None,
     ) -> Path:
         passed = artifact_id is not None
         dy = float(translation[1])
@@ -303,6 +355,8 @@ class SmplBodyBuilder:
                 "right_shoulder_point_m": _point(debug.right_shoulder_point + translation),
             },
             "removed_stale_mesh": removed_stale_mesh,
+            # 착장(C4)이 팔을 내릴 때 따라갈 길(계약 밖 산출물). 실패하면 None
+            "arms_path": arms_path,
             "body_model": {"model_file": self.model_name, **self.body_model.describe()},
             "optimization": fit.to_record(),
             "tool_versions": self.tool_versions(),
