@@ -1,8 +1,8 @@
 import { useLocation } from 'react-router-dom';
 
 const STEPS = [
-  { label: '입력', matches: (path: string) => path === '/' },
-  { label: '선택', matches: (path: string) => path.startsWith('/garments') },
+  { label: '내 치수', matches: (path: string) => path === '/' },
+  { label: '티셔츠', matches: (path: string) => path.startsWith('/garments') },
   { label: '결과', matches: (path: string) => path.startsWith('/fittings') },
 ];
 
@@ -15,9 +15,9 @@ export function StepIndicator() {
       {STEPS.map((step, index) => {
         const state = index === current ? 'current' : index < current ? 'done' : 'todo';
         return (
-          <li key={step.label} className={`step step-${state}`} aria-current={index === current ? 'step' : undefined}>
-            <span className="step-num">{index + 1}</span>
-            {step.label}
+          <li key={step.label} className={`step is-${state}`} aria-current={index === current ? 'step' : undefined}>
+            <span className="step-num num">{index + 1}</span>
+            <span className="step-label">{step.label}</span>
           </li>
         );
       })}

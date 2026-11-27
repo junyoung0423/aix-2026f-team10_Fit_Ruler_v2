@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { errorMessage } from '../api/api';
 import { api } from '../api/client';
-import type { FittingStatus, VisualPart } from '../api/types';
-import { ArtifactImage } from '../components/ArtifactImage';
+import type { FittingStatus } from '../api/types';
 import { FitReportView, type ReportLike } from '../components/FitReportView';
-import { StageTimeline } from '../components/StageTimeline';
-import { formatElapsed, jobHeadline, realizeMessage } from '../progress/jobSummary';
+import { ResultViewer, type FinishedOutcome, type ResultMedia } from '../components/ResultViewer';
+import { Studio, StudioPlaceholder, type StudioMedia } from '../components/Studio';
+import { formatElapsed } from '../progress/jobSummary';
 import { MAX_CONSECUTIVE_FAILURES, isTerminal, startPolling } from '../progress/poller';
 import { canRestart, restartFitting } from '../progress/retry';
+import { currentStep, etaNote, outcomeOf, stepViews, type Outcome } from '../progress/steps';
 import { useFitting } from '../state/fittingStore';
+import { bodyForScene, garmentForScene } from '../three/shape';
 
 /** 다시 부르기 상태(progress/poller.ts) */
 type PollView =
@@ -20,40 +22,28 @@ type PollView =
 
 const POLLING: PollView = { kind: 'polling', failures: 0, lastError: null };
 
-function previewMessage(visual: VisualPart): string {
-  if (visual.status === 'FAILED') return '3D 착장 전에 멈춰 미리보기가 없습니다.';
-  if (visual.status === 'SKIPPED') return '3D 착장을 하지 않았습니다.';
-  return '3D 착장이 끝나면 미리보기가 나옵니다.';
-}
+/** 색을 모를 때(예전에 저장한 결과·새 탭) 스튜디오 티셔츠 그림 색 */
+const DEFAULT_TEE_COLOR = '#24324f';
 
-function qualityLine(visual: VisualPart): { text: string; ok: boolean } | null {
-  if (!visual.quality_status || visual.quality_status === 'PENDING') return null;
-  const metrics = visual.quality_metrics ?? {};
-  const numbers = [
-    metrics.color_delta_e !== undefined && `색 차이 ${metrics.color_delta_e}`,
-    metrics.silhouette_iou !== undefined && `실루엣 겹침 ${metrics.silhouette_iou}`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const title = { PASS: '검증 통과', FAIL: '검증 실패', UNVERIFIABLE: '검증할 수 없음' }[visual.quality_status];
-  return { text: numbers ? `${title} · ${numbers}` : title, ok: visual.quality_status === 'PASS' };
-}
+const isFinished = (outcome: Outcome | null): outcome is FinishedOutcome =>
+  outcome !== null &&
+  (outcome.kind === 'success' || outcome.kind === 'validation_failed' || outcome.kind === 'no_consent' || outcome.kind === 'fallback');
 
 /** 다시 부르기가 끊겼을 때의 안내 */
 function PollNotice({ poll, onReload }: { poll: PollView; onReload: () => void }) {
   if (poll.kind === 'polling' && poll.failures > 0) {
     return (
-      <p className="note poll-retry">
-        진행 상태를 받지 못해 다시 시도하는 중입니다 ({poll.failures}/{MAX_CONSECUTIVE_FAILURES}). {poll.lastError}
+      <p className="notice notice-info">
+        진행 상태를 받지 못해 다시 시도하는 중이에요 ({poll.failures}/{MAX_CONSECUTIVE_FAILURES}). {poll.lastError}
       </p>
     );
   }
   if (poll.kind === 'gave_up') {
     return (
-      <div className="error poll-stopped" role="alert">
-        <p>진행 상태를 받지 못했습니다.</p>
-        <p className="note">{poll.message}</p>
-        <button type="button" onClick={onReload}>
+      <div className="notice notice-error" role="alert">
+        <strong>진행 상태를 받지 못했어요</strong>
+        <p>{poll.message}</p>
+        <button type="button" className="btn btn-ghost btn-small" onClick={onReload}>
           다시 불러오기
         </button>
       </div>
@@ -61,8 +51,9 @@ function PollNotice({ poll, onReload }: { poll: PollView; onReload: () => void }
   }
   if (poll.kind === 'lost') {
     return (
-      <div className="error poll-stopped" role="alert">
-        <p>작업 기록을 찾을 수 없습니다. 서버가 다시 시작되었을 수 있습니다.</p>
+      <div className="notice notice-error" role="alert">
+        <strong>작업 기록을 찾을 수 없어요</strong>
+        서버가 다시 시작되었을 수 있어요.
       </div>
     );
   }
@@ -76,7 +67,7 @@ export function ResultPage() {
 }
 
 function ResultView({ id }: { id: string }) {
-  const { results, saveResult } = useFitting();
+  const { results, saveResult, measurements } = useFitting();
   const navigate = useNavigate();
   const stored = results[id] ?? null;
   const pollId = stored ? stored.jobId : id; // 저장된 결과가 없으면(새 탭 등) 주소의 ID를 작업 ID로 본다
@@ -88,6 +79,8 @@ function ResultView({ id }: { id: string }) {
   const [now, setNow] = useState(() => Date.now());
   const [restarting, setRestarting] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
+  // 지금 단계를 화면이 처음 본 시각(예상 시간 안내의 "지금 0:42"). 서버가 단계별 시각을 주지 않아 브라우저 시계로 잰다.
+  const [phase, setPhase] = useState<{ id: string; since: number } | null>(null);
 
   // 3D·실사화 단계는 끝날 때까지 다시 묻는다(간격·멈춤 규칙은 progress/poller.ts). 핏 리포트는 이미 받아 두었다.
   useEffect(() => {
@@ -96,7 +89,6 @@ function ResultView({ id }: { id: string }) {
       onStatus: (next) => {
         setJob(next);
         setPoll(POLLING);
-        // 경과 시간은 서버가 시각을 주지 않아 화면이 진행 중인 상태를 처음 받은 때부터 브라우저 시계로 잰다.
         if (!isTerminal(next)) setStartedAt((prev) => prev ?? Date.now());
       },
       onRetry: (error, failures) => setPoll({ kind: 'polling', failures, lastError: errorMessage(error) }),
@@ -114,6 +106,13 @@ function ResultView({ id }: { id: string }) {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [startedAt, stoppedAt]);
+
+  const current = job ? currentStep(job) : null;
+  const phaseId = current ? `${current.key}${current.checking ? '-check' : ''}${current.preparing ? '-prep' : ''}` : null;
+  useEffect(() => {
+    if (!phaseId) return;
+    setPhase((prev) => (prev?.id === phaseId ? prev : { id: phaseId, since: Date.now() }));
+  }, [phaseId]);
 
   function reload() {
     setPoll(POLLING);
@@ -142,121 +141,159 @@ function ResultView({ id }: { id: string }) {
       : null);
 
   const visual = job?.visual ?? null;
-  const showActions = poll.kind === 'lost' || visual?.status === 'FAILED';
-  const actions = showActions && (
-    <div className="actions recover-actions">
+  const outcome = job ? outcomeOf(job) : null;
+  const showActions = poll.kind === 'lost' || visual?.status === 'FAILED' || outcome?.kind === 'cancelled';
+  const actions = showActions ? (
+    <div className="result-actions">
       {canRestart(stored) && (
-        <button type="button" className="primary" onClick={() => void restart()} disabled={restarting}>
+        <button type="button" className="btn btn-primary" onClick={() => void restart()} disabled={restarting}>
           {restarting ? '다시 요청 중…' : '같은 조건으로 다시 시도'}
         </button>
       )}
-      <Link to="/garments" className="button">
+      <Link to="/garments" className="btn btn-ghost">
         다른 티셔츠 고르기
       </Link>
       {restartError && (
-        <p className="error" role="alert">
+        <p className="notice notice-error" role="alert">
           {restartError}
         </p>
       )}
     </div>
-  );
+  ) : null;
+
+  const garmentTitle = stored?.garmentName ?? '피팅 결과';
+  const color = stored?.garmentColor ?? DEFAULT_TEE_COLOR;
 
   if (!report && !job) {
-    if (poll.kind === 'polling') {
-      return (
-        <section>
-          <p aria-busy="true">결과를 불러오는 중…</p>
-          <PollNotice poll={poll} onReload={reload} />
-        </section>
-      );
-    }
     return (
-      <section>
-        <h1>결과</h1>
-        <PollNotice poll={poll} onReload={reload} />
-        {actions}
-        <Link to="/">처음으로</Link>
+      <section className="page">
+        <header className="page-head">
+          <p className="kicker">3 / 3</p>
+          <h1>{garmentTitle}</h1>
+        </header>
+        {poll.kind === 'polling' ? (
+          <StudioPlaceholder text="결과를 불러오는 중…" />
+        ) : (
+          <>
+            <PollNotice poll={poll} onReload={reload} />
+            {actions}
+            <Link to="/" className="text-link">
+              처음으로
+            </Link>
+          </>
+        )}
+        {poll.kind === 'polling' && <PollNotice poll={poll} onReload={reload} />}
       </section>
     );
   }
 
-  const preview = visual?.drape_preview_artifact_id ? api.artifactUrl(visual.drape_preview_artifact_id) : null;
-  const frame = visual?.frame_artifact_id ? api.artifactUrl(visual.frame_artifact_id) : null;
-  const renderFrame = visual?.render_frame_artifact_id ? api.artifactUrl(visual.render_frame_artifact_id) : null;
-  const video = visual?.video_artifact_id ? api.artifactUrl(visual.video_artifact_id) : null;
-  const fallback = visual?.status === 'FAILED' && preview !== null && visual.stage !== 'VALIDATE';
-  // 실사화·검증이 실패해도 핏 리포트와 3D 미리보기는 남는다(#12). "대체 결과" 표시는 위 fallback(A6)과 같은 조건을 쓴다.
-  const keptNote = visual?.status === 'FAILED' && preview !== null && (visual.stage === 'REALIZE' || visual.stage === 'VALIDATE');
-  const quality = visual ? qualityLine(visual) : null;
-  const headline = job ? jobHeadline(job) : null;
+  const url = (artifactId: string | null | undefined) => (artifactId ? api.artifactUrl(artifactId) : null);
+  const studioMedia: StudioMedia = {
+    preview: url(visual?.drape_preview_artifact_id),
+    renderClip: url(visual?.render_artifact_id),
+  };
+  const resultMedia: ResultMedia = {
+    video: url(visual?.video_artifact_id),
+    frame: url(visual?.frame_artifact_id),
+    renderFrame: url(visual?.render_frame_artifact_id),
+    preview: studioMedia.preview,
+  };
+  const steps = job ? stepViews(job) : [];
   const stale = job !== null && !isTerminal(job) && (poll.kind === 'lost' || poll.kind === 'gave_up');
-  const elapsed = startedAt !== null ? formatElapsed((stoppedAt ?? now) - startedAt) : null;
+  const stepSeconds = phase && current && stoppedAt === null ? Math.max(0, (now - phase.since) / 1000) : null;
+  const eta = current
+    ? { ...etaNote(current.key, stepSeconds), elapsed: stepSeconds !== null ? formatElapsed(stepSeconds * 1000) : null }
+    : null;
+  const qualityNote =
+    visual?.quality_status === 'UNVERIFIABLE' ? '실사 사진을 자동으로 검증하지 못했어요. 참고로 봐 주세요.' : null;
+  // 3D 피팅룸: 몸은 입력 치수로, 티셔츠는 핏 리포트의 옷 치수로 만든다.
+  const sceneBody = bodyForScene(measurements, report?.regions);
+  const sceneGarment = garmentForScene(sceneBody, report?.regions);
+
+  let visualArea: ReactNode = null;
+  let actionsShown = false;
+  if (!job || !outcome) {
+    if (stored && !stored.jobId) {
+      visualArea = (
+        <div className="panel-note">
+          <strong>3D·실사 진행 상태를 받지 못했어요</strong>
+          핏 리포트만 보여 드려요.
+        </div>
+      );
+    } else if (poll.kind === 'polling') {
+      visualArea = <StudioPlaceholder text="진행 상태를 불러오는 중…" />;
+    }
+  } else if (outcome.kind === 'running' || outcome.kind === 'failed') {
+    actionsShown = outcome.kind === 'failed';
+    visualArea = (
+      <Studio
+        steps={steps}
+        current={current}
+        failure={outcome.kind === 'failed' ? { step: outcome.failedStep, message: outcome.message } : null}
+        media={studioMedia}
+        garmentColor={color}
+        body={sceneBody}
+        garment={sceneGarment}
+        eta={eta}
+        stale={stale}
+      >
+        {outcome.kind === 'failed' ? actions : null}
+      </Studio>
+    );
+  } else if (isFinished(outcome)) {
+    actionsShown = true;
+    visualArea = (
+      <ResultViewer outcome={outcome} media={resultMedia} steps={steps} qualityNote={qualityNote}>
+        {actions}
+      </ResultViewer>
+    );
+  } else if (outcome.kind === 'report_only') {
+    visualArea = (
+      <div className="panel-note">
+        <strong>핏 리포트만 요청했어요</strong>
+        3D·실사 단계는 하지 않았어요.
+      </div>
+    );
+  } else {
+    actionsShown = true;
+    visualArea = (
+      <div className="panel-note">
+        <strong>작업이 취소됐어요</strong>
+        {actions}
+      </div>
+    );
+  }
 
   return (
-    <section>
-      <div className="result-head">
-        <h1>{stored?.garmentName ?? '결과'}</h1>
-        <Link to="/garments" className="button">
+    <section className="page">
+      <header className="page-head page-head-row">
+        <div>
+          <p className="kicker">3 / 3</p>
+          <h1 className="garment-title">
+            <span className="swatch" style={{ background: color }} aria-hidden="true" />
+            {garmentTitle}
+          </h1>
+        </div>
+        <Link to="/garments" className="btn btn-ghost btn-small">
           다른 티셔츠 고르기
         </Link>
-      </div>
+      </header>
 
-      {report ? <FitReportView report={report} /> : <p className="error">핏 리포트를 받지 못했습니다.</p>}
-
-      <section className="card" aria-labelledby="progress-title">
-        <h2 id="progress-title">3D·실사 착장 진행</h2>
-        {headline && (
-          <div className={`job-headline tone-${stale ? 'stale' : headline.tone}`}>
-            {/* 화면 낭독기는 이 줄이 바뀔 때(단계가 넘어갈 때)만 알린다. 경과 시간은 알리지 않는다. */}
-            <p role="status">{stale ? `${headline.text} · 갱신 멈춤` : headline.text}</p>
-            {elapsed !== null && <span className="elapsed num">경과 {elapsed}</span>}
-          </div>
-        )}
-        {job ? (
-          <div className={stale ? 'timeline-stale' : undefined}>
-            <StageTimeline stages={job.stages} visual={job.visual} />
-          </div>
-        ) : (
-          stored && !stored.jobId ? (
-            <p className="note">3D·실사 진행 상태를 받지 못해 핏 리포트만 보여 드립니다.</p>
-          ) : (
-            poll.kind === 'polling' && <p className="note">진행 상태를 불러오는 중…</p>
-          )
-        )}
-        <PollNotice poll={poll} onReload={reload} />
-        {actions}
-      </section>
-
-      {job && visual && (
-        <div className="media-grid">
-          <figure className="card media">
-            <figcaption>{fallback ? '3D 착장 미리보기 · 대체 결과' : '3D 착장 미리보기'}</figcaption>
-            {preview ? (
-              <ArtifactImage key={preview} src={preview} alt="3D 착장 미리보기" failText="미리보기 파일을 불러오지 못했습니다." />
-            ) : (
-              <p className="placeholder">{previewMessage(visual)}</p>
-            )}
-            {fallback && <p className="note">실사 영상이 없어 3D 미리보기를 대신 보여 드립니다. 실사 결과가 아닙니다.</p>}
-          </figure>
-
-          <figure className="card media">
-            <figcaption>{visual.quality_status === 'FAIL' ? '실사 착장 결과 · 검증 실패' : '실사 착장 결과'}</figcaption>
-            {frame || video ? (
-              <>
-                {video && <video src={video} controls />}
-                <div className="frames">
-                  {frame && <img src={frame} alt="실사 영상의 대표 프레임" />}
-                  {renderFrame && <img src={renderFrame} alt="같은 시점의 렌더 프레임" />}
-                </div>
-              </>
-            ) : (
-              <p className="placeholder">{realizeMessage(job)}</p>
-            )}
-            {quality && <p className={quality.ok ? 'verify verify-pass' : 'verify verify-fail'}>{quality.text}</p>}
-            {keptNote && <p className="note">핏 리포트와 3D 미리보기는 그대로 볼 수 있습니다.</p>}
-          </figure>
+      <div className="result-layout">
+        <div className="result-main">
+          {visualArea}
+          <PollNotice poll={poll} onReload={reload} />
+          {!actionsShown && actions}
         </div>
-      )}
+
+        <aside className="result-side">
+          {report ? (
+            <FitReportView report={report} />
+          ) : (
+            <p className="notice notice-error">핏 리포트를 받지 못했어요.</p>
+          )}
+        </aside>
+      </div>
     </section>
   );
 }

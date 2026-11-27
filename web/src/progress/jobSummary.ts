@@ -1,98 +1,10 @@
-import type { FittingStatus, StageProgress, VisualPart } from '../api/types';
-import { ERROR_LABEL, STAGE_LABEL } from '../labels';
+import { ERROR_LABEL } from '../labels';
 
 /** 진행 표시에 쓰는 문구. 서버는 상태 코드만 주므로 화면이 문장을 고른다. */
-
-const VISUAL_STAGE_SET = new Set(['BODY_FIT', 'DRAPE', 'RENDER', 'REALIZE', 'VALIDATE']);
-
-/** 영상 경로 단계(몸 → 착장 → 렌더 → 실사화 → 검증)만 서버가 준 순서대로 */
-export const visualStages = (stages: StageProgress[]) => stages.filter((stage) => VISUAL_STAGE_SET.has(stage.stage));
 
 /** 오류 코드 → 안내 문구. 화면 표에 없는 코드는 코드를 그대로 쓰지 않고 "알 수 없는 오류(코드)"로 보여 준다. */
 export function errorText(code: string): string {
   return (ERROR_LABEL as Record<string, string | undefined>)[code] ?? `알 수 없는 오류(${code})`;
-}
-
-/** 단계 아래에 붙이는 설명. 없으면 null */
-export function stageMessage(stage: StageProgress, visual: VisualPart): string | null {
-  if (stage.status === 'FAILED') return visual.error_code ? errorText(visual.error_code) : null;
-  if (stage.status !== 'SKIPPED') return null;
-  if (visual.skip_reason === 'REPORT_ONLY') return '핏 리포트만 요청해 건너뛰었습니다.';
-  if (visual.skip_reason === 'CONSENT_NOT_GIVEN') return '실사화(외부 전송)에 동의하지 않아 건너뛰었습니다.';
-  return '앞 단계가 실패해 건너뛰었습니다.';
-}
-
-const BEFORE_REALIZE = new Set(['BODY_FIT', 'DRAPE', 'RENDER']);
-
-/**
- * 실사 착장 결과 칸의 안내(실사 영상·프레임이 없을 때).
- * 실사화보다 앞 단계에서 멈췄으면 그 단계 오류 문장 대신 "…단계에서 멈춰 실사화를 하지 않았습니다"로 보여 준다.
- * 실사화·검증 단계의 실패는 오류 문장을 그대로 보여 준다.
- */
-export function realizeMessage(job: FittingStatus): string {
-  const { visual } = job;
-  if (visual.skip_reason === 'CONSENT_NOT_GIVEN') return '실사화(외부 전송)에 동의하지 않아 실사 영상은 만들지 않았습니다.';
-  if (visual.skip_reason === 'REPORT_ONLY') return '핏 리포트만 요청했습니다.';
-  if (visual.status === 'FAILED') {
-    const failed = visualStages(job.stages).find((stage) => stage.status === 'FAILED')?.stage ?? visual.stage;
-    if (failed && BEFORE_REALIZE.has(failed)) return `${STAGE_LABEL[failed]} 단계에서 멈춰 실사화를 하지 않았습니다.`;
-    return visual.error_code ? errorText(visual.error_code) : '실사화를 하지 못했습니다.';
-  }
-  const realize = job.stages.find((stage) => stage.stage === 'REALIZE');
-  if (realize?.status === 'RUNNING') return '실사화 중입니다.';
-  return '렌더가 끝나면 실사화를 시작합니다.';
-}
-
-/**
- * 같은 요청 ID 재조회(B5) 표시. 서버는 다시 조회하는 동안 단계를 RUNNING 그대로 두고 attempt_no만 2, 3으로 올린다
- * (docs/api/README.md). attempt_no는 그 단계를 부른 횟수라 2가 "두 번째 조회"다.
- * 진행 중이면 "다시 조회 중(2번째)", 끝난 단계면 "조회 2번". 1이면 null
- */
-export function attemptText(stage: StageProgress): string | null {
-  if (stage.attempt_no < 2) return null;
-  return stage.status === 'RUNNING' ? `다시 조회 중(${stage.attempt_no}번째)` : `조회 ${stage.attempt_no}번`;
-}
-
-export type HeadlineTone = 'running' | 'done' | 'partial' | 'failed';
-
-/** 작업 전체 상태 한 줄. 예: "3D 착장 중 (2/5)", "완료 (렌더까지)", "일부 완료 · 핏 리포트와 3D 착장까지 준비됨" */
-export function jobHeadline(job: FittingStatus): { text: string; tone: HeadlineTone } {
-  const stages = visualStages(job.stages);
-  const position = (index: number) => `(${index + 1}/${stages.length})`;
-
-  switch (job.status) {
-    case 'ACCEPTED':
-    case 'RUNNING': {
-      const running = stages.findIndex((stage) => stage.status === 'RUNNING');
-      if (running >= 0) {
-        const stage = stages[running];
-        const doing = stage.attempt_no >= 2 ? ` 결과 다시 조회 중(${stage.attempt_no}번째)` : ' 중';
-        return { text: `${STAGE_LABEL[stage.stage]}${doing} ${position(running)}`, tone: 'running' };
-      }
-      if (job.status === 'ACCEPTED' || job.visual.status === 'QUEUED') return { text: '차례를 기다리는 중', tone: 'running' };
-      const next = stages.findIndex((stage) => stage.status === 'WAITING' || stage.status === 'QUEUED');
-      if (next >= 0) return { text: `${STAGE_LABEL[stages[next].stage]} 준비 중 ${position(next)}`, tone: 'running' };
-      return { text: '진행 중', tone: 'running' };
-    }
-    case 'SUCCEEDED':
-      if (job.visual.skip_reason === 'CONSENT_NOT_GIVEN') return { text: '완료 (렌더까지)', tone: 'done' };
-      if (job.visual.skip_reason === 'REPORT_ONLY') return { text: '완료 (핏 리포트만)', tone: 'done' };
-      return { text: '완료', tone: 'done' };
-    case 'PARTIAL_SUCCEEDED': {
-      const done = stages.filter((stage) => stage.status === 'SUCCEEDED').pop();
-      return {
-        text: done ? `일부 완료 · 핏 리포트와 ${STAGE_LABEL[done.stage]}까지 준비됨` : '일부 완료 · 핏 리포트만 준비됨',
-        tone: 'partial',
-      };
-    }
-    case 'FAILED': {
-      const failed = job.stages.find((stage) => stage.status === 'FAILED');
-      const where = failed?.stage ?? job.visual.stage;
-      return { text: where ? `실패 · ${STAGE_LABEL[where]}` : '실패', tone: 'failed' };
-    }
-    case 'CANCELLED':
-      return { text: '취소됨', tone: 'failed' };
-  }
 }
 
 /** 경과 시간. 예: 0:42, 12:05, 1:02:03 */

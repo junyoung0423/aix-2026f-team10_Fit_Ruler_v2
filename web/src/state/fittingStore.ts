@@ -6,6 +6,8 @@ export interface StoredResult {
   report: FitReport;
   garmentId: string;
   garmentName: string;
+  /** 고른 티셔츠의 색(`#rrggbb`). 착장 미리보기가 오기 전 스튜디오의 티셔츠 그림에 쓴다. 예전에 저장한 결과에는 없다. */
+  garmentColor?: string;
   /** 3D·실사화 작업 ID. 작업을 만들지 못했으면(작업 서버에 닿지 못함·경로 없음) null */
   jobId: string | null;
   /** 작업을 만든 요청(실사화 동의 포함). "같은 조건으로 다시 시도"에 쓴다. 예전에 저장한 결과에는 없다. */

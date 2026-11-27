@@ -3,39 +3,35 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ApiError, errorMessage, isFittingApiMissing } from '../api/api';
 import { api } from '../api/client';
 import { MEASUREMENT_FIELDS, MEASUREMENT_LABEL, measurementFieldOf } from '../api/contract';
-import type { FitRequest, FittingStatus, GarmentListItem, Measurements } from '../api/types';
+import type { FitRequest, FittingStatus, GarmentListItem } from '../api/types';
 import { MEASUREMENT_PROTOCOL_VERSION } from '../api/types';
+import { TeeIllustration } from '../components/TeeIllustration';
 import { sizeItems, sizeText, sortGarments, sourceBadge } from '../garmentCard';
 import { fabricText, garmentName, swatchColor } from '../labels';
 import { useFitting } from '../state/fittingStore';
 import type { InputPageState } from './InputPage';
 
-const summary = (m: Measurements) =>
-  MEASUREMENT_FIELDS.map((field) => `${MEASUREMENT_LABEL[field]} ${m[field]}`).join(' · ') + ' cm';
-
 function GarmentCardBody({ item }: { item: GarmentListItem }) {
   const { garment } = item;
-  const [chest, ...rest] = sizeItems(garment.measurements);
   const badge = sourceBadge(item);
   const fabric = fabricText(garment.fabric);
   return (
     <>
-      <span className="swatch" style={{ background: swatchColor(garment) }} aria-hidden="true" />
-      <span className="garment-name">{garmentName(garment)}</span>
-      <span className="garment-chest num">
-        {chest.label} {chest.text} cm
+      <span className="garment-visual">
+        <TeeIllustration color={swatchColor(garment)} />
+        {badge && <span className={`garment-badge${badge.kind === 'measured' ? ' is-measured' : ''}`}>{badge.text}</span>}
       </span>
-      <span className="garment-size">{sizeText(rest)}</span>
-      {fabric && <span className="garment-meta">{fabric}</span>}
-      {badge?.kind === 'demo' && <span className="badge demo-badge">{badge.text}</span>}
-      {badge?.kind === 'measured' && (
-        <>
-          <span className="badge demo-badge measured-badge" title={badge.source}>
-            {badge.text}
-          </span>
-          <span className="garment-source">{badge.source}</span>
-        </>
-      )}
+      <span className="garment-info">
+        <span className="garment-name">{garmentName(garment)}</span>
+        <span className="garment-sizes num">{sizeText(sizeItems(garment.measurements))}</span>
+        {fabric && <span className="garment-meta">{fabric}</span>}
+        {badge?.kind === 'measured' && <span className="garment-source">{badge.source}</span>}
+      </span>
+      <span className="garment-check" aria-hidden="true">
+        <svg viewBox="0 0 16 16" focusable="false">
+          <path d="M4 8.5 L7 11.2 L12.2 5.4" fill="none" />
+        </svg>
+      </span>
     </>
   );
 }
@@ -46,6 +42,7 @@ export function GarmentSelectPage() {
   const [garments, setGarments] = useState<GarmentListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 실사화는 렌더 클립을 외부 서버로 보내므로 동의해야 한다. 기본은 꺼짐(wireframes.md 규칙 2).
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string[] | null>(null);
@@ -91,6 +88,7 @@ export function GarmentSelectPage() {
         report,
         garmentId: item.garment.id,
         garmentName: garmentName(item.garment),
+        garmentColor: swatchColor(item.garment),
         jobId: job?.job_id ?? null,
         // 결과 화면의 "같은 조건으로 다시 시도"가 실사화 동의까지 그대로 다시 보낸다.
         request: job ? { ...fitRequest, mode: 'full', realize_consent: consent } : undefined,
@@ -112,19 +110,36 @@ export function GarmentSelectPage() {
   }
 
   return (
-    <section>
-      <h1>티셔츠 고르기</h1>
-      <p className="lead">
-        내 치수: {summary(current)} <Link to="/">수정</Link>
-      </p>
+    <section className="page">
+      <header className="page-head">
+        <p className="kicker">2 / 3</p>
+        <h1>티셔츠 고르기</h1>
+        <div className="measure-summary">
+          <span className="summary-title">내 치수</span>
+          <ul className="summary-chips">
+            {MEASUREMENT_FIELDS.map((field) => (
+              <li key={field}>
+                {MEASUREMENT_LABEL[field]} <span className="num">{current[field]}</span>
+              </li>
+            ))}
+          </ul>
+          <Link to="/" className="text-link">
+            수정
+          </Link>
+        </div>
+      </header>
 
       {loadError && (
-        <p className="error" role="alert">
+        <p className="notice notice-error" role="alert">
           {loadError}
         </p>
       )}
-      {!garments && !loadError && <p aria-busy="true">티셔츠 목록을 불러오는 중…</p>}
-      {garments && garments.length === 0 && <p>지금 고를 수 있는 티셔츠가 없습니다.</p>}
+      {!garments && !loadError && (
+        <p className="loading-line" aria-busy="true">
+          티셔츠 목록을 불러오는 중…
+        </p>
+      )}
+      {garments && garments.length === 0 && <p>지금 고를 수 있는 티셔츠가 없어요.</p>}
 
       {garments && garments.length > 0 && (
         <form onSubmit={onSubmit}>
@@ -132,13 +147,15 @@ export function GarmentSelectPage() {
             <legend className="sr-only">티셔츠</legend>
             {garments.map((item) => {
               const { garment } = item;
+              const selected = selectedId === garment.id;
               return (
-                <label key={garment.id} className={`garment-card${selectedId === garment.id ? ' selected' : ''}`}>
+                <label key={garment.id} className={`garment-card${selected ? ' is-selected' : ''}`}>
                   <input
+                    className="card-radio"
                     type="radio"
                     name="garment"
                     value={garment.id}
-                    checked={selectedId === garment.id}
+                    checked={selected}
                     onChange={() => setSelectedId(garment.id)}
                   />
                   <GarmentCardBody item={item} />
@@ -147,27 +164,36 @@ export function GarmentSelectPage() {
             })}
           </fieldset>
 
-          <label className="consent">
-            <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>
-              <strong>실사 착장 영상도 만들기</strong>
-              <br />
-              신체 치수가 반영된 렌더 클립과 그로 만든 사진이 외부 서버(fal)로 전송되어 처리됩니다. 사진과
-              영상은 fal에서 Google(Veo·Nano Banana Pro)과 Lightricks(LTX) 모델로 만듭니다. 체크하지 않으면
-              핏 리포트와 3D 미리보기까지만 만듭니다.
+          <label className={`consent-row${consent ? ' is-on' : ''}`}>
+            <span className="consent-text">
+              <strong id="consent-title">실사 사진·회전 영상도 만들기</strong>
+              <span id="consent-desc">
+                켜면 신체 치수가 반영된 렌더 클립과 그로 만든 사진이 외부 서버(fal)로 전송되어 처리됩니다. 사진과 영상은
+                fal에서 Google(Veo·Nano Banana Pro)과 Lightricks(LTX) 모델로 만듭니다. 끄면 핏 리포트와 3D 미리보기까지만
+                만들어요.
+              </span>
             </span>
+            <input
+              className="switch"
+              type="checkbox"
+              role="switch"
+              aria-labelledby="consent-title"
+              aria-describedby="consent-desc"
+              checked={consent}
+              onChange={(event) => setConsent(event.target.checked)}
+            />
           </label>
 
           {submitError && (
-            <div className="error" role="alert">
+            <div className="notice notice-error" role="alert">
               {submitError.map((line) => (
                 <p key={line}>{line}</p>
               ))}
             </div>
           )}
-          <div className="actions">
-            <button type="submit" className="primary" disabled={!selectedId || submitting}>
-              {submitting ? '요청 중…' : '핏 보기'}
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={!selectedId || submitting}>
+              {submitting ? '요청 중…' : '입어 보기'}
             </button>
           </div>
         </form>
