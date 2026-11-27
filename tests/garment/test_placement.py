@@ -11,15 +11,16 @@ from fitting.adapters.garmentcode import placement as pl
 PANELS = ["left_ftorso", "right_ftorso", "left_sleeve_f", "right_sleeve_f"]
 
 
-def toy_body(shoulder_z=1.42, half_width=0.19, lift=0.0, t_pose=False):
+def toy_body(shoulder_z=1.42, half_width=0.19, lift=0.0, t_pose=False, head_half_width=0.07,
+             head_bottom=0.04):
     pts = []
     for x in np.linspace(-half_width, half_width, 39):  # 몸통: 어깨 끝으로 갈수록 낮아지는 어깨선
         top = shoulder_z + 0.04 * (1 - abs(x) / half_width)
         pts += [(x, y, z) for z in np.linspace(0.9, top, 25) for y in (-0.12, 0.12)]
-    pts += [  # 머리·목
+    pts += [  # 머리·목. 머리 꼭대기가 키(1.72 m)를 정한다
         (x, 0.0, z)
-        for x in np.linspace(-0.07, 0.07, 8)
-        for z in np.linspace(shoulder_z + 0.04, shoulder_z + 0.30, 20)
+        for x in np.linspace(-head_half_width, head_half_width, 8)
+        for z in np.linspace(shoulder_z + head_bottom, shoulder_z + 0.30, 20)
     ]
     for side in (1, -1):  # 팔: 어깨 끝에서 45° 아래(T자세면 수평)
         for t in np.linspace(0.0, 0.6, 50):
@@ -61,7 +62,7 @@ def test_same_body_does_not_move_the_garment():
     offsets, record = pl.placement_offsets(g, pov, PANELS, body, body)
     assert np.allclose(offsets, 0.0)  # 같은 몸이면 봉제 여유도 더하지 않는다
     assert record["vertical_shift_m"] == 0.0 and record["sew_clearance_m"] == 0.0
-    assert record["method"] == "shoulder_tips_v1"
+    assert record["method"] == "shoulder_tips_v2" and record["max_height_frac"] == 0.88
 
 
 def test_higher_shoulders_lift_every_panel_and_keep_its_shape():
@@ -105,3 +106,18 @@ def test_too_large_a_shift_is_rejected():
 def test_a_body_that_is_not_in_a_pose_is_rejected():
     with pytest.raises(ValueError, match="A자세"):
         pl.shoulder_tip(toy_body(t_pose=True), 1)
+
+
+def test_a_wide_head_is_not_taken_for_the_shoulder():
+    """머리가 옆으로 10 cm를 넘어도(어깨 44·팔 60 cm 몸: 10.0 cm, 키의 93 % 높이) 어깨 끝은 어깨다.
+
+    실제 몸처럼 머리의 넓은 부분은 키의 89.5 % 위에서 시작한다(어깨 위 12 cm). v1은 이 머리 옆을
+    어깨 끝으로 잡아 옮길 거리 0.30 m로 멈췄다.
+    """
+    body = toy_body(head_half_width=0.105, head_bottom=0.12)
+    left, right = pl.shoulder_tip(body, 1), pl.shoulder_tip(body, -1)
+    assert left[0] == pytest.approx(0.19, abs=0.01) and left[2] == pytest.approx(1.42, abs=0.01)
+    assert right[0] == pytest.approx(-0.19, abs=0.01) and right[2] == pytest.approx(1.42, abs=0.01)
+    g, pov = toy_garment()
+    offsets, _ = pl.placement_offsets(g, pov, PANELS, toy_body(), body)
+    assert np.allclose(offsets, 0.0)  # 머리만 다른 같은 몸이라 옮기지 않는다
