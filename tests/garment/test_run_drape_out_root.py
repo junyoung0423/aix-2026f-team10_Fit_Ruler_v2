@@ -59,8 +59,11 @@ def test_skip_analyze_runs_export_and_drape_only(tmp_path, monkeypatch, skip):
     """--skip-analyze면 analyze를 부르지 않고, 판정은 그대로 Blender 지표로 한다."""
     repo = Path(run_drape.REPO_ROOT)
     spec, body = tmp_path / "spec.json", tmp_path / "body.obj"
-    spec.write_text("{}", encoding="utf-8")
-    body.write_text("v 0 0 0\n", encoding="utf-8")
+    # 패턴을 만든 몸도 넘긴다. 기본값(<gc-root>/assets/bodies/mean_all.obj)은 GarmentCode가 있는
+    # PC에만 있어서, 넘기지 않으면 CI에서 export 전에 멈춘다
+    ref = tmp_path / "ref_body.obj"
+    for path, text in ((spec, "{}"), (body, "v 0 0 0\n"), (ref, "v 0 0 0\n")):
+        path.write_text(text, encoding="utf-8")
     called = []
 
     def fake_step(name, cmd, log_path, timeout=None, **kw):
@@ -80,7 +83,7 @@ def test_skip_analyze_runs_export_and_drape_only(tmp_path, monkeypatch, skip):
     monkeypatch.setattr(run_drape, "git_head", lambda path: None)
     cfg = repo / "config" / "drape" / "drape_v1.json"
     argv = ["run_drape", "--spec", str(spec), "--body", str(body), "--config", str(cfg)]
-    argv += ["--name", "x", "--out-root", str(tmp_path / "runs")]
+    argv += ["--name", "x", "--out-root", str(tmp_path / "runs"), "--ref-body", str(ref)]
     monkeypatch.setattr(sys, "argv", argv + (["--skip-analyze"] if skip else []))
     with pytest.raises(SystemExit) as exc:
         run_drape.main()
@@ -89,3 +92,27 @@ def test_skip_analyze_runs_export_and_drape_only(tmp_path, monkeypatch, skip):
     summary = json.loads((tmp_path / "runs" / "x" / "run_summary.json").read_text("utf-8"))
     assert summary["status"] == "SUCCEEDED" and summary["analyze_skipped"] is skip
     assert ("offline_matches_blender" in summary) is not skip
+    assert summary["inputs"]["ref_body"] == str(ref.resolve())
+
+
+def test_missing_reference_body_stops_before_export(tmp_path, monkeypatch):
+    """패턴을 만든 몸 OBJ가 없으면 export 전에 GARMENT_NOT_READY로 멈춘다."""
+    repo = Path(run_drape.REPO_ROOT)
+    spec, body = tmp_path / "spec.json", tmp_path / "body.obj"
+    spec.write_text("{}", encoding="utf-8")
+    body.write_text("v 0 0 0\n", encoding="utf-8")
+    called = []
+    monkeypatch.setattr(run_drape, "run_step", lambda name, *a, **k: called.append(name))
+    monkeypatch.setattr(run_drape, "git_head", lambda path: None)
+    cfg = repo / "config" / "drape" / "drape_v1.json"
+    argv = ["run_drape", "--spec", str(spec), "--body", str(body), "--config", str(cfg)]
+    argv += ["--name", "x", "--out-root", str(tmp_path / "runs")]
+    argv += ["--ref-body", str(tmp_path / "missing_ref_body.obj")]
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        run_drape.main()
+    assert exc.value.code == 1
+    assert called == []  # export·착장을 부르지 않았다
+    summary = json.loads((tmp_path / "runs" / "x" / "run_summary.json").read_text("utf-8"))
+    assert summary["status"] == "FAILED" and summary["error_code"] == "GARMENT_NOT_READY"
+    assert "reference body not found" in summary["reason"]

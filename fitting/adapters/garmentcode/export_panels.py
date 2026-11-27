@@ -5,10 +5,12 @@ BoxMesh는 봉제선 정점을 하나로 합쳐 저장하지만, Blender의 sewi
 단계(load_panels, gen_panel_meshes)까지만 실행해 패널과 정점 쌍을 꺼낸다.
 
 좌표는 coords.py(명세서 6장 규약)로 바꾼다. 의류 실측은 바꾸지 않는다(R06): 축 회전과 cm->m만 한다.
+--ref-body(패턴을 만든 몸)를 주면 패널마다 평행 이동만 해서 첫 위치를 착장할 몸의 어깨에 맞춘다
+(placement.py). 패턴을 만든 몸과 다른 몸(D3 SMPL)에서 어깨 솔기가 몸 안을 지나지 않게 하려는 것이다.
 
 사용 (cwd=C:\\dev\\GarmentCode, PYTHONPATH=C:\\dev\\GarmentCode;<저장소 루트>, 가상환경 garmentcode):
     python -m fitting.adapters.garmentcode.export_panels <spec.json> <body.obj> <out_dir> \
-        --config <drape_vN.json>
+        --config <drape_vN.json> [--ref-body <패턴을 만든 몸.obj>]
 """
 import argparse
 import json
@@ -25,6 +27,7 @@ from fitting.adapters.garmentcode.coords import (
     to_spec,
     transform_record,
 )
+from fitting.adapters.garmentcode.placement import apply_offsets, placement_offsets
 
 # GarmentCode 2.0.2 버그: res > 1.0에서 짧은 모서리 경고를 출력할 때 없는 Edge.name을 참조한다.
 # 원본 코드는 고치지 않고 여기서 클래스 속성만 채운다.
@@ -88,6 +91,8 @@ def main():
     ap.add_argument('body')
     ap.add_argument('out_dir')
     ap.add_argument('--config', required=True)
+    ap.add_argument('--ref-body', help='패턴을 만든 몸 OBJ(GarmentCode m, Y 위). 주면 옷 패널 첫 위치를 '
+                                       '착장할 몸의 어깨에 맞춘다(placement.py)')
     args = ap.parse_args()
 
     cfg, cfg_rec = load_config(args.config)
@@ -101,6 +106,15 @@ def main():
     body = trimesh.load(str(body_path), process=False, force='mesh')
     bv = to_spec(body.vertices, BODY_SCALE)
 
+    placement = None
+    if args.ref_body:
+        ref_path = Path(args.ref_body).resolve()
+        ref = trimesh.load(str(ref_path), process=False, force='mesh')
+        offsets, placement = placement_offsets(gv, panel_of_vert, [p['name'] for p in panels],
+                                               to_spec(ref.vertices, BODY_SCALE), bv)
+        gv = apply_offsets(gv, panel_of_vert, offsets)
+        placement.update(reference_body=str(ref_path), reference_body_sha256=sha256_file(ref_path))
+
     data = {
         'units': 'm',
         'axes': {'up': '+Z', 'front': '-Y'},
@@ -110,6 +124,7 @@ def main():
                    'mesh_res_cm': res},
         'config': cfg_rec,
         'transform_from_garmentcode': transform_record(),
+        'placement': placement,
         'garment': {
             'vertices': gv.round(6).tolist(),
             'faces': gf.tolist(),
@@ -131,6 +146,9 @@ def main():
 
     print(f'garment: {len(gv)} verts, {len(gf)} faces, {len(panels)} panels, '
           f'{len(box.stitches)} stitches, {len(pairs)} stitch pairs')
+    if placement is not None:
+        print(f"placement: vertical {placement['vertical_shift_m']} m, "
+              f"sleeves {placement['sleeve_lateral_shift_m']}")
     print(f'garment bounds m: {gv.min(0).round(3).tolist()} {gv.max(0).round(3).tolist()}')
     print(f'body: {len(bv)} verts, watertight {body.is_watertight}, '
           f'bounds m: {bv.min(0).round(3).tolist()} {bv.max(0).round(3).tolist()}')

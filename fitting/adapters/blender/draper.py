@@ -10,7 +10,9 @@
    가짜 몸은 메시가 없다).
 3. 원단 → 물성(`fabric_map.py`)으로 작업 폴더에 파생 설정을 쓴다. 바뀌는 값이 없으면
    `drape_v1.json` 그대로.
-4. GarmentCode용 Python으로 `run_drape`를 하위 프로세스로 돌린다. 작업 폴더는
+4. GarmentCode용 Python으로 `run_drape`를 하위 프로세스로 돌린다. 패턴을 만든 몸(준비 기록의
+   `generation_body`, 보통 `mean_all`)을 `--ref-body`로 넘겨, export가 옷 패널 첫 위치를 입력 몸의
+   어깨에 맞추게 한다(`garmentcode/placement.py`). 작업 폴더는
    `work_dir/{job_id}/drape/`. 시간 제한은 `request.timeout_seconds`와 설정
    `time_limits_s.drape` 중 작은 값이고, 넘으면 프로세스 트리를 끝낸다.
    착장 뒤 analyze(Blender 없이 지표 재계산, 판정에 쓰지 않음)는 기본으로 건너뛴다
@@ -381,6 +383,10 @@ class BlenderDraper:
             "--blender",
             str(self.blender_path),
         ]
+        ref_body = _generation_body_obj(prep)
+        if ref_body is not None:
+            cmd += ["--ref-body", str(ref_body)]
+        record["placement_reference_body"] = None if ref_body is None else str(ref_body)
         if not self.analyze:
             cmd.append("--skip-analyze")
         env = dict(os.environ, PYTHONIOENCODING="utf-8")
@@ -480,6 +486,18 @@ class BlenderDraper:
             metrics=metrics,
             tool_versions=tool_versions,
         )
+
+
+def _generation_body_obj(prep: Mapping[str, Any]) -> Path | None:
+    """준비 기록의 패턴 생성 몸(`generation_body.body_yaml`)과 같은 이름의 OBJ.
+
+    없으면 None이고, 그때는 run_drape 기본값(`<gc-root>/assets/bodies/mean_all.obj`)을 쓴다.
+    """
+    body_yaml = (prep.get("generation_body") or {}).get("body_yaml")
+    if not body_yaml:
+        return None
+    obj = Path(str(body_yaml)).with_suffix(".obj")
+    return obj if obj.is_file() else None
 
 
 def _env_path(environ: Mapping[str, str], name: str) -> Path | None:

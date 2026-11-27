@@ -340,6 +340,40 @@ def test_dev_body_replaces_the_input(env):
     assert result.metrics["body_source"] == "dev_env:FIT_DRAPE_BODY_OBJ"
 
 
+def _with_generation_body(env, garment, *, make_obj: bool) -> Path:
+    body_yaml = env["tmp"] / "gc_bodies" / "mean_all.yaml"
+    body_yaml.parent.mkdir()
+    body_yaml.write_text("body: {}", encoding="utf-8")
+    if make_obj:
+        body_yaml.with_suffix(".obj").write_text("v 0 0 0", encoding="utf-8")
+    prep_path = env["prepared"] / garment.id / "prep.json"
+    prep = json.loads(prep_path.read_text(encoding="utf-8"))
+    prep["generation_body"] = {"body_yaml": str(body_yaml), "sha256": "x"}
+    prep_path.write_text(json.dumps(prep), encoding="utf-8")
+    return body_yaml.with_suffix(".obj")
+
+
+def test_pattern_body_is_passed_as_the_placement_reference(env):
+    g = _garment()
+    _prepare(env["prepared"], g)
+    ref = _with_generation_body(env, g, make_obj=True)
+    runner = FakeRunDrape()
+    _draper(env, runner).drape(_request(), g)
+    args = dict(zip(runner.calls[0]["cmd"][3::2], runner.calls[0]["cmd"][4::2], strict=False))
+    assert Path(args["--ref-body"]) == ref  # 패턴을 만든 몸에 맞춰 놓인 패널을 입력 몸으로 옮긴다
+    record = json.loads((env["work"] / JOB / "drape_record.json").read_text("utf-8"))
+    assert record["placement_reference_body"] == str(ref)
+
+
+def test_without_the_pattern_body_obj_run_drape_uses_its_default(env):
+    g = _garment()
+    _prepare(env["prepared"], g)
+    _with_generation_body(env, g, make_obj=False)
+    runner = FakeRunDrape()
+    _draper(env, runner).drape(_request(), g)
+    assert "--ref-body" not in runner.calls[0]["cmd"]
+
+
 def test_canonical_hash_matches_pattern_measure():
     pm = pytest.importorskip(
         "fitting.adapters.garmentcode.pattern_measure", reason="garment 선택 의존성 필요"
