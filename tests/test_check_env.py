@@ -465,6 +465,7 @@ def test_needs_follow_adapter_modules():
     assert needs(realize="fitting.adapters.fal_fitroom.factory:make_fitroom_realizer") == {
         "extra:realize",
         ce.NEED_FAL_KEY,
+        ce.NEED_BLENDER,  # 회전 영상 맨 위 자르기
     }
     assert needs(validate="fitting.adapters.media.factory:make_validator") == {"extra:realize"}
 

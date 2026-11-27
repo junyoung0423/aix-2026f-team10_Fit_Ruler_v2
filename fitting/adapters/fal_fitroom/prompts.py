@@ -1,19 +1,20 @@
-"""피팅룸 실사화 프롬프트 (`fitroom_prompt_v3`).
+"""피팅룸 실사화 프롬프트 (`fitroom_prompt_v4`).
 
-단계마다 문장이 다르다. 문장을 바꾸면 판을 올린다. 문장은 2026-11-25 실험에서 결과를 보고 고른
+단계마다 문장이 다르다. 문장을 바꾸면 판을 올린다. 문장은 2026-11-25~26 실험에서 결과를 보고 고른
 것이다(docs/realize-fitroom.md 2절).
 
 - 사진(`photo`): 렌더 정지 프레임을 매장 피팅룸의 실제 사람 사진으로 바꾼다. 재질·피부·배경·조명만
   바꾸고 구도(화면 위치)·체형·자세(A자세)와 옷의 핏(박스형 몸판·넓은 소매·기장)은 렌더 그대로 둔다.
   옷 설명에는 핏 이름을 넣지 않는다(정돈된 핏으로 끌 수 있어서). 이 사진이 핏 확인 프레임이다.
-  v2는 같은 뜻을 짧게 적었고, 신체 1 렌더에서 팔을 내리고 확대했다(v3로 바꾼 이유).
+  v2는 같은 뜻을 짧게 적었고, 신체 1 렌더에서 팔을 내리고 확대했다(v3에서 바꾼 이유).
 - 자세(`pose`, 기본 켬): 사진에서 팔을 자연스럽게 내리고 나머지는 그대로 둔다.
-- 회전(`turn`): 고정 카메라, 숨쉬기만, 몸의 왼쪽으로 1/4 바퀴 돌아 오른쪽 옆모습을 보인 뒤 같은 길을
-  되짚어 정면으로 돌아와 끝남(v1은 앞 → 옆 → 뒤 → 반대쪽 옆 → 앞 한 바퀴).
+- 회전(`turn`): 고정 카메라, 숨쉬기만, 앞 → 옆 → 뒤 → 반대쪽 옆 → 앞 한 바퀴(8초). 턱·입·수염·
+  얼굴은 옆모습을 포함해 도는 내내 화면에 들어오지 않는다고 적는다. v3의 4초 1/4 바퀴 왕복은 문장과
+  반대 방향으로 돌거나 옆모습에서 뒤집혀(q18~q20) v4에서 한 바퀴로 되돌렸다(q23).
 
 얼굴 처리(decisions.md 2절): 모든 단계에서 "목 아래, 머리와 얼굴은 화면 밖"을 적고, 회전은 부정
-프롬프트로도
-막는다.
+프롬프트로도 막는다. 그래도 옆모습에서 수염 끝이 화면 맨 위에 걸칠 수 있어, 실사화 어댑터가 회전
+영상의 맨 위를 잘라 낸다(`encode.py`).
 
 바지 색(`pants_for`): 옷과 대비되는 색을 고른다. 짙은 청바지는 네이비 티셔츠와 색이 비슷해 검증의 옷
 영역 찾기가 둘을 가르지 못했다(실험 2회차). 후보 중 옷 색과 CIEDE2000이 가장 먼 것을 고른다.
@@ -35,7 +36,7 @@ from fitting.adapters.fal_ltx.prompt import (
 from fitting.domain import GarmentVariant
 from fitting.verify.visual_check import delta_e_2000, srgb_to_lab
 
-FITROOM_PROMPT_VERSION = "fitroom_prompt_v3"
+FITROOM_PROMPT_VERSION = "fitroom_prompt_v4"
 
 # 바지 후보: (프롬프트 문구, sRGB hex). 옷과 대비되는 쪽을 고른다
 PANTS: tuple[tuple[str, str], ...] = (
@@ -78,32 +79,33 @@ POSE_TEMPLATE = (
     "with the head and face outside the frame. Photorealistic."
 )
 
-# 회전: 1/4 바퀴 왕복(몸의 왼쪽으로 90° 돌아 오른쪽 옆모습을 보인 뒤, 같은 길을 되짚어 정면으로).
-# 방향을 적지 않으면 되돌아오는 방향이 정해지지 않아 반대쪽 옆모습으로 튀거나(q13) 같은 방향으로
-# 계속 돌았다. 방향을 적은 문장(q16)에서 같은 길로 되돌아왔다(docs/realize-fitroom.md 2.7절)
+# 회전: 8초 한 바퀴(앞 → 옆 → 뒤 → 반대쪽 옆 → 앞). 예전 한 바퀴 문장(v1, 커밋 34abf08)에서 구도
+# 문장만 바꿨다: 턱·입·수염·얼굴은 옆모습에서도 화면에 들어오지 않고 머리는 늘 화면 위 끝 위에 있다
+# (q19에서 턱을 없앤 문장). 4초 1/4 바퀴 왕복(v3)은 문장과 반대 방향으로 돌거나 옆모습에서 뒤집혔고
+# (q18~q20), 한 바퀴는 뒤집힌 적이 없다(q5·q6·q8·q22·q23). 도는 방향은 적지 않는다
+# (docs/realize-fitroom.md 2.8절)
 TURN_TEMPLATE = (
     "Static locked-off camera that never moves, pans or zooms; the framing stays exactly the same "
-    "for the whole shot: from the neck down, and the head and face always stay outside the frame. "
+    "for the whole shot: from the neck down. The chin, mouth, beard and face never enter the frame "
+    "at any moment of the turn, not even at the side profiles: the head always stays above the top "
+    "edge of the image. "
     "A real person stands on the same spot at the same distance from the camera in a bright retail "
     "clothing store fitting room, wearing the {garment} and {pants}, arms relaxed at the sides. "
-    "The person slowly turns in place a quarter turn, exactly 90 degrees, toward the person's own "
-    "left, so that the right side of the body faces the camera in a clean side profile, holds that "
-    "side profile for a moment, and then turns back toward the person's own right, retracing the "
-    "same path in the opposite direction, a quarter turn back to face the camera again. The person "
-    "never turns past the side profile, never shows the back and never shows the other side. The "
-    "video ends exactly at the last frame, facing the camera just like the first frame. The only "
-    "other movement is natural, gentle breathing. No hand gestures: the hands stay relaxed at the "
-    "sides and do not touch the clothes. The person does not step toward or away from the camera. "
-    "The shirt keeps the same color, fit and length from every angle, with realistic fabric that "
-    "drapes and moves naturally."
+    "Right from the first second, the person slowly and continuously turns in place through "
+    "exactly one full 360-degree rotation at a steady, even speed: front, then one side profile, "
+    "then the back, then the other side profile, and back to the front. The turn ends exactly at "
+    "the last frame, facing the camera again just like the first frame. The only other movement is "
+    "natural, gentle breathing. No hand gestures: the hands stay relaxed at the sides and do not "
+    "touch the clothes. The person does not step toward or away from the camera. The shirt keeps "
+    "the same color, fit and length from every angle, with realistic fabric that drapes and moves "
+    "naturally with the turn."
 )
 
 TURN_NEGATIVE = (
     "face, head, hair, chin, camera movement, zoom in, zoom out, pan, close-up, cut, scene change, "
-    "stepping forward, walking, touching the shirt, hand gestures, waving, "
+    "stepping forward, walking, touching the shirt, hand gestures, waving, turning back and forth, "
     "text, logo, extra limbs, extra fingers, changing clothes, blurry, distorted, "
-    "full rotation, turning all the way around, continuing to turn in the same direction, "
-    "spinning, back view, the other side profile"
+    "beard, mouth, lips, jaw, stubble"
 )
 
 

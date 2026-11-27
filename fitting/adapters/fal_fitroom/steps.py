@@ -59,7 +59,7 @@ def turn_arguments(
     prompt: str,
     negative_prompt: str,
     *,
-    duration_s: int = 4,
+    duration_s: int = 8,
     resolution: str = "720p",
     seed: int | None = 42,
 ) -> dict[str, Any]:

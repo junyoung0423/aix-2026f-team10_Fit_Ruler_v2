@@ -240,13 +240,13 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 
 ## 피팅룸 실사화 어댑터 (`fitting.adapters.fal_fitroom.factory:make_fitroom_realizer`)
 
-`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 1/4 바퀴 돌아 오른쪽 옆모습을 보이고, 같은 길로 정면에 돌아오는 4초 영상을 만듭니다(2026-11-26, 그 전에는 8초 한 바퀴). `FAL_KEY`가 필요하고 작업 1건에 $0.70·약 2분 10초가 듭니다(사진 39~53초·자세 36초·회전 49초, 단계마다 따로 잰 값. 이 어댑터로 한 번에 돌린 기록은 아직 없음).
+`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 제자리에서 한 바퀴 도는 8초 영상을 만들고, 옆모습에서 걸치는 수염 끝을 없애려고 영상 맨 위 32px을 잘라 냅니다(2026-11-27. 11-26에는 4초 1/4 바퀴 왕복). `FAL_KEY`와 맨 위 자르기에 쓸 Blender(`BLENDER_PATH`)가 필요하고, 작업 1건에 $1.10·약 2분 40초~3분이 듭니다(사진 28~39초·자세 27~32초·회전 52초·자르기 약 25초, 단계마다 따로 잰 값. v4로 한 번에 돌린 기록은 아직 없음).
 
-- 흐름(모두 fal): 사진(렌더 첫 프레임 → 실사 사진, Nano Banana Pro 편집. 체형·자세·구도·옷 핏은 렌더 그대로) → 자세(팔을 내린 정면 사진, Nano Banana Pro 편집, $0.15) → 회전(시작·끝을 자세 사진으로 고정한 4초 영상, Veo 3.1 Fast first-last-frame, 720×1280, $0.40. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, +$0.40. 길이는 `turn_duration_s`·`--duration`). 자세는 기본으로 켜고, 끄면(`pose_step=False`·`--no-pose-step`) 사진을 바로 써서 팔을 벌린 채 시작·끝납니다. 예전의 핏 옮기기(LTX render-to-real)는 뺐습니다(docs/realize-fitroom.md 2.6절)
+- 흐름(자르기 말고는 fal): 사진(렌더 첫 프레임 → 실사 사진, Nano Banana Pro 편집. 체형·자세·구도·옷 핏은 렌더 그대로) → 자세(팔을 내린 정면 사진, Nano Banana Pro 편집, $0.15) → 회전(시작·끝을 자세 사진으로 고정한 8초 한 바퀴 영상, Veo 3.1 Fast first-last-frame, 720×1280, $0.80. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, +$0.80. 길이는 `turn_duration_s`·`--duration`) → 맨 위 자르기(맨 위 32px을 잘라 같은 배율로 키움. OpenCV로 자르고 Blender 내장 FFmpeg로 H.264. `top_crop_px`·`--top-crop`, 0이면 끔). 자세는 기본으로 켜고, 끄면(`pose_step=False`·`--no-pose-step`) 사진을 바로 써서 팔을 벌린 채 시작·끝납니다. 예전의 핏 옮기기(LTX render-to-real)는 뺐습니다(docs/realize-fitroom.md 2.6절)
 - 입력: `input_artifact_ids[0]`(렌더 클립)의 `artifacts_dir/{id}.mp4`
-- 출력: 계약 출력 `{job_id}_video.mp4`(`REALIZE_OUTPUTS`). 계약 밖 중간 사진 `{job_id}_realize_fit_frame.png`(실사 사진, 검증 어댑터가 핏 확인에 씀), 자세 사진 `{job_id}_realize_pose.png`(자세를 끄면 없음)
-- 재시도·재조회: D4 규칙을 단계마다 씁니다. 같은 `job_id`로 다시 불리면 끝난 단계는 건너뛰고 진행 중인 단계만 같은 요청 ID로 다시 조회합니다. 오류 코드는 `EXTERNAL_SUBMIT_UNKNOWN`·`BUDGET_LIMIT`·`REALIZE_TIMEOUT`·`REALIZE_FAILED`(검은 영상 포함)
-- 지표: `external_request_id`(회전), `cost_usd`·`estimated_cost_usd`, 단계별 시간 `photo_s`·`pose_s`·`turn_s`, `retries`, `video_width`·`video_height`
+- 출력: 계약 출력 `{job_id}_video.mp4`(`REALIZE_OUTPUTS`). 계약 밖 중간 사진 `{job_id}_realize_fit_frame.png`(실사 사진, 검증 어댑터가 핏 확인에 씀), 자세 사진 `{job_id}_realize_pose.png`(자세를 끄면 없음). 받은 그대로의 회전 영상은 `FIT_WORK_DIR/{job_id}/realize/turn.mp4`
+- 재시도·재조회: D4 규칙을 단계마다 씁니다. 같은 `job_id`로 다시 불리면 끝난 단계는 건너뛰고 진행 중인 단계만 같은 요청 ID로 다시 조회합니다. 오류 코드는 `EXTERNAL_SUBMIT_UNKNOWN`·`BUDGET_LIMIT`·`REALIZE_TIMEOUT`·`REALIZE_FAILED`(검은 영상·자르기 실패 포함). 맨 위 자르기에 쓸 Blender가 없으면 fal을 부르기 전에 멈추고, 자르기가 실패하면 다시 부를 때 회전을 다시 제출하지 않고 자르기만 다시 합니다
+- 지표: `external_request_id`(회전), `cost_usd`·`estimated_cost_usd`, 단계별 시간 `photo_s`·`pose_s`·`turn_s`, `retries`, `video_width`·`video_height`, `top_crop_px`
 - 기록: `FIT_WORK_DIR/{job_id}/realize/realize.json`과 단계별 요청·응답
 
 영상 경로 5단계 중 실사화만 이 어댑터로 바꾼 설정은 `config/adapters/visual_fitroom.yaml`입니다. 서버 없이 클립 하나로 시험하려면 `python -m tools.realize_fitroom --input <렌더 클립>`(드라이런, `--yes`일 때만 실제 호출)을 씁니다. 실험·모델 선택·검증·한계는 docs/realize-fitroom.md에 있습니다.

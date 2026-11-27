@@ -1,4 +1,4 @@
-"""피팅룸 실사화 문장(`fitroom_prompt_v3`)과 D5 프롬프트의 피팅룸 판(`realize_prompt_v2`) 테스트."""
+"""피팅룸 실사화 문장(`fitroom_prompt_v4`)과 D5 프롬프트의 피팅룸 판(`realize_prompt_v2`) 테스트."""
 
 from pathlib import Path
 
@@ -44,7 +44,7 @@ def test_pants_contrast_with_the_garment():
 
 def test_prompts_keep_the_fit_framing_and_face_rule():
     p = build_fitroom_prompts(NAVY)
-    assert p.version == FITROOM_PROMPT_VERSION == "fitroom_prompt_v3"
+    assert p.version == FITROOM_PROMPT_VERSION == "fitroom_prompt_v4"
     assert p.garment == "plain navy cotton jersey short-sleeve crew-neck T-shirt with a regular fit"
     # 사진 문장에는 핏 이름을 넣지 않는다(정돈된 레귤러 핏으로 끌 수 있어서, q17)
     assert p.photo_garment == "plain navy cotton jersey short-sleeve crew-neck T-shirt"
@@ -61,14 +61,18 @@ def test_prompts_keep_the_fit_framing_and_face_rule():
     assert "same shoulder seam position" in p.photo
     assert "fitting room" in p.photo
     assert "lower both arms" in p.pose
-    assert "a quarter turn, exactly 90 degrees" in p.turn and "breathing" in p.turn
-    # 1/4 바퀴 왕복: 몸의 왼쪽으로 돌아 오른쪽 옆모습, 같은 길로 정면에 돌아와 끝난다(q16)
-    assert "toward the person's own left" in p.turn
-    assert "retracing the same path" in p.turn and "never shows the back" in p.turn
+    assert "one full 360-degree rotation" in p.turn and "breathing" in p.turn
+    # v4: 8초 한 바퀴(앞 → 옆 → 뒤 → 반대쪽 옆 → 앞). 도는 방향은 적지 않는다. 방향을 적은 4초
+    # 1/4 바퀴 왕복(v3)은 문장과 반대로 돌거나 옆모습에서 뒤집혔다(q18~q20)
+    assert "then the back, then the other side profile" in p.turn
+    assert "person's own left" not in p.turn and "quarter turn" not in p.turn
+    # 옆모습에서도 턱·수염이 화면에 들어오지 않게(q19·q23)
+    assert "The chin, mouth, beard and face never enter the frame" in p.turn
     assert "No hand gestures" in p.turn
     negative = set(p.turn_negative.split(", "))
-    assert {"face", "head", "zoom in", "walking"} <= negative
-    assert {"full rotation", "back view", "the other side profile"} <= negative
+    assert {"face", "head", "zoom in", "walking", "turning back and forth"} <= negative
+    assert {"beard", "mouth", "lips", "jaw", "stubble"} <= negative
+    assert "back view" not in negative  # 한 바퀴라 뒷모습을 보인다
     assert set(p.to_dict()) == {"version", "garment", "photo_garment", "pants", "photo", "pose",
                                 "turn", "turn_negative"}
 

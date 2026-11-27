@@ -1,17 +1,19 @@
 """렌더 클립 하나를 피팅룸 실사화 어댑터로 회전 영상으로 만든다(서버 없이, 같은 어댑터).
 
     python -m tools.realize_fitroom --input path/to/render_clip.mp4         # 드라이런(비용 없음)
-    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출($0.70)
+    python -m tools.realize_fitroom --input path/to/render_clip.mp4 --yes   # 실제 호출($1.10)
     python -m tools.realize_fitroom --name <이전 이름> --yes                 # 이어 받기(끝난 단계
     건너뜀)
 
 기본은 드라이런이다. 단계별 모델·문장·예상 비용만 보여 주고 fal은 부르지 않는다. `--yes`를 붙여야
-실제로
-부른다. FAL_KEY는 환경변수나 저장소 맨 위 `.env`에서 읽는다.
+실제로 부른다. FAL_KEY와 BLENDER_PATH(없으면 BLENDER_EXE)는 환경변수나 저장소 맨 위 `.env`에서
+읽는다. 회전 영상의 맨 위 자르기(기본 32px, `--top-crop 0`이면 끔)는 Blender로 H.264를 다시 쓰므로,
+켜 두었는데 Blender가 없으면 fal을 부르기 전에 멈춘다.
 
 결과는 `artifacts/realize/<이름>/`에 남는다(커밋 금지).
 - `artifacts/<이름>_render_clip.mp4`(입력 사본), `<이름>_realize_fit_frame.png`(실사 사진, 핏 확인
-  프레임), `<이름>_realize_pose.png`(자세, `--no-pose-step`이면 없음), `<이름>_video.mp4`(회전 영상)
+  프레임), `<이름>_realize_pose.png`(자세, `--no-pose-step`이면 없음), `<이름>_video.mp4`(회전 영상,
+  맨 위를 자른 것. 받은 그대로의 영상은 `work/<이름>/realize/turn.mp4`)
 - `work/<이름>/realize/`: `plan.json`, 단계별 `*_request.json`·`*_response.json`, `realize.json`
 - `strip.png`: 렌더 첫 프레임 · 사진 · (자세) · 영상 1초 간격 프레임을 나란히 놓은 확인 그림
 
@@ -32,6 +34,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from fitting.adapters.fal_fitroom.encode import DEFAULT_TOP_CROP_PX
 from fitting.adapters.fal_fitroom.factory import make_fitroom_realizer
 from fitting.adapters.fal_fitroom.realizer import FitRoomOptions, FitRoomRealizer
 from fitting.adapters.fal_fitroom.steps import (
@@ -76,7 +79,18 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="회전 영상 시드(0 이상 정수). random이면 보내지 않는다",
     )
     parser.add_argument(
-        "--duration", type=int, choices=[4, 6, 8], default=4, help="회전 영상 길이(초)"
+        "--duration",
+        type=int,
+        choices=[4, 6, 8],
+        default=8,
+        help="회전 영상 길이(초, 기본 8초 한 바퀴)",
+    )
+    parser.add_argument(
+        "--top-crop",
+        type=int,
+        default=DEFAULT_TOP_CROP_PX,
+        help=f"회전 영상 맨 위를 잘라 낼 줄 수(px, 기본 {DEFAULT_TOP_CROP_PX}, 0이면 끔). "
+        "옆모습의 수염 끝을 없앤다. Blender(BLENDER_PATH)로 다시 쓴다",
     )
     parser.add_argument(
         "--turn-model",
@@ -101,6 +115,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="접수 여부를 모르는 이전 요청이 있어도 다시 제출한다 (비용이 다시 들 수 있음)",
     )
     return parser.parse_args(argv)
+
+
+def _env_path(name: str) -> Path | None:
+    value = (os.environ.get(name) or "").strip()
+    return Path(value) if value else None
 
 
 def _garments_dir(arg: Path | None) -> Path:
@@ -155,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
         turn_duration_s=args.duration,
         turn_model=args.turn_model,
         pose_step=args.pose_step,
+        top_crop_px=args.top_crop,
     )
     request = PortRequest(
         job_id=name,
@@ -180,6 +200,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"입력: {inp['width']}×{inp['height']}, {inp['fps']:g}fps, {inp['frame_count']}프레임")
     for step, endpoint in plan["endpoints"].items():
         print(f"  {step:8s} {endpoint}  예상 ${cost[step]:.4f}")
+    crop = plan["top_crop_px"]
+    crop_text = f"{crop}px (Blender로 다시 씀, 비용 없음)" if crop else "끔"
+    print(f"  맨 위 자르기 {crop_text}")
     print(f"예상 비용 합 ${cost['total']:.4f} / 한도 ${options.max_cost_usd:.2f}")
 
     if not args.yes:
@@ -188,10 +211,18 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_OK
 
     load_env_file(ROOT / ".env")
+    blender = _env_path("BLENDER_PATH") or _env_path("BLENDER_EXE")
+    if crop and (blender is None or not blender.is_file()):
+        print(
+            "설정 오류: 회전 영상 맨 위 자르기에 Blender가 필요합니다. BLENDER_PATH를 넣거나 "
+            "--top-crop 0으로 끄세요",
+            file=sys.stderr,
+        )
+        return EXIT_SETUP
     settings = AdapterSettings(
         artifacts_dir=artifacts,
         work_dir=work,
-        blender_path=None,
+        blender_path=blender,
         smpl_model_dir=None,
         fal_key_present=bool((os.environ.get("FAL_KEY") or "").strip()),
         repo_root=ROOT,

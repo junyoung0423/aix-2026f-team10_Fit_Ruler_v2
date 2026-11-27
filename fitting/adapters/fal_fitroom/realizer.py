@@ -6,8 +6,11 @@
    체형·자세·구도·옷 핏은 렌더 그대로 두라고 지시하고, 검증 어댑터가 이 사진을 렌더와 겹쳐 핏을 본다
 2. `pose`(`pose_step`, 기본 켬): 1의 사진에서 팔을 내린 정면 사진 `{job}_realize_pose.png`
    (Nano Banana Pro 편집). 1의 사진은 렌더의 A자세라 팔이 벌어져 있다
-3. `turn`: 시작·끝을 2의 사진(끄면 1의 사진)으로 둔 4초 1/4 바퀴 왕복 영상 `{job}_video.mp4`
-   (Veo 3.1 Fast first-last-frame, `turn_model="standard"`이면 Veo 3.1 표준판)
+3. `turn`: 시작·끝을 2의 사진(끄면 1의 사진)으로 둔 8초 한 바퀴 영상 `{job}_video.mp4`
+   (Veo 3.1 Fast first-last-frame, `turn_model="standard"`이면 Veo 3.1 표준판). 받은 영상의 맨 위
+   `top_crop_px`줄(기본 32)을 잘라 내고 같은 배율로 키워 크기를 지킨다(`encode.py`, Blender 내장
+   FFmpeg로 H.264). 옆모습에서 턱 끝·수염이 화면 맨 위에 걸치는 것을 없앤다. 0이면 받은 영상을
+   그대로 쓴다
 
 예전에 있던 "핏 옮기기"(렌더 클립 + 사진 → LTX render-to-real의 마지막 프레임)는 뺐다. 사진 문장에
 핏 지시와 옷과 대비되는 바지를 넣은 뒤로는 1의 사진이 렌더 핏을 더 잘 지켰고(IoU 0.973 대 0.948),
@@ -29,12 +32,17 @@
 - 제출 전에 단계별 예상 비용 합이 `max_cost_usd`를 넘으면 `BUDGET_LIMIT`.
 - 회전 영상이 모두 검은 화면이면 `REALIZE_FAILED`(retryable=false). 다시 조회해도 같은 결과다.
 - 상태·결과 조회는 제출할 때 기록한 모델로 한다(다시 부를 때 옵션이 바뀌어도 같은 요청을 본다).
+- 맨 위 자르기에 쓸 Blender(`blender_path`)가 없으면 fal을 부르기 전에 멈춘다. 자르기가 실패하면
+  `REALIZE_FAILED`(retryable=false)로 알리고 회전 단계는 `completed`로 남긴다. 다시 부르면 다시
+  제출하지 않고 받은 결과로 자르기만 다시 한다.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -50,9 +58,19 @@ from fitting.adapters.fal_ltx.realizer import (
     submit_rejected,
 )
 from fitting.adapters.fal_ltx.render_to_real import download
+from fitting.adapters.media.frames import read_video_info
 from fitting.domain import SCHEMA_VERSION, ErrorCode, GarmentVariant, Stage
 from fitting.ports import REALIZE_OUTPUTS, PortError, PortFailure, PortRequest, PortResult
 
+from .encode import (
+    DEFAULT_TOP_CROP_PX,
+    ENCODE_TIMEOUT_S,
+    TOP_CROP_MAX_PX,
+    Runner,
+    encode_h264,
+    subprocess_runner,
+    write_cropped_frames,
+)
 from .prompts import FITROOM_PROMPT_VERSION, FitRoomPrompts, build_fitroom_prompts
 from .steps import (
     PHOTO_ENDPOINT,
@@ -71,7 +89,9 @@ from .steps import (
     write_png,
 )
 
-REALIZE_VERSION = "realize_fitroom_v3"  # v2는 8초 한 바퀴, v1은 핏 옮기기(LTX)가 있던 흐름
+# v4: 8초 한 바퀴 + 맨 위 자르기. v3은 4초 1/4 바퀴 왕복, v2는 8초 한 바퀴(자르기 없음), v1은 핏
+# 옮기기(LTX)가 있던 흐름
+REALIZE_VERSION = "realize_fitroom_v4"
 RECORD_DIR = "realize"
 SUMMARY_NAME = "realize.json"
 # 단계 순서. `pose`는 `FitRoomOptions.pose_step`(기본 켬)으로 끌 수 있다
@@ -103,7 +123,7 @@ Downloader = Callable[[str, Path], None]
 @dataclass
 class FitRoomOptions:
     seed: int | None = 42  # 회전 영상에 보내는 시드(사진 편집은 fal이 고른다)
-    max_cost_usd: float = 3.0  # 예상 비용 합 상한(기본 흐름 $0.70)
+    max_cost_usd: float = 3.0  # 예상 비용 합 상한(기본 흐름 $1.10)
     poll_interval_s: float = 2.0
     wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
     garment_text: str | None = None  # 프롬프트 옷 설명(시험용)
@@ -111,9 +131,11 @@ class FitRoomOptions:
     photo_resolution: str = "2K"
     # 팔 내리기 사진. 끄면 1의 사진(팔을 벌린 A자세)을 회전 영상의 시작·끝으로 바로 쓴다
     pose_step: bool = True
-    turn_duration_s: int = 4  # 1/4 바퀴 왕복(8초는 한 바퀴 문장 때의 값)
+    turn_duration_s: int = 8  # 한 바퀴(4초 1/4 바퀴 왕복은 옆모습에서 뒤집혀 v4에서 되돌림)
     turn_resolution: str = "720p"
     turn_model: str = "fast"  # "fast": Veo 3.1 Fast(초당 $0.10) · "standard": 표준판($0.20)
+    # 회전 영상 맨 위를 잘라 낼 줄 수(px, 0이면 끔). 자르기에는 Blender(`blender_path`)가 필요하다
+    top_crop_px: int = DEFAULT_TOP_CROP_PX
 
 
 @dataclass
@@ -158,6 +180,9 @@ class FitRoomRealizer:
     wall: Callable[[], float] = time.time
     sleep: Callable[[float], None] = time.sleep
     client_version: str = "unknown"
+    # 맨 위 자르기(H.264 다시 쓰기)에 쓰는 Blender. 팩토리가 BLENDER_PATH(BLENDER_EXE)로 넣는다
+    blender_path: Path | None = None
+    runner: Runner = subprocess_runner  # Blender 실행. 테스트는 가짜로 바꾼다
 
     # --- 파일 -----------------------------------------------------------------------------
 
@@ -211,6 +236,9 @@ class FitRoomRealizer:
             resolution=self.options.turn_resolution,
             seed=self.options.seed,
         )
+        crop = self.options.top_crop_px
+        if not 0 <= crop <= TOP_CROP_MAX_PX:
+            raise ValueError(f"맨 위 자르기는 0~{TOP_CROP_MAX_PX}px이어야 합니다: {crop}")
         estimate = {
             "photo": PHOTO_USD,
             "pose": PHOTO_USD,
@@ -223,6 +251,7 @@ class FitRoomRealizer:
             "steps": list(self.steps()),
             "endpoints": endpoints,
             "turn_model": self.options.turn_model,
+            "top_crop_px": crop,
             "prompts": prompts.to_dict(),
             "estimate_usd": {**estimate, "total": round(sum(estimate.values()), 4)},
             "max_cost_usd": self.options.max_cost_usd,
@@ -241,7 +270,14 @@ class FitRoomRealizer:
             else f"unknown:{self.options.turn_model}",
             "fal_client": self.client_version,
             "price_checked_on": PRICE_CHECKED_ON,
+            "top_crop": f"{self.options.top_crop_px}px (blender)"
+            if self.options.top_crop_px
+            else "off",
         }
+
+    def blender_ready(self) -> bool:
+        """맨 위 자르기에 쓸 Blender 실행 파일이 있는가."""
+        return self.blender_path is not None and Path(self.blender_path).is_file()
 
     def realize(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
         record_dir = Path(self.work_dir) / request.job_id / RECORD_DIR
@@ -298,6 +334,19 @@ class FitRoomRealizer:
                 False,
                 "실사화 예상 비용이 한도를 넘어 요청하지 않았습니다.",
                 FAILED,
+            )
+        if self.options.top_crop_px and not self.blender_ready():
+            raise self._fail(
+                record,
+                record_dir,
+                "prepare",
+                ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                False,
+                "회전 영상 맨 위 자르기에 쓸 Blender가 없어 요청하지 않았습니다.",
+                FAILED,
+                FileNotFoundError(
+                    f"Blender 실행 파일이 없습니다(BLENDER_PATH): {self.blender_path}"
+                ),
             )
 
         prompts = build_fitroom_prompts(garment, garment_text=self.options.garment_text)
@@ -572,10 +621,14 @@ class FitRoomRealizer:
                 frames, info = sample_frames(raw)
                 if is_black(frames):
                     raise _BlackOutput(info)
-                partial = output.with_name(output.name + ".part")
-                partial.write_bytes(raw.read_bytes())
-                os.replace(partial, output)
-                record.save_step(name, video=info)
+                if self.options.top_crop_px:
+                    crop = self._crop_top(raw, output, record_dir)
+                    record.save_step(name, video=info, top_crop=crop)
+                else:
+                    partial = output.with_name(output.name + ".part")
+                    partial.write_bytes(raw.read_bytes())
+                    os.replace(partial, output)
+                    record.save_step(name, video=info)
         except _BlackOutput as black:
             raise self._fail(
                 record,
@@ -586,6 +639,19 @@ class FitRoomRealizer:
                 "실사화 결과가 검은 화면이었습니다.",
                 FAILED,
                 RuntimeError(f"black output {black.info}"),
+                step_name=name,
+            ) from None
+        except _CropFailed as failed:
+            # 받은 결과는 그대로 두고(completed) 다시 부르면 자르기만 다시 한다
+            raise self._fail(
+                record,
+                record_dir,
+                f"{name}:crop",
+                ErrorCode.REALIZE_FAILED,
+                False,
+                "실사화 영상의 맨 위를 잘라 저장하지 못했습니다.",
+                COMPLETED,
+                failed,
                 step_name=name,
             ) from None
         except (ValueError, OSError) as error:
@@ -606,6 +672,52 @@ class FitRoomRealizer:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.downloader(url, partial)
         os.replace(partial, path)
+
+    def _crop_top(self, raw: Path, output: Path, record_dir: Path) -> dict[str, Any]:
+        """받은 회전 영상의 맨 위를 잘라 H.264로 다시 쓰고 계약 출력으로 둔다.
+
+        중간 프레임(8초 720p에 약 0.5 GB)과 다시 쓴 영상은 시스템 임시 폴더에 두고 끝나면 지운다
+        (작업 폴더가 OneDrive 같은 동기화 폴더일 수 있다). Blender 기록은 `crop_encode.log`.
+
+        Raises:
+            _CropFailed: 프레임을 쓰지 못했거나, Blender 인코딩이 실패했거나, 결과의 프레임 수·
+                크기가 원본과 다르다.
+        """
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix="fitroom_crop_", ignore_cleanup_errors=True
+            ) as tmp:
+                frames_dir, encoded = Path(tmp) / "frames", Path(tmp) / "turn_cropped.mp4"
+                geometry = write_cropped_frames(raw, frames_dir, self.options.top_crop_px)
+                if self.blender_path is None:
+                    raise _CropFailed("Blender 경로가 없습니다(BLENDER_PATH)")
+                outcome = encode_h264(
+                    Path(self.blender_path),
+                    frames_dir,
+                    encoded,
+                    float(geometry["fps"]),
+                    log_path=record_dir / "crop_encode.log",
+                    runner=self.runner,
+                )
+                if outcome.timed_out:
+                    raise _CropFailed(
+                        f"Blender 인코딩이 {ENCODE_TIMEOUT_S:g}초 안에 끝나지 않았습니다"
+                    )
+                if outcome.returncode != 0 or not encoded.is_file():
+                    raise _CropFailed(
+                        f"Blender 인코딩이 실패했습니다(종료 코드 {outcome.returncode})"
+                    )
+                check = read_video_info(encoded)
+                expected = (geometry["frames"], geometry["width"], geometry["height"])
+                got = (check.frame_count, check.width, check.height)
+                if got != expected:
+                    raise _CropFailed(f"원본과 다릅니다(프레임·폭·높이 {got} ≠ {expected})")
+                partial = output.with_name(output.name + ".part")
+                shutil.copyfile(encoded, partial)
+                os.replace(partial, output)
+        except (ValueError, OSError) as error:
+            raise _CropFailed(f"{type(error).__name__}: {error}") from error
+        return {**geometry, "encoder": "blender", "encode_s": outcome.seconds}
 
     # --- 공통 -------------------------------------------------------------------------------
 
@@ -695,6 +807,7 @@ class FitRoomRealizer:
             "retries": len(record.data.get("retries", [])),
             "video_width": video.get("width"),
             "video_height": video.get("height"),
+            "top_crop_px": (steps.get("turn", {}).get("top_crop") or {}).get("px"),
             "realize_fit_frame_artifact_id": outputs["photo"].stem,
             "realize_pose_artifact_id": outputs["pose"].stem if self.options.pose_step else None,
         }
@@ -710,3 +823,7 @@ class _BlackOutput(Exception):
     def __init__(self, info: dict[str, float]) -> None:
         super().__init__("black output")
         self.info = info
+
+
+class _CropFailed(Exception):
+    """맨 위 자르기 실패. 이유는 메시지에 담는다."""
