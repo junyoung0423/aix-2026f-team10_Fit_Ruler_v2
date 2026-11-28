@@ -8,7 +8,13 @@
 - 프레임마다 (렌더 옷 마스크 R, 실사 옷 마스크 S, 같은 크기)
   - 면적 비율 |S| / |R|이 0.5~1.5 밖이면 그 프레임은 측정 불가
   - 실루엣 겹침: IoU = |R ∩ S| / |R ∪ S| ≥ 0.85
-  - 가슴·밑단 폭: R의 상자 위에서 45 %, 90 % 높이, 주변 5행의 가로폭 중앙값. 원본 대비 변화 ≤ 5 %
+  - 가슴·밑단 폭: R의 상자 위에서 45 %, 90 % 높이, 주변 5행의 폭 중앙값. 원본 대비 변화 ≤ 5 %.
+    폭은 `measurement.width_span`으로 잰다. `torso`(설정 1.1.0)는 소매를 뺀 몸통 구간, 곧 옷 가운데
+    열(마스크 픽셀의 가로 평균)을 지나는 이어진 구간의 폭이다(그 열이 비면 가장 가까운 구간). 프레임
+    높이의 `width_gap_ratio`(1.1.0은 2 %)보다 좁은 틈은 이어진 것으로 본다(겨드랑이 바로 아래 좁은
+    틈이 실사 옷 영역 찾기의 닫기·흐림으로 한쪽에서만 메워지는 일을 막는다).
+    `full`(설정이 없을 때의 기본, 1.0.0)은 맨 왼쪽~맨 오른쪽 옷 픽셀이라, 실사에서 소매가 가슴
+    높이까지 내려오면 소매까지 폭에 들어간다(2026-11-28 화면 시연 작업: 몸통 +3 %인데 +61 %로 잼)
   - 대표색: 두 마스크를 안쪽으로 5 px 줄인 공통 영역의 Lab 중앙값끼리 CIEDE2000 ≤ 8.
     공통 영역이 R의 20 % 미만이면 색은 측정 불가
 - 영상: 11프레임 중 9프레임 이상이 모든 기준을 통과하면 PASS. 측정 불가 프레임은 통과로 세지 않는다.
@@ -34,6 +40,8 @@ from typing import Any
 import numpy as np
 
 CHECK_VERSION = "visual_check_v1"
+# 가슴·밑단 폭 재는 방식: full = 맨 왼쪽~맨 오른쪽 옷 픽셀, torso = 옷 가운데를 지나는 이어진 구간
+WIDTH_SPANS = ("full", "torso")
 
 PASS, FAIL, UNVERIFIABLE = "PASS", "FAIL", "UNVERIFIABLE"
 
@@ -81,6 +89,10 @@ class VisualCriteria:
     area_ratio_max: float
     color_erode_px: int  # 색 비교 전에 두 마스크를 안쪽으로 줄이는 픽셀
     color_min_common_ratio: float  # 색 비교 공통 영역 / 렌더 마스크 하한
+    # 가슴·밑단 폭 재는 방식(WIDTH_SPANS). 설정에 없으면 full(1.0.0과 같음)
+    width_span: str = "full"
+    # torso에서 이어진 것으로 볼 틈(프레임 높이 비율). 설정에 없으면 0(틈이 있으면 끊음)
+    width_gap_ratio: float = 0.0
     source: str = ""  # 기준을 읽은 설정 이름과 버전(기록용)
 
     @classmethod
@@ -132,6 +144,8 @@ class VisualCriteria:
             area_ratio_max=float(measurement["area_ratio_max"]),
             color_erode_px=int(measurement["color_erode_px"]),
             color_min_common_ratio=float(measurement["color_min_common_ratio"]),
+            width_span=str(measurement.get("width_span", "full")),
+            width_gap_ratio=float(measurement.get("width_gap_ratio", 0.0)),
             source=source,
         )
         criteria._check()
@@ -154,6 +168,10 @@ class VisualCriteria:
             problems.append("measurement.chest_height < hem_height, 둘 다 0~1이어야 합니다")
         if self.width_rows < 1 or self.width_rows % 2 == 0:
             problems.append("measurement.width_rows는 1 이상 홀수여야 합니다")
+        if self.width_span not in WIDTH_SPANS:
+            problems.append(f"measurement.width_span은 {', '.join(WIDTH_SPANS)} 중 하나여야 합니다")
+        if not 0.0 <= self.width_gap_ratio < 0.5:
+            problems.append("measurement.width_gap_ratio는 0 이상 0.5 미만이어야 합니다")
         if not 0.0 < self.area_ratio_min < 1.0 < self.area_ratio_max:
             problems.append("measurement.area_ratio_min < 1 < area_ratio_max여야 합니다")
         if self.color_erode_px < 0 or not 0.0 <= self.color_min_common_ratio <= 1.0:
@@ -175,6 +193,8 @@ class VisualCriteria:
             "chest_height": self.chest_height,
             "hem_height": self.hem_height,
             "width_rows": self.width_rows,
+            "width_span": self.width_span,
+            "width_gap_ratio": self.width_gap_ratio,
             "area_ratio_min": self.area_ratio_min,
             "area_ratio_max": self.area_ratio_max,
             "color_erode_px": self.color_erode_px,
@@ -349,6 +369,68 @@ def band_width(mask: np.ndarray, row: int, rows: int) -> float | None:
         cols = np.flatnonzero(mask[r])
         widths.append(int(cols[-1] - cols[0] + 1) if cols.size else 0)
     return float(statistics.median(widths))
+
+
+def mask_center_x(mask: np.ndarray) -> int | None:
+    """옷 마스크 픽셀의 가로 위치 평균(옷 가운데 열). 마스크가 비면 None."""
+    xs = np.nonzero(np.asarray(mask, dtype=bool))[1]
+    if xs.size == 0:
+        return None
+    return int(round(float(xs.mean())))
+
+
+def run_width(line: np.ndarray, center: int, max_gap: int = 0) -> int:
+    """한 행에서 `center` 열을 지나는 이어진 옷 구간의 폭.
+
+    `max_gap`픽셀 이하의 틈은 이어진 것으로 본다. 그 열이 비었으면 가장 가까운 구간(같으면 왼쪽)을
+    쓰고, 행이 비면 0이다.
+    """
+    cols = np.flatnonzero(np.asarray(line, dtype=bool))
+    if cols.size == 0:
+        return 0
+    breaks = np.flatnonzero(np.diff(cols) > max_gap + 1)
+    starts = np.concatenate(([cols[0]], cols[breaks + 1]))
+    ends = np.concatenate((cols[breaks], [cols[-1]]))
+    distance = np.where(center < starts, starts - center, np.where(center > ends, center - ends, 0))
+    k = int(np.argmin(distance))
+    return int(ends[k] - starts[k] + 1)
+
+
+def torso_band_width(
+    mask: np.ndarray, row: int, rows: int, center: int, max_gap: int = 0
+) -> float | None:
+    """`row` 주변 `rows`행에서 행마다 잰 몸통 폭(`center` 열을 지나는 이어진 구간)의 중앙값.
+
+    소매가 몸통과 `max_gap`픽셀보다 넓게 떨어져 있으면 소매는 들어가지 않는다. 잴 행이 화면 밖이면
+    None.
+    """
+    mask = np.asarray(mask, dtype=bool)
+    half = rows // 2
+    start, stop = max(row - half, 0), min(row + half + 1, mask.shape[0])
+    if start >= stop:
+        return None
+    widths = (run_width(mask[r], center, max_gap) for r in range(start, stop))
+    return float(statistics.median(widths))
+
+
+def span_width(
+    mask: np.ndarray, row: int, rows: int, span: str, gap_ratio: float = 0.0
+) -> float | None:
+    """`span`(`WIDTH_SPANS`)에 맞춰 `row` 주변의 폭을 잰다. 가운데 열은 그 마스크에서 찾고, 프레임
+    높이의 `gap_ratio`보다 좁은 틈은 이어진 것으로 본다(torso만).
+
+    Raises:
+        ValueError: 모르는 방식이다.
+    """
+    if span == "full":
+        return band_width(mask, row, rows)
+    if span != "torso":
+        raise ValueError(f"폭 재는 방식은 {', '.join(WIDTH_SPANS)} 중 하나여야 합니다: {span}")
+    center = mask_center_x(mask)
+    if center is None:
+        return band_width(mask, row, rows)  # 빈 마스크: 행마다 폭 0
+    max_gap = round(gap_ratio * np.asarray(mask).shape[0])
+    return torso_band_width(mask, row, rows, center, max_gap)
 
 
 def width_change(render_width: float | None, real_width: float | None) -> float | None:

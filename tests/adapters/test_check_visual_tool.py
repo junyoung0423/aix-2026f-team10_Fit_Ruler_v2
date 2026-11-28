@@ -35,7 +35,7 @@ def test_writes_the_contact_sheet_frames_and_record(tmp_path, clips, capsys):
     assert len(list((out / "masks").glob("real_*.png"))) == 11
     record = json.loads((out / "check.json").read_text(encoding="utf-8"))
     assert record["status"] == "PASS"
-    assert record["config"]["source"] == "visual_check_v1@1.0.0"
+    assert record["config"]["source"] == "visual_check_v1@1.1.0"
     assert record["representative_frames"] == {"real_index": 12, "render_index": 12}
     printed = capsys.readouterr().out
     assert "판정: PASS" in printed and "결과 폴더" in printed

@@ -31,13 +31,13 @@ from fitting.verify.visual_check import (
     FrameMeasure,
     VisualCheckResult,
     VisualCriteria,
-    band_width,
     box_height,
     delta_e_2000,
     judge_video,
     mask_iou,
     median_lab,
     sample_indices,
+    span_width,
     srgb_to_lab,
     width_change,
     width_rows,
@@ -386,11 +386,13 @@ def measure_frame(
 ) -> FrameMeasure:
     """같은 크기의 렌더·실사 프레임과 두 옷 마스크로 프레임 하나의 측정값을 낸다."""
     rows = width_rows(render_mask, criteria.chest_height, criteria.hem_height)
-    n = criteria.width_rows
-    chest = width_change(
-        band_width(render_mask, rows.chest, n), band_width(real_mask, rows.chest, n)
-    )
-    hem = width_change(band_width(render_mask, rows.hem, n), band_width(real_mask, rows.hem, n))
+    n, span, gap = criteria.width_rows, criteria.width_span, criteria.width_gap_ratio
+
+    def width(mask: np.ndarray, row: int) -> float | None:
+        return span_width(mask, row, n, span, gap)
+
+    chest = width_change(width(render_mask, rows.chest), width(real_mask, rows.chest))
+    hem = width_change(width(render_mask, rows.hem), width(real_mask, rows.hem))
     render_area = int(render_mask.sum())
     common = erode(render_mask, criteria.color_erode_px) & erode(
         real_mask, criteria.color_erode_px
