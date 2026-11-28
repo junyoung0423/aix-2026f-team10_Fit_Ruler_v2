@@ -1804,11 +1804,169 @@ form > .notice {
   object-fit: contain;
 }
 
+/* 실사 영상(과 대표 장면)은 칸을 위쪽(목·어깨) 기준으로 채운다. 세로로 긴 영상이라 아래 다리 쪽이 잘린다 */
+.result-media > video,
+.result-media.is-real .artifact-frame img {
+  object-fit: cover;
+  object-position: 50% 0;
+}
+
+.result-media > video:fullscreen {
+  object-fit: contain;
+  object-position: 50% 50%;
+  background: #000;
+}
+
 .media-caption {
   margin: 0;
   text-align: center;
   font-size: 13px;
   color: var(--studio-muted);
+}
+
+/* 진행 표시(와 3D 설명) 묶음. 넓은 화면에서는 영상 아래쪽에 겹친다 */
+.result-foot {
+  display: grid;
+  gap: 10px;
+}
+
+.result-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 실사 영상과 함께 알릴 것(검증 실패·자동 검증 못 함): 제목 옆 한 줄 표시. 누르면 영상 위에 전체 문장이 펼쳐진다 */
+.result-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgba(217, 194, 154, 0.5);
+  border-radius: 999px;
+  background: rgba(217, 194, 154, 0.14);
+  color: var(--glow-warm);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.result-chip:hover {
+  background: rgba(217, 194, 154, 0.22);
+}
+
+.result-chip.is-info {
+  border-color: rgba(237, 230, 218, 0.28);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--studio-text);
+}
+
+.result-chip-caret {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.result-chip[aria-expanded='true'] .result-chip-caret {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+.result-note {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 4;
+  padding: 10px 12px 12px 14px;
+  border: 1px solid rgba(237, 230, 218, 0.2);
+  border-radius: 10px;
+  background: rgba(38, 39, 42, 0.94);
+  color: var(--studio-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.result-note.is-warn {
+  border-color: rgba(217, 194, 154, 0.45);
+}
+
+.result-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.result-note-head strong {
+  font-size: 14px;
+  color: var(--glow-warm);
+}
+
+.result-note p {
+  margin: 2px 0 0;
+}
+
+.result-note .result-actions,
+.result-card .notice .result-actions {
+  margin-top: 10px;
+}
+
+.result-note-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: -4px -4px -4px 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--studio-text);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.result-note-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* 영상 조작: 일시정지·전체 화면 단추 두 개(영상 오른쪽 위) */
+.media-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+}
+
+.media-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  background: rgba(32, 33, 36, 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+
+.media-btn:hover {
+  background: rgba(32, 33, 36, 0.78);
+}
+
+.media-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
 }
 
 /* 결과 카드 안의 안내(회색 바탕용). 오류 안내는 피팅룸과 같은 규칙(.result-card .notice-error)을 쓴다 */
@@ -1845,12 +2003,16 @@ form > .notice {
 .reveal {
   position: absolute;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
 }
 
 .reveal-wipe {
   position: absolute;
   inset: 0;
+  /* 영상과 같은 방식(위쪽 기준 채우기)으로 놓아 커튼 앞뒤가 어긋나지 않게 */
+  object-fit: cover;
+  object-position: 50% 0;
   animation: wipe 1.8s cubic-bezier(0.6, 0, 0.2, 1) 0.5s forwards;
 }
 
@@ -2477,12 +2639,14 @@ form > .notice {
     display: none;
   }
 
-  /* 결과 카드: 사진 칸이 남은 높이를 채운다(3:4 그대로) */
+  /* 결과 카드: 영상 칸(3:4)이 카드 아래 끝까지 남은 높이를 다 쓰고, 진행 표시(와 3D 설명)는 아래쪽에 겹친다(피팅룸과 같은 배치) */
   .page-result .result-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 14px;
+    padding: 14px 14px 0;
+    overflow: hidden;
   }
 
   .page-result .result-media {
@@ -2492,6 +2656,24 @@ form > .notice {
     max-width: 100%;
     aspect-ratio: 3 / 4;
     align-self: center;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .page-result .result-foot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    gap: 8px;
+    /* 위쪽 여백을 작게 해서 그러데이션이 티셔츠 밑단을 덮지 않게(밑단은 칸 아래에서 약 20% 높이) */
+    padding: 28px 18px 16px;
+    background: linear-gradient(180deg, rgba(58, 60, 63, 0), rgba(58, 60, 63, 0.8) 55%, rgba(52, 54, 57, 0.95));
+  }
+
+  /* 3D 미리보기 설명 줄은 그림을 가려서 넓은 화면에서는 뺀다(제목·탭이 '3D 미리보기'라고 알린다) */
+  .page-result .result-foot .media-caption {
+    display: none;
   }
 
   /* 입력 화면: 몸 그림 카드와 입력 칸이 남은 높이를 채운다 */
