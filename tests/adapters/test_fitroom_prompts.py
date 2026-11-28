@@ -1,4 +1,4 @@
-"""피팅룸 실사화 문장(`fitroom_prompt_v4`)과 D5 프롬프트의 피팅룸 판(`realize_prompt_v2`) 테스트."""
+"""피팅룸 실사화 문장(`fitroom_prompt_v5`)과 D5 프롬프트의 피팅룸 판(`realize_prompt_v2`) 테스트."""
 
 from pathlib import Path
 
@@ -44,7 +44,10 @@ def test_pants_contrast_with_the_garment():
 
 def test_prompts_keep_the_fit_framing_and_face_rule():
     p = build_fitroom_prompts(NAVY)
-    assert p.version == FITROOM_PROMPT_VERSION == "fitroom_prompt_v4"
+    assert p.version == FITROOM_PROMPT_VERSION == "fitroom_prompt_v5"
+    # v5: 기준 그림 문장은 따로 두고, 사진 문장에는 붙지 않는다(실사화 옵션을 켤 때만 붙인다)
+    assert "black-and-white silhouette" in p.photo_guide and p.photo_guide not in p.photo
+    assert p.to_dict()["photo_guide"] == p.photo_guide
     assert p.garment == "plain navy cotton jersey short-sleeve crew-neck T-shirt with a regular fit"
     # 사진 문장에는 핏 이름을 넣지 않는다(정돈된 레귤러 핏으로 끌 수 있어서, q17)
     assert p.photo_garment == "plain navy cotton jersey short-sleeve crew-neck T-shirt"
@@ -74,7 +77,7 @@ def test_prompts_keep_the_fit_framing_and_face_rule():
     assert {"beard", "mouth", "lips", "jaw", "stubble"} <= negative
     assert "back view" not in negative  # 한 바퀴라 뒷모습을 보인다
     assert set(p.to_dict()) == {"version", "garment", "photo_garment", "pants", "photo", "pose",
-                                "turn", "turn_negative"}
+                                "turn", "turn_negative", "photo_guide"}
 
 
 def test_garment_text_overrides_and_must_not_be_blank():

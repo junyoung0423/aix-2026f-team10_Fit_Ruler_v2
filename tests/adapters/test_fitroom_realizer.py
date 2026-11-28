@@ -18,6 +18,8 @@ from fitting.adapters.fal_fitroom.realizer import (  # noqa: E402
     REALIZE_VERSION,
     FitRoomOptions,
     FitRoomRealizer,
+    PhotoCheck,
+    _photo_score,
 )
 from fitting.adapters.fal_fitroom.steps import (  # noqa: E402
     PHOTO_ENDPOINT,
@@ -25,8 +27,10 @@ from fitting.adapters.fal_fitroom.steps import (  # noqa: E402
     TURN_MODELS,
     first_frame,
 )
+from fitting.adapters.media.fitroom_measure import load_fitroom_config  # noqa: E402
 from fitting.adapters.media.frames import read_video_info  # noqa: E402
 from fitting.adapters.media.validator import FIT_FRAME_ROLE as VALIDATOR_FIT_FRAME  # noqa: E402
+from fitting.adapters.media.visual_measure import load_check_config  # noqa: E402
 from fitting.domain import ErrorCode, GarmentVariant, Stage  # noqa: E402
 from fitting.ports import PortFailure, PortRequest, PortResult  # noqa: E402
 from tests.adapters import visual_clips as vc  # noqa: E402
@@ -37,18 +41,29 @@ GARMENT = GarmentVariant.model_validate_json(
     (ROOT / "data" / "garments" / "tee_regular_m_navy_v1.json").read_text(encoding="utf-8")
 )
 JOB = "jobfr"
+# 사진 핏 확인 기준(검증 어댑터와 같은 설정 파일)
+CHECK = PhotoCheck(config=load_check_config(), align=load_fitroom_config().align)
 
 
 @pytest.fixture(scope="module")
 def media(tmp_path_factory) -> dict[str, Path]:
     root = tmp_path_factory.mktemp("fitroom")
-    render, _ = vc.render_clip(root / "render.mp4")
+    render, mask = vc.render_clip(root / "render.mp4")
     photo, _ = vc.draw((180, 240), real=True, seed=1)
     ok, buf = cv2.imencode(".png", photo)
     (root / "photo.png").write_bytes(buf.tobytes())
     turn = vc.real_clip(root / "turn.mp4")
     black = vc.write_clip(root / "black.mp4", [np.zeros((240, 180, 3), np.uint8)] * 25)
-    return {"render": render, "photo": root / "photo.png", "turn": turn, "black": black}
+    files = {"render": render, "photo": root / "photo.png", "turn": turn, "black": black,
+             "mask": vc.write_mask(root / "render_mask.png", mask)}
+    # 옷 폭을 줄인 사진: 0.9배는 밑단 폭 하나만, 0.8·0.7배는 IoU·가슴·밑단 폭이 떨어진다
+    for widen in (0.9, 0.8, 0.7):
+        narrow, _ = vc.draw((180, 240), real=True, widen=widen, seed=1)
+        name = f"photo_w{round(widen * 100)}"
+        ok, buf = cv2.imencode(".png", narrow)
+        (root / f"{name}.png").write_bytes(buf.tobytes())
+        files[name] = root / f"{name}.png"
+    return files
 
 
 class FakeFal:
@@ -56,8 +71,12 @@ class FakeFal:
 
     def __init__(self, *, statuses: dict[str, list[Any]] | None = None,
                  submit_errors: dict[str, list[Exception]] | None = None,
-                 turn_url: str = "https://fal.example/turn.mp4"):
+                 turn_url: str = "https://fal.example/turn.mp4",
+                 photos: list[str] | None = None):
         self.statuses = statuses or {}
+        # 사진 단계 결과 파일 이름(제출 차례대로, 모자라면 마지막 것)
+        self.photos = list(photos or ["photo"])
+        self.names: dict[str, str] = {}
         self.submit_errors = submit_errors or {}
         self.turn_url = turn_url
         self.submits: list[tuple[str, dict[str, Any]]] = []
@@ -71,7 +90,7 @@ class FakeFal:
 
     def _step(self, endpoint: str, arguments: dict[str, Any]) -> str:
         if endpoint == PHOTO_ENDPOINT:
-            return "pose" if any(e == PHOTO_ENDPOINT for e, _ in self.submits) else "photo"
+            return "pose" if "lower both arms" in arguments["prompt"] else "photo"
         return "turn"
 
     def submit(self, application: str, arguments: dict[str, Any]) -> Any:
@@ -82,6 +101,9 @@ class FakeFal:
         self.submits.append((application, arguments))
         request_id = f"req-{step}-{len(self.submits)}"
         self.ids[request_id] = step
+        if step == "photo":
+            made = sum(1 for name in self.ids.values() if name == "photo") - 1
+            self.names[request_id] = self.photos[min(made, len(self.photos) - 1)]
         return SimpleNamespace(request_id=request_id)
 
     def status(self, application: str, request_id: str, *, with_logs: bool = False) -> Any:
@@ -92,8 +114,10 @@ class FakeFal:
     def result(self, application: str, request_id: str) -> dict[str, Any]:
         self.queries.append((application, request_id))
         step = self.ids[request_id]
-        if step in ("photo", "pose"):
-            return {"images": [{"url": f"https://fal.example/{step}.png"}]}
+        if step == "photo":
+            return {"images": [{"url": f"https://fal.example/{self.names[request_id]}.png"}]}
+        if step == "pose":
+            return {"images": [{"url": "https://fal.example/pose.png"}]}
         return {"video": {"url": self.turn_url}}
 
 
@@ -111,7 +135,7 @@ class Files:
         if self.fail.get(name):
             self.fail[name] -= 1
             raise ReadTimeout("download timed out")
-        source = {"photo": "photo", "pose": "photo", "turn": "turn", "black": "black"}[name]
+        source = {"pose": "photo"}.get(name, name)
         path.write_bytes(self.media[source].read_bytes())
 
 
@@ -135,12 +159,15 @@ class FakeEncoder:
 
 
 def make(tmp_path: Path, media, client: FakeFal, files: Files | None = None, *,
-         encoder: FakeEncoder | None = None, blender: bool = True, **options):
+         encoder: FakeEncoder | None = None, blender: bool = True, mask: bool = False,
+         check: bool = False, **options):
     artifacts = tmp_path / "artifacts"
     artifacts.mkdir(exist_ok=True)
     clip = artifacts / f"{JOB}_render_clip.mp4"
     if not clip.exists():
         clip.write_bytes(media["render"].read_bytes())
+    if mask:  # C5 렌더 어댑터가 남기는 렌더 옷 마스크
+        (artifacts / f"{JOB}_render_mask.png").write_bytes(media["mask"].read_bytes())
     blender_path = None
     if blender:  # 실행 파일이 있는지만 본다(실행은 가짜 인코더가 한다)
         blender_path = tmp_path / "blender.exe"
@@ -158,6 +185,7 @@ def make(tmp_path: Path, media, client: FakeFal, files: Files | None = None, *,
         client_version="test",
         blender_path=blender_path,
         runner=encoder or FakeEncoder(),
+        photo_check=CHECK if check else None,
     )
 
 
@@ -191,10 +219,14 @@ def test_default_photo_pose_turn_saves_every_output(tmp_path, media):
     assert m["cost_usd"] == pytest.approx(0.15 + 0.15 + 0.80)  # 사진 2장 + 회전 8초
     assert m["estimated_cost_usd"] == pytest.approx(1.10)
     assert m["top_crop_px"] == 32
-    assert result.tool_versions["realize"] == REALIZE_VERSION == "realize_fitroom_v4"
+    assert result.tool_versions["realize"] == REALIZE_VERSION == "realize_fitroom_v5"
     assert result.tool_versions["top_crop"] == "32px (blender)"
     assert result.tool_versions["turn_endpoint"] == TURN_ENDPOINT
     assert "transfer_endpoint" not in result.tool_versions
+    # 핏 확인 기준이 없으면 사진 1장으로 확인 없이 간다
+    assert m["photo_attempts"] == 1 and "photo_fit_check" not in m
+    assert result.tool_versions["photo_check"] == "off"
+    assert result.tool_versions["photo_guide"] == "off"
     assert record(tmp_path)["state"] == "done"
 
 
@@ -307,11 +339,16 @@ def test_download_failing_twice_is_finished_on_the_next_call_without_generating(
 def test_plan_lists_steps_and_rejects_a_bad_duration(tmp_path, media):
     realizer = make(tmp_path, media, FakeFal())
     plan = realizer.plan(request(), GARMENT)
-    assert plan["version"] == "realize_fitroom_v4"
+    assert plan["version"] == "realize_fitroom_v5"
     assert plan["steps"] == ["photo", "pose", "turn"]
     assert plan["endpoints"] == ENDPOINTS
-    assert set(plan["estimate_usd"]) == {"photo", "pose", "turn", "total"}
+    assert set(plan["estimate_usd"]) == {
+        "photo", "pose", "turn", "total", "photo_retries_max", "max_total"
+    }
     assert plan["estimate_usd"]["total"] == pytest.approx(1.10)
+    assert plan["estimate_usd"]["max_total"] == pytest.approx(1.10)  # 핏 확인이 없어 다시 안 만듦
+    assert plan["photo_check"] == {"enabled": False, "max_photos": 1}
+    assert plan["photo_guide"] == "off"
     assert plan["top_crop_px"] == 32
     assert plan["prompts"]["pants"] == "light beige chino trousers"
     assert "transfer_settings" not in plan
@@ -500,7 +537,7 @@ def test_factory_needs_the_key(tmp_path):
         make_fitroom_realizer(settings_for(tmp_path, key=False))
 
 
-def test_factory_builds_with_the_submit_retry_guard(tmp_path):
+def test_factory_builds_with_the_submit_retry_guard_and_the_photo_check(tmp_path):
     pytest.importorskip("fal_client")
     from fitting.adapters.fal_fitroom.factory import make_fitroom_realizer
 
@@ -510,6 +547,7 @@ def test_factory_builds_with_the_submit_retry_guard(tmp_path):
     assert "submit_retry_guard=" in realizer.client_version
     assert realizer.artifacts_dir == tmp_path / "artifacts"
     assert realizer.blender_path == blender  # 맨 위 자르기에 쓴다(BLENDER_PATH)
+    assert realizer.photo_check == CHECK  # 사진 핏 확인은 검증 어댑터와 같은 기준
 
 
 def test_media_factory_turns_on_the_fitroom_check(tmp_path):
@@ -518,3 +556,152 @@ def test_media_factory_turns_on_the_fitroom_check(tmp_path):
     validator = make_validator(settings_for(tmp_path, key=False))
     assert validator.fitroom is not None
     assert validator.tool_versions()["fitroom_config"] == "fitroom_check_v1@1.1.0"
+
+
+# --- 사진 핏 확인 ---------------------------------------------------------------------------
+
+
+def photo_step(tmp_path: Path) -> dict[str, Any]:
+    return record(tmp_path)["steps"]["photo"]
+
+
+def pixels(path: Path):
+    return cv2.imdecode(np.frombuffer(Path(path).read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+
+
+def test_a_photo_that_passes_the_fit_check_goes_on_without_another_photo(tmp_path, media):
+    client = FakeFal()
+    realizer = make(tmp_path, media, client, mask=True, check=True)
+    result = realizer.realize(request(), GARMENT)
+
+    assert [e for e, _ in client.submits] == [PHOTO_ENDPOINT, PHOTO_ENDPOINT, TURN_ENDPOINT]
+    step = photo_step(tmp_path)
+    assert step["check"]["status"] == "PASS" and step["check"]["request_id"] == "req-photo-1"
+    assert step["chosen"] == 1 and not step.get("attempts")
+    assert result.metrics["photo_attempts"] == 1
+    assert result.metrics["photo_fit_check"] == "PASS"
+    assert result.metrics["cost_usd"] == pytest.approx(1.10)
+    assert result.tool_versions["photo_check"] == "fit_frame (max 3 photos)"
+
+
+def test_a_photo_that_fails_the_fit_check_is_made_again_before_the_turn(tmp_path, media):
+    client = FakeFal(photos=["photo_w80", "photo"])  # 첫 사진은 옷 폭이 0.8배
+    realizer = make(tmp_path, media, client, mask=True, check=True)
+    plan = realizer.plan(request(), GARMENT)
+    assert plan["photo_check"] == {"enabled": True, "max_photos": 3}
+    assert plan["estimate_usd"]["max_total"] == pytest.approx(1.40)  # 사진 2장 더
+    result = realizer.realize(request(), GARMENT)
+
+    endpoints = [e for e, _ in client.submits]
+    assert endpoints == [PHOTO_ENDPOINT, PHOTO_ENDPOINT, PHOTO_ENDPOINT, TURN_ENDPOINT]
+    step = photo_step(tmp_path)
+    assert step["request_id"] == "req-photo-2" and step["check"]["status"] == "PASS"
+    (failed,) = step["attempts"]
+    assert failed["number"] == 1 and failed["request_id"] == "req-photo-1"
+    assert failed["check"]["status"] == "FAIL" and "chest_width" in failed["check"]["fails"]
+    directory = tmp_path / "work" / JOB / "realize"
+    assert (directory / failed["file"]).is_file()
+    assert (directory / "photo_attempts" / "1_photo_response.json").is_file()
+    # 핏 확인 사진(검증·자세 단계 입력)은 다시 만든 사진이다
+    fit_frame = realizer.outputs(JOB)["photo"]
+    assert np.array_equal(pixels(fit_frame), pixels(media["photo"]))
+    assert client.uploads.count(fit_frame.name) == 1  # 자세 단계가 올린 사진
+    assert result.metrics["photo_attempts"] == 2
+    assert result.metrics["photo_fit_check"] == "PASS"
+    assert result.metrics["cost_usd"] == pytest.approx(0.15 * 3 + 0.80)
+
+
+def test_when_every_photo_fails_the_best_one_is_kept_and_the_job_goes_on(tmp_path, media):
+    client = FakeFal(photos=["photo_w80", "photo_w90", "photo_w70"])
+    realizer = make(tmp_path, media, client, mask=True, check=True)
+    result = realizer.realize(request(), GARMENT)
+
+    assert [e for e, _ in client.submits].count(PHOTO_ENDPOINT) == 4  # 사진 3장 + 자세
+    step = photo_step(tmp_path)
+    attempts = {a["number"]: a for a in step["attempts"]}
+    assert set(attempts) == {1, 3}  # 쓰지 않은 사진
+    assert step["chosen"] == 2 and step["request_id"] == "req-photo-2"
+    assert step["check"]["status"] == "FAIL"
+    assert all(_photo_score(step["check"]) <= _photo_score(a["check"]) for a in attempts.values())
+    fit_frame = realizer.outputs(JOB)["photo"]
+    assert np.array_equal(pixels(fit_frame), pixels(media["photo_w90"]))  # 0.9배가 가장 낫다
+    assert result.metrics["photo_attempts"] == 3
+    assert result.metrics["photo_fit_check"] == "FAIL"  # 마지막 판정은 검증 단계가 한다
+    assert result.metrics["cost_usd"] == pytest.approx(0.15 * 4 + 0.80)
+
+    again = realizer.realize(request(), GARMENT)  # 끝난 작업은 다시 만들지 않는다
+    assert len(client.submits) == 5 and again.metrics == result.metrics
+
+
+def test_one_photo_attempt_only_checks_and_does_not_make_another(tmp_path, media):
+    client = FakeFal(photos=["photo_w80"])
+    realizer = make(tmp_path, media, client, mask=True, check=True, photo_attempts=1)
+    result = realizer.realize(request(), GARMENT)
+    assert [e for e, _ in client.submits].count(PHOTO_ENDPOINT) == 2
+    assert photo_step(tmp_path)["check"]["status"] == "FAIL"
+    assert result.metrics["photo_attempts"] == 1
+    assert realizer.plan(request(), GARMENT)["estimate_usd"]["max_total"] == pytest.approx(1.10)
+
+
+def test_without_the_render_mask_the_photo_is_used_without_a_check(tmp_path, media):
+    client = FakeFal(photos=["photo_w80"])
+    realizer = make(tmp_path, media, client, check=True)  # 렌더 옷 마스크 없음
+    result = realizer.realize(request(), GARMENT)
+    assert len(client.submits) == 3
+    step = photo_step(tmp_path)
+    assert "check" not in step and step["check_skipped"] == "렌더 옷 마스크가 없음"
+    assert "photo_fit_check" not in result.metrics
+
+
+def test_a_timeout_while_making_the_photo_again_resumes_the_same_request(tmp_path, media):
+    client = FakeFal(photos=["photo_w80", "photo"],
+                     statuses={"photo": [Completed()] + [Queued(1)] * 1000})
+    realizer = make(tmp_path, media, client, mask=True, check=True, wait_limit_s=60)
+    with pytest.raises(PortFailure) as caught:
+        realizer.realize(request(), GARMENT)
+    assert caught.value.error.code == ErrorCode.REALIZE_TIMEOUT
+    assert caught.value.error.external_request_id == "req-photo-2"
+    assert len(photo_step(tmp_path)["attempts"]) == 1
+
+    client.statuses["photo"] = []  # 그 사이 두 번째 사진이 끝났다
+    result = realizer.realize(request(), GARMENT)
+    photos = [a for e, a in client.submits
+              if e == PHOTO_ENDPOINT and "lower both arms" not in a["prompt"]]
+    assert len(photos) == 2  # 떨어진 사진도, 기다리던 사진도 다시 보내지 않았다
+    assert photo_step(tmp_path)["request_id"] == "req-photo-2"
+    assert result.metrics["photo_fit_check"] == "PASS" and result.metrics["photo_attempts"] == 2
+
+
+# --- 사진 기준 그림 ---------------------------------------------------------------------------
+
+
+def test_the_render_mask_guide_is_sent_as_the_second_image_when_turned_on(tmp_path, media):
+    client = FakeFal()
+    realizer = make(tmp_path, media, client, mask=True, photo_mask_reference=True)
+    result = realizer.realize(request(), GARMENT)
+    photo = client.submits[0][1]
+    assert photo["image_urls"] == [
+        "https://fal.example/upload/render_still.png",
+        "https://fal.example/upload/photo_guide.png",
+    ]
+    assert photo["prompt"].endswith("more fitted than this silhouette.")
+    assert "second image is only a guide" in photo["prompt"]
+    guide = pixels(tmp_path / "work" / JOB / "realize" / "photo_guide.png")
+    still = pixels(tmp_path / "work" / JOB / "realize" / "render_still.png")
+    assert guide.shape == still.shape  # 렌더와 같은 크기·구도
+    assert set(np.unique(guide)) <= {0, 255}  # 검은 바탕에 옷 자리만 흰색
+    white = (guide[..., 0] == 255).mean()
+    assert white == pytest.approx(cv2.imread(str(media["mask"]), 0).astype(bool).mean(), abs=0.01)
+    assert result.tool_versions["photo_guide"] == "render_mask"
+    # 자세 사진에는 기준 그림을 보내지 않는다
+    pose = client.submits[1][1]
+    assert len(pose["image_urls"]) == 1 and "silhouette" not in pose["prompt"]
+
+
+def test_the_guide_is_off_by_default_and_skipped_without_the_render_mask(tmp_path, media):
+    assert FitRoomOptions().photo_mask_reference is False
+    client = FakeFal()
+    realizer = make(tmp_path, media, client, photo_mask_reference=True)  # 마스크 없음
+    realizer.realize(request(), GARMENT)
+    assert client.submits[0][1]["image_urls"] == ["https://fal.example/upload/render_still.png"]
+    assert realizer.plan(request(), GARMENT)["photo_guide"] == "off"

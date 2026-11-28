@@ -36,7 +36,7 @@ import numpy as np
 
 from fitting.adapters.fal_fitroom.encode import DEFAULT_TOP_CROP_PX
 from fitting.adapters.fal_fitroom.factory import make_fitroom_realizer
-from fitting.adapters.fal_fitroom.realizer import FitRoomOptions, FitRoomRealizer
+from fitting.adapters.fal_fitroom.realizer import FitRoomOptions, FitRoomRealizer, PhotoCheck
 from fitting.adapters.fal_fitroom.steps import (
     DEFAULT_TURN_MODEL,
     TURN_MODELS,
@@ -45,6 +45,8 @@ from fitting.adapters.fal_fitroom.steps import (
     sample_frames,
     write_png,
 )
+from fitting.adapters.media.fitroom_measure import load_fitroom_config
+from fitting.adapters.media.visual_measure import load_check_config
 from fitting.ports import PortFailure, PortRequest
 from server.app import DEFAULT_GARMENTS_DIR, GARMENTS_DIR_ENV
 from server.garments import GarmentDirectory
@@ -105,6 +107,26 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="팔 내리기 사진을 만들어 회전 영상의 시작·끝으로 쓴다(기본 켬, $0.15·약 40초). "
         "--no-pose-step이면 팔을 벌린 사진을 바로 쓴다",
     )
+    parser.add_argument(
+        "--mask",
+        type=Path,
+        help="렌더 옷 마스크(.png, C5 렌더 출력). 있으면 사진을 받은 뒤 핏 확인을 하고, "
+        "--photo-guide의 기준 그림에도 쓴다",
+    )
+    parser.add_argument(
+        "--photo-attempts",
+        type=int,
+        default=3,
+        help="사진 핏 확인에서 떨어지면 다시 만들 사진의 최대 장수(기본 3, 1이면 확인만, "
+        "장당 $0.15). 확인은 --mask가 있을 때만 한다",
+    )
+    parser.add_argument(
+        "--photo-guide",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="렌더 옷 영역의 흰 실루엣을 사진 단계의 둘째 그림으로 같이 보낸다"
+        "(기본 끔, --mask 필요)",
+    )
     parser.add_argument("--max-cost-usd", type=float, default=3.0, help="예상 비용 합 상한")
     parser.add_argument("--timeout", type=int, default=900, help="전체 대기 상한(초)")
     parser.add_argument("--out-dir", type=Path, help="결과 상위 폴더 (기본 artifacts/realize)")
@@ -160,6 +182,11 @@ def main(argv: list[str] | None = None) -> int:
     elif not clip.is_file():
         print("--input이 필요합니다(이어 받을 작업도 없습니다)", file=sys.stderr)
         return EXIT_SETUP
+    if args.mask is not None:
+        if not args.mask.is_file():
+            print(f"렌더 옷 마스크가 없습니다: {args.mask}", file=sys.stderr)
+            return EXIT_SETUP
+        shutil.copy2(args.mask, artifacts / f"{name}_render_mask.png")
 
     garment = GarmentDirectory(_garments_dir(args.garments_dir)).get(args.garment_id)
     if garment is None:
@@ -175,6 +202,8 @@ def main(argv: list[str] | None = None) -> int:
         turn_model=args.turn_model,
         pose_step=args.pose_step,
         top_crop_px=args.top_crop,
+        photo_attempts=args.photo_attempts,
+        photo_mask_reference=args.photo_guide,
     )
     request = PortRequest(
         job_id=name,
@@ -184,8 +213,14 @@ def main(argv: list[str] | None = None) -> int:
         timeout_seconds=args.timeout,
         trace_id=name,
     )
+    try:
+        check = PhotoCheck(load_check_config(), load_fitroom_config().align)
+    except (OSError, ValueError) as error:
+        print(f"설정 오류: 사진 핏 확인 설정을 읽지 못했습니다: {error}", file=sys.stderr)
+        return EXIT_SETUP
     dry = FitRoomRealizer(
-        client=_NoCalls(), artifacts_dir=artifacts, work_dir=work, options=options
+        client=_NoCalls(), artifacts_dir=artifacts, work_dir=work, options=options,
+        photo_check=check,
     )
     try:
         plan = dry.plan(request, garment)
@@ -203,7 +238,19 @@ def main(argv: list[str] | None = None) -> int:
     crop = plan["top_crop_px"]
     crop_text = f"{crop}px (Blender로 다시 씀, 비용 없음)" if crop else "끔"
     print(f"  맨 위 자르기 {crop_text}")
-    print(f"예상 비용 합 ${cost['total']:.4f} / 한도 ${options.max_cost_usd:.2f}")
+    if plan["photo_check"]["enabled"]:
+        print(
+            f"  사진 핏 확인 켬: 떨어지면 사진만 다시(최대 {plan['photo_check']['max_photos']}장, "
+            f"최대 +${cost['photo_retries_max']:.2f})"
+        )
+    else:
+        print("  사진 핏 확인 끔(렌더 옷 마스크가 없음, --mask)")
+    guide_text = "켬(렌더 옷 영역 흰 실루엣)" if plan["photo_guide"] != "off" else "끔"
+    print(f"  사진 기준 그림 {guide_text}")
+    print(
+        f"예상 비용 합 ${cost['total']:.4f}(사진을 다시 만들면 최대 ${cost['max_total']:.4f}) / "
+        f"한도 ${options.max_cost_usd:.2f}"
+    )
 
     if not args.yes:
         print("\n드라이런이라 fal을 부르지 않았습니다. 실제로 호출하려면 --yes를 붙이세요.")
@@ -267,6 +314,8 @@ def main(argv: list[str] | None = None) -> int:
         ("turn_s", "회전"),
     )
     print("시간: " + " · ".join(f"{label} {m[key]}초" for key, label in labels if key in m))
+    if "photo_fit_check" in m:
+        print(f"사진 핏 확인: {m['photo_fit_check']} (사진 {m.get('photo_attempts', 1)}장)")
     print(f"회전 영상: {outputs['turn']} ({m.get('video_width')}×{m.get('video_height')})")
     print(f"확인 그림: {out / 'strip.png'}")
     return EXIT_OK
