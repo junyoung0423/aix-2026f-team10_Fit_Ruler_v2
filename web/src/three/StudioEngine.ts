@@ -18,7 +18,7 @@ import {
   type DissolveUniforms,
 } from './materials';
 import { buildMeshes, type BuiltMeshes } from './meshClient';
-import { outerStarts, photoGrid, seeded, seeds } from './particleShapes';
+import { outerStarts, photoFrame, photoGrid, scatterOffsets, seeded, seeds } from './particleShapes';
 import { roundedRect } from './textures';
 
 /**
@@ -28,8 +28,10 @@ import { roundedRect } from './textures';
  *   기다리는 동안 점구름은 천천히 돌며 점점 또렷해진다(치수 이름표는 붙이지 않는다).
  * - 가상 착용: 몸 점구름이 모래알처럼 굳어 흰 마네킹이 되고, 입자가 화면 바깥 사방에서 날아와 고른 옷 치수의 티셔츠 모양으로 마네킹 위에 모인다.
  *   티셔츠는 끝까지 입자로 남는다(옷 색 천으로 굳히지 않는다). 기다리는 동안 밝은 띠가 어깨에서 밑단으로 지나간다.
- * - 3D 촬영: 정면으로 돌아선 마네킹과 입자 티셔츠를 그대로 찍고, 모형이 입자로 흩어져 그 자리의 사진 판으로 납작하게 붙으며 정면 사진 한 장이 된다.
- * - 실사 변환: 사진이 다시 입자로 흩어졌다가, 기다리는 동안 입자가 하나씩 제자리를 찾아 사진이 맞춰진다(검증 중에는 빛 띠가 지나간다).
+ * - 3D 촬영: 마네킹과 입자 티셔츠가 정면으로 돌아서고, 입자가 사방에서 날아와 둘레에 사진 틀(뷰파인더: 네 귀퉁이 꺾쇠 + 얇은 테두리)을 만든다.
+ *   기다리는 동안 빛 띠가 틀 위에서 아래로 되풀이해 훑고, 띠가 지나는 자리의 티셔츠·틀 입자가 반짝인다.
+ * - 실사 변환: 한 번 번쩍인 뒤 모형이 틀 안으로 납작하게 눌려 정면 사진 한 장이 되고, 사진 속 사람·옷이 입자로 부서져 사방으로 흩어진다.
+ *   기다리는 동안 입자가 사방에서 날아 돌아와 사진을 다시 채운다(처음 몇 초에 일부가 바로, 나머지는 단계 내내 조금씩). 검증 중에는 빛 띠가 지나간다.
  * 실제 진행이 효과보다 빠르면 효과를 조금 빨리 돌려 따라가고, 단계마다 효과를 끝까지 보여 준다.
  * 움직임 줄이기(reducedMotion)면 애니메이션 없이 단계마다 마지막 모습 한 장만 그린다.
  */
@@ -48,7 +50,7 @@ export interface StudioEngineOptions {
   reducedMotion: boolean;
 }
 
-type CameraKind = 'full' | 'upper' | 'front' | 'card';
+type CameraKind = 'full' | 'upper' | 'card';
 type Glitter = THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
 
 const ORDER: StepKey[] = ['body', 'drape', 'render', 'realize'];
@@ -61,20 +63,31 @@ const T = {
   solid: 1.4,
   teeGather: 2.8,
   turn: 1.3,
-  peel: 2.0,
+  /** 사진 틀 입자가 사방에서 날아와 모이는 시간 */
+  frameIn: 1.8,
+  /** 빛 띠가 틀 위에서 아래까지 훑는 시간과 되풀이 주기 */
+  scanSweep: 2.4,
+  scanPeriod: 3.2,
+  /** 모형이 사진 판으로 눌려 붙는 시간 */
+  peel: 2.2,
   cardIn: 0.9,
-  dotsIn: 0.8,
-  scatter: 1.6,
+  /** 사진 점이 사방으로 흩어지는 시간 */
+  scatter: 1.4,
 };
+/** 3D 촬영: 돌아선 뒤 사진을 찍어 두는 때, 사진 틀이 날아오기 시작하는 때, 빛 띠가 훑기 시작하는 때 */
 const R_CAPTURE = T.turn + 0.15;
-const R_PEEL = R_CAPTURE + 0.1;
-const R_CARD = R_PEEL + T.peel * 0.75;
+const R_FRAME = 0.5;
+const R_SCAN = R_FRAME + T.frameIn;
+/** 실사 변환: 모형이 눌려 붙기 시작하는 때, 사진 카드가 나타나는 때, 사진 점이 카드를 이어받는 때 */
+const X_PEEL = 0.15;
+const X_CARD = X_PEEL + T.peel * 0.75;
+const X_DOTS = X_CARD + T.cardIn + 0.25;
 
 /** 다음 단계로 넘어가기 전에 이 단계 효과를 보여 주는 최소 시간 */
 const MIN_SHOW: Record<StepKey, number> = {
   body: T.morph + 0.7,
   drape: T.solid * 0.55 + T.teeGather + 0.6,
-  render: R_CARD + T.cardIn,
+  render: R_SCAN + T.scanSweep,
   realize: Infinity,
 };
 /** 효과가 실제 진행보다 늦으면 이만큼 빨리 돌려 따라잡는다 */
@@ -113,6 +126,14 @@ interface Look {
   ring: number;
   shadow: number;
   spin: number;
+  /** 3D 촬영의 사진 틀 입자: 날아온 정도와 밝기 */
+  frameMorph: number;
+  frameDots: number;
+  /** 빛 띠의 밝기(0~1)와 위치(0 틀 위 → 1 틀 아래) */
+  scan: number;
+  scanPos: number;
+  /** 실사 변환 시작의 번쩍임 */
+  flash: number;
   camera: CameraKind;
 }
 
@@ -138,6 +159,11 @@ function emptyLook(): Look {
     ring: 0,
     shadow: 0,
     spin: 0,
+    frameMorph: 1,
+    frameDots: 0,
+    scan: 0,
+    scanPos: 0,
+    flash: 0,
     camera: 'full',
   };
 }
@@ -177,6 +203,11 @@ export class StudioEngine {
   private readonly cardSize: { w: number; h: number };
   private readonly captureTarget: THREE.WebGLRenderTarget;
   private captured = false;
+  /** 3D 촬영의 사진 틀·빛 띠와 실사 변환 시작의 번쩍임(카드 자리에 서고, 카드처럼 흔들리지 않는다) */
+  private readonly frameGroup = new THREE.Group();
+  private readonly frame: Glitter;
+  private readonly scanLine: Glitter;
+  private readonly flash: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
 
 
   private state: StudioState = { step: null, preparing: true, checking: false, failed: false };
@@ -289,18 +320,19 @@ export class StudioEngine {
     );
     this.cardBorder.position.z = -0.002;
     this.cardBorder.renderOrder = 0;
-    // 사진은 배경을 비워 두고 찍으므로(사람·옷만), 렌더 배경과 같은 중간 회색 바탕을 따로 둔다
+    // 사진은 배경을 비워 두고 찍으므로(사람·옷만) 바탕을 따로 둔다. 흰 마네킹·입자가 또렷하게 어두운 회색
     this.cardBack = new THREE.Mesh(
       new THREE.PlaneGeometry(cw, ch),
-      new THREE.MeshBasicMaterial({ color: 0x808080, alphaMap: roundedRect(300, 400, 12), transparent: true, opacity: 0, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0x2e3033, alphaMap: roundedRect(300, 400, 12), transparent: true, opacity: 0, depthWrite: false }),
     );
     this.cardBack.position.z = -0.001;
     this.cardBack.renderOrder = 1;
-    const grid = photoGrid(PHOTO_COLS, PHOTO_ROWS, cw, ch, [0.06, 0.07, 0.09], seeded(41));
+    const grid = photoGrid(PHOTO_COLS, PHOTO_ROWS, cw, ch);
     const dg = new THREE.BufferGeometry();
     dg.setAttribute('position', new THREE.BufferAttribute(grid.positions, 3));
     dg.setAttribute('aUv', new THREE.BufferAttribute(grid.uvs, 2));
-    dg.setAttribute('aNoise', new THREE.BufferAttribute(grid.noise, 3));
+    // 흩어질 자리: 카드 밖 사방 먼 곳(가운데에서 그 점 쪽으로). 앞뒤 이동은 줄여 카메라 앞을 가리지 않게
+    dg.setAttribute('aNoise', new THREE.BufferAttribute(scatterOffsets(grid.positions, ch * 1.4, ch * 2.6, 0.55, 0.3, seeded(41)), 3));
     dg.setAttribute('aSeed', new THREE.BufferAttribute(seeds(PHOTO_COLS * PHOTO_ROWS, seeded(43)), 3));
     dg.translate(0, 0, 0.003);
     this.photoDots = new THREE.Points(dg, photoDotsMaterial(pr, this.captureTarget.texture));
@@ -309,6 +341,50 @@ export class StudioEngine {
     this.card.add(this.cardBorder, this.cardBack, this.cardMedia, this.photoDots);
     this.card.position.copy(this.cardCenter);
     this.world.add(this.card);
+
+    // 3D 촬영의 사진 틀(뷰파인더): 입자가 사방 먼 곳에서 날아와 카드 가장자리에 모인다
+    const frameRand = seeded(61);
+    const fr = photoFrame(cw * 1.02, ch * 1.015, 2600, frameRand);
+    const faceCamera = (n: number) => {
+      const normals = new Float32Array(n * 3);
+      for (let i = 2; i < normals.length; i += 3) normals[i] = 1;
+      return normals;
+    };
+    this.frame = this.glitter(fr.positions, outerStarts(fr.positions, [0, 0, 0], 1.2, 2.2, 0.55, frameRand), faceCamera(2600), fr.seeds);
+    this.frame.material.uniforms.uAppear.value = 1;
+    this.frame.material.uniforms.uSwirl.value = 0.6;
+    // 빛 띠: 틀 너비의 가는 입자 줄. 모형 위로 겹쳐 보이게 깊이 검사를 끈다
+    const nScan = 900;
+    const scanPos = new Float32Array(nScan * 3);
+    for (let i = 0; i < nScan; i++) {
+      scanPos[i * 3] = (frameRand() - 0.5) * cw * 0.98;
+      scanPos[i * 3 + 1] = (frameRand() - 0.5) * 0.006;
+      scanPos[i * 3 + 2] = frameRand() * 0.01;
+    }
+    this.scanLine = this.glitter(scanPos, scanPos.slice(), faceCamera(nScan), seeds(nScan, frameRand));
+    this.scanLine.material.depthTest = false;
+    this.scanLine.material.uniforms.uSwirl.value = 0;
+    this.scanLine.material.uniforms.uSize.value = 2.6;
+    this.scanLine.renderOrder = 5;
+    // 실사 변환 시작의 번쩍임: 카드 크기의 흰 면(더해지는 빛)
+    this.flash = new THREE.Mesh(
+      new THREE.PlaneGeometry(cw * 1.06, ch * 1.04),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        alphaMap: roundedRect(300, 400, 12),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    this.flash.position.z = 0.06;
+    this.flash.renderOrder = 6;
+    this.flash.visible = false;
+    this.frameGroup.add(this.frame, this.scanLine, this.flash);
+    this.frameGroup.position.copy(this.cardCenter);
+    this.world.add(this.frameGroup);
 
     this.composer = new EffectComposer(renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -533,12 +609,8 @@ export class StudioEngine {
       const ty = (top + bottom) / 2;
       return { pos: new THREE.Vector3(0, ty + d * 0.07, d), target: new THREE.Vector3(0, ty, 0) };
     }
+    // 사진 틀(카드)이 화면에 여유 있게 들어오는 정면
     const c = this.cardCenter;
-    if (kind === 'front') {
-      // 정면 사진을 찍는 카메라와 같은 자리(사진 판이 모형 자리에 그대로 겹친다)
-      const d = fit(this.cardSize.h, this.cardSize.w);
-      return { pos: new THREE.Vector3(0, c.y, c.z + d), target: c.clone() };
-    }
     const d = fit(this.cardSize.h * 1.2, this.cardSize.w * 1.2);
     return { pos: new THREE.Vector3(0, c.y, c.z + d), target: c.clone() };
   }
@@ -574,31 +646,51 @@ export class StudioEngine {
       return s;
     }
     if (step === 'render') {
-      const out = 1 - easeInOut(clamp01((t - R_PEEL - 0.05) / (T.peel * 0.7)));
-      const cardIn = easeOut(clamp01((t - R_CARD) / T.cardIn));
-      // 티셔츠는 입자 그대로 정면으로 돌아서고, 모형이 사진 판으로 날아갈 때 마네킹과 함께 사라진다
-      s.bodySolid = out;
-      s.teeDots = out;
+      // 정면으로 돌아선 모형(흰 마네킹 + 입자 티셔츠) 둘레에 사진 틀 입자가 사방에서 날아와 모이고,
+      // 기다리는 동안 빛 띠가 틀 위에서 아래로 되풀이해 훑는다
+      s.bodySolid = 1;
+      s.teeDots = 1;
       s.teeFuzz = 0.006;
-      s.peelMorph = clamp01((t - R_PEEL) / T.peel);
-      s.peelDots = t >= R_PEEL && !reduced ? easeOut(clamp01((t - R_PEEL) / 0.25)) * (1 - 0.82 * cardIn) : 0;
-      s.card = cardIn;
-      s.back = cardIn;
-      s.border = cardIn * 0.7;
-      s.ring = out;
-      s.shadow = 0.42 * out;
-      s.camera = t < R_PEEL + 0.35 ? 'front' : 'card';
+      s.ring = 1;
+      s.shadow = 0.42;
+      s.frameMorph = clamp01((t - R_FRAME) / T.frameIn);
+      s.frameDots = 1;
+      const since = t - R_SCAN;
+      if (since > 0 && !reduced) {
+        const phase = since % T.scanPeriod;
+        if (phase < T.scanSweep) {
+          const pos = phase / T.scanSweep;
+          s.scanPos = pos;
+          s.scan = easeInOut(clamp01(pos / 0.08)) * (1 - easeInOut(clamp01((pos - 0.92) / 0.08)));
+        }
+      }
+      s.teeWave = s.scan;
+      s.camera = 'card';
       return s;
     }
-    // 실사 변환
-    const begin = T.dotsIn + T.scatter * 0.6;
-    s.card = reduced ? 1 : 1 - easeInOut(clamp01((t - 0.15) / T.dotsIn));
-    s.back = 1;
-    s.border = 0.7;
-    s.dots = reduced ? 0 : easeOut(clamp01(t / (T.dotsIn * 0.7)));
-    s.scatter = easeInOut(clamp01((t - T.dotsIn) / T.scatter));
-    s.settle = Math.max(t > begin ? 1 - Math.exp(-(t - begin) / SETTLE_TAU.realize) : 0, this.checkBoost);
-    s.dotsWave = this.state.checking ? 0.9 : 0.3;
+    // 실사 변환: 번쩍인 뒤 모형이 틀 안으로 눌려 사진 한 장이 되고(틀 입자는 카드 테두리가 나타나며 사라진다),
+    // 사진 점이 카드를 이어받아 사방으로 흩어졌다가 기다리는 동안 날아 돌아온다
+    const flash = reduced ? 0 : t < 0.06 ? t / 0.06 : Math.exp(-(t - 0.06) / 0.14);
+    const out = reduced ? 0 : 1 - easeInOut(clamp01((t - X_PEEL - 0.05) / (T.peel * 0.7)));
+    const cardIn = reduced ? 1 : easeOut(clamp01((t - X_CARD) / T.cardIn));
+    s.flash = 0.6 * flash;
+    s.bodySolid = out;
+    s.teeDots = out;
+    s.teeFuzz = 0.006;
+    s.shadow = 0.42 * out;
+    s.peelMorph = clamp01((t - X_PEEL) / T.peel);
+    s.peelDots = t >= X_PEEL && !reduced ? easeOut(clamp01((t - X_PEEL) / 0.25)) * (1 - cardIn) : 0;
+    s.frameDots = 1 - cardIn;
+    s.card = reduced ? 1 : cardIn * (1 - easeInOut(clamp01((t - X_DOTS - 0.1) / 0.6)));
+    s.back = cardIn;
+    s.border = cardIn * 0.7;
+    s.dots = reduced ? 0 : easeOut(clamp01((t - X_DOTS) / 0.4));
+    s.scatter = easeInOut(clamp01((t - X_DOTS - 0.25) / T.scatter));
+    // 돌아오기: 처음 4초에 4분의 1이 바로 돌아오고, 나머지는 단계 내내 천천히(검증 중이면 모두)
+    const back = t - (X_DOTS + 0.25 + T.scatter * 0.7);
+    const settle = back > 0 ? 0.25 * easeOut(clamp01(back / 4)) + 0.75 * (1 - Math.exp(-back / SETTLE_TAU.realize)) : 0;
+    s.settle = Math.max(settle, this.checkBoost);
+    s.dotsWave = this.state.checking ? 1 : 0.35;
     s.camera = 'card';
     return s;
   }
@@ -648,12 +740,23 @@ export class StudioEngine {
 
     this.setGlitter(this.bodyDots, look.bodyMorph, look.bodyDots, look.bodyFuzz, 0);
 
+    // 사진 틀·빛 띠(3D 촬영)와 번쩍임(실사 변환 시작). 빛 띠 높이는 틀 위 → 아래
+    const bandLocal = this.cardSize.h / 2 - look.scanPos * this.cardSize.h;
+    const bandWorld = this.cardCenter.y + bandLocal;
+    this.setGlitter(this.frame, look.frameMorph, look.frameDots * (1 + 1.5 * look.flash), 0, look.scan);
+    this.frame.material.uniforms.uWaveY.value = bandWorld;
+    this.setGlitter(this.scanLine, 1, look.scan, 0, 0);
+    this.scanLine.position.y = bandLocal;
+    this.flash.material.opacity = look.flash;
+    this.flash.visible = look.flash > 0.003;
+
     const L = this.layout;
     this.setGlitter(this.teeDots, look.teeMorph, look.teeDots, look.teeFuzz, look.teeWave);
     if (this.teeDots) {
       const period = 4.2;
       const k = (this.time % period) / period;
-      this.teeDots.material.uniforms.uWaveY.value = L.topY + 0.05 - k * (L.topY - L.hemY + 0.14);
+      // 가상 착용: 어깨 → 밑단으로 지나가는 띠. 3D 촬영: 사진 틀을 훑는 빛 띠와 같은 높이
+      this.teeDots.material.uniforms.uWaveY.value = this.vis === 'render' ? bandWorld : L.topY + 0.05 - k * (L.topY - L.hemY + 0.14);
     }
     this.setGlitter(this.ring, 1, look.ring * 0.55, 0, 0);
 
@@ -712,7 +815,7 @@ export class StudioEngine {
     if (!a || !b) return;
     const spacing = Math.abs(a.y - b.y) / PHOTO_ROWS;
     this.photoDots.material.uniforms.uSize.value = spacing * 1.35;
-    if (this.peel) this.peel.material.uniforms.uSize.value = spacing * 1.7;
+    if (this.peel) this.peel.material.uniforms.uSize.value = spacing * 2.0;
   }
 
   // ---------- 정면 사진 찍기

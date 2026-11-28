@@ -1,7 +1,8 @@
 /**
  * 반짝이는 점구름이 처음에 이루는 모양(순수 계산, three.js 없이).
- * - 사방 출발 점: 화면 바깥 먼 곳(체형 생성·가상 착용에서 입자가 날아오는 곳)
- * - 사진 점 격자: 정면 사진을 이루는 점(실사 변환 단계)
+ * - 사방 출발 점: 화면 바깥 먼 곳(체형 생성·가상 착용·3D 촬영에서 입자가 날아오는 곳)
+ * - 사진 틀: 3D 촬영의 뷰파인더(네 귀퉁이 꺾쇠 + 얇은 테두리)
+ * - 사진 점 격자와 흩어질 자리: 정면 사진을 이루는 점과, 실사 변환에서 그 점이 사방으로 흩어졌다 돌아오는 자리
  */
 
 export type Rand = () => number;
@@ -62,21 +63,11 @@ export function seeds(count: number, rand: Rand): Float32Array {
 
 /**
  * 사진 한 장을 이루는 점 격자(cols × rows). 위치는 카드 가운데 기준(가로 w, 세로 h), uv는 사진 좌표.
- * noise는 흩어질 때의 이동량: 대부분 가까이, 몇몇은 멀리.
  */
-export function photoGrid(
-  cols: number,
-  rows: number,
-  w: number,
-  h: number,
-  spread: Vec3,
-  rand: Rand,
-): { positions: Float32Array; uvs: Float32Array; noise: Float32Array } {
+export function photoGrid(cols: number, rows: number, w: number, h: number): { positions: Float32Array; uvs: Float32Array } {
   const n = cols * rows;
   const positions = new Float32Array(n * 3);
   const uvs = new Float32Array(n * 2);
-  const noise = new Float32Array(n * 3);
-  const gauss = () => (rand() + rand() + rand() - 1.5) / 1.5;
   for (let j = 0; j < rows; j++) {
     for (let i = 0; i < cols; i++) {
       const k = j * cols + i;
@@ -87,11 +78,76 @@ export function photoGrid(
       positions[k * 3 + 2] = 0;
       uvs[k * 2] = u;
       uvs[k * 2 + 1] = v;
-      const far = rand() < 0.06 ? 2.2 : 1;
-      noise[k * 3] = gauss() * spread[0] * far;
-      noise[k * 3 + 1] = gauss() * spread[1] * far;
-      noise[k * 3 + 2] = gauss() * spread[2] * far;
     }
   }
-  return { positions, uvs, noise };
+  return { positions, uvs };
+}
+
+/**
+ * 카드 위 점이 사방으로 흩어질 자리(도착 점에서 뺀 이동량). 카드 가운데에서 그 점 쪽으로 뻗은 방향으로 rMin~rMax만큼 멀리 간다.
+ * 앞뒤(z) 이동은 zScale배로 줄여, 카메라 쪽으로 너무 가까이 날아와 화면을 가리지 않게 한다.
+ */
+export function scatterOffsets(targets: Float32Array, rMin: number, rMax: number, spread: number, zScale: number, rand: Rand): Float32Array {
+  const far = outerStarts(targets, [0, 0, 0], rMin, rMax, spread, rand);
+  const out = new Float32Array(targets.length);
+  for (let i = 0; i < targets.length; i += 3) {
+    out[i] = far[i] - targets[i];
+    out[i + 1] = far[i + 1] - targets[i + 1];
+    out[i + 2] = (far[i + 2] - targets[i + 2]) * zScale;
+  }
+  return out;
+}
+
+/**
+ * 사진 틀(뷰파인더) 점: 카드 가장자리(가로 w, 세로 h, 가운데 기준)에 count개.
+ * 70 %는 네 귀퉁이 꺾쇠(팔 길이는 짧은 변의 22 %)에 촘촘하고 밝게, 나머지는 둘레 전체에 성기고 어둡게 놓는다.
+ * 밝기는 seeds의 세 번째 값(반짝이 재질의 밝기)으로 정한다: 꺾쇠 0.55~1, 테두리 0~0.3.
+ */
+export function photoFrame(w: number, h: number, count: number, rand: Rand): { positions: Float32Array; seeds: Float32Array } {
+  const positions = new Float32Array(count * 3);
+  const sd = new Float32Array(count * 3);
+  const arm = Math.min(w, h) * 0.22;
+  const nBracket = Math.round(count * 0.7);
+  const jitter = 0.0025;
+  for (let i = 0; i < count; i++) {
+    const bracket = i < nBracket;
+    let x: number;
+    let y: number;
+    if (bracket) {
+      const corner = Math.floor(rand() * 4);
+      const sx = corner % 2 === 0 ? -1 : 1;
+      const sy = corner < 2 ? 1 : -1;
+      const along = rand() * arm;
+      if (rand() < 0.5) {
+        x = sx * (w / 2 - along);
+        y = (sy * h) / 2;
+      } else {
+        x = (sx * w) / 2;
+        y = sy * (h / 2 - along);
+      }
+    } else {
+      let d = rand() * 2 * (w + h);
+      if (d < w) {
+        x = -w / 2 + d;
+        y = h / 2;
+      } else if ((d -= w) < h) {
+        x = w / 2;
+        y = h / 2 - d;
+      } else if ((d -= h) < w) {
+        x = w / 2 - d;
+        y = -h / 2;
+      } else {
+        d -= w;
+        x = -w / 2;
+        y = -h / 2 + d;
+      }
+    }
+    positions[i * 3] = x + (rand() - 0.5) * jitter;
+    positions[i * 3 + 1] = y + (rand() - 0.5) * jitter;
+    positions[i * 3 + 2] = (rand() - 0.5) * jitter;
+    sd[i * 3] = rand();
+    sd[i * 3 + 1] = rand();
+    sd[i * 3 + 2] = bracket ? 0.55 + 0.45 * rand() : 0.3 * rand();
+  }
+  return { positions, seeds: sd };
 }

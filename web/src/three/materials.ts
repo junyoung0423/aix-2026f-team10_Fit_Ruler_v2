@@ -179,8 +179,8 @@ export function glitterMaterial(pixelRatio: number): THREE.ShaderMaterial {
 }
 
 /**
- * 3D 촬영: 모형 겉의 점(aFrom)이 앞쪽 사진 판(position)으로 날아가 붙는다.
- * 날아가는 동안은 흰 반짝임, 붙으면 찍어 둔 정면 사진(uImage)의 그 자리 색이 된다.
+ * 실사 변환의 시작(번쩍인 뒤): 모형 겉의 점(aFrom)이 앞쪽 사진 판(position)으로 납작하게 눌려 붙는다.
+ * 날아가는 동안은 크고 밝은 흰 반짝임, 붙으면 찍어 둔 정면 사진(uImage)의 그 자리 색이 된다.
  */
 export function peelMaterial(pixelRatio: number, image: THREE.Texture): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -218,10 +218,10 @@ export function peelMaterial(pixelRatio: number, image: THREE.Texture): THREE.Sh
         vec3 photo = tex.rgb / max(tex.a, 0.05);
         vColor = mix(vec3(1.0, 0.96, 0.9), photo, e * e);
         float tw = 0.6 + 0.4 * sin(uTime * (3.0 + aSeed.z * 5.0) + aSeed.x * 41.0);
-        vAlpha = uOpacity * mix(0.5 * tw, 0.95, e);
+        vAlpha = uOpacity * mix(0.85 * tw, 0.95, e);
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = max(1.0, uSize * uPixelRatio * mix(0.4 + aSeed.y * 0.45, 1.0, e * e));
+        gl_PointSize = max(1.0, uSize * uPixelRatio * mix(0.75 + aSeed.y * 0.75, 1.0, e * e));
       }
     `,
     fragmentShader: DOT_FRAGMENT,
@@ -229,9 +229,9 @@ export function peelMaterial(pixelRatio: number, image: THREE.Texture): THREE.Sh
 }
 
 /**
- * 실사 변환: 사진 속 사람·옷 자리(알파가 있는 곳)를 이루는 점 격자. uScatter만큼 흩어졌다가,
- * uSettle이 오르면 점마다 다른 때에 제자리를 찾는다. 흩어진 점은 흰 반짝임, 제자리를 찾은 점은 사진(uImage) 색.
- * 배경 자리 점은 그리지 않는다(뒤의 회색 카드가 그대로 보인다). uWaveX를 지나는 비스듬한 띠는 조금 밝다.
+ * 실사 변환: 사진 속 사람·옷 자리(알파가 있는 곳)를 이루는 점 격자. uScatter만큼 사방(aNoise: 카드 밖 먼 곳)으로 흩어졌다가,
+ * uSettle이 오르면 점마다 다른 때에 날아 돌아와 제자리를 찾는다. 날아다니는 점은 크고 밝은 흰 반짝임, 제자리를 찾은 점은 사진(uImage) 색.
+ * 배경 자리 점은 그리지 않는다(뒤의 사진 카드 바탕이 그대로 보인다). uWaveX를 지나는 비스듬한 띠는 밝고 조금 크다(확인 중에는 더 진하게).
  */
 export function photoDotsMaterial(pixelRatio: number, image: THREE.Texture): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -274,12 +274,12 @@ export function photoDotsMaterial(pixelRatio: number, image: THREE.Texture): THR
         vec3 photo = tex.rgb / max(tex.a, 0.05);
         float subject = smoothstep(0.25, 0.75, tex.a);
         float wave = exp(-pow((aUv.x + (aUv.y - 0.5) * 0.25 - uWaveX) / 0.07, 2.0)) * uWave;
-        vColor = mix(vec3(1.0, 0.96, 0.9), photo, 1.0 - away) + wave * 0.18;
+        vColor = mix(vec3(1.0, 0.97, 0.92), photo, 1.0 - away) + wave * 0.35;
         float tw = 0.55 + 0.45 * sin(t * (2.4 + aSeed.z * 5.0) + aSeed.y * 33.0);
-        vAlpha = uOpacity * subject * mix(0.7 * tw, 1.0, 1.0 - away);
+        vAlpha = uOpacity * subject * mix(0.9 * tw, 1.0, 1.0 - away) * (1.0 + wave * 0.5);
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = max(1.0, uSize * uPixelRatio * mix(0.45 + aSeed.y * 0.5, 1.0, 1.0 - away));
+        gl_PointSize = max(1.0, uSize * uPixelRatio * mix(1.3 + aSeed.y * 1.4, 1.0, 1.0 - away) * (1.0 + wave * 0.5));
       }
     `,
     fragmentShader: DOT_FRAGMENT,
