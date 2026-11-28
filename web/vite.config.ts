@@ -6,6 +6,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react()],
+    // 3D 마네킹 파일(src/three/assets/mannequin.glb)을 그림처럼 에셋으로 다룬다
+    assetsInclude: ['**/*.glb'],
     server: {
       port: 5173,
       strictPort: true,

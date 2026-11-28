@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { MEASURE_GUIDES } from '../guides/measureGuides';
-import type { MeasurementField } from '../api/contract';
+import { MEASUREMENT_LABEL, type MeasurementField } from '../api/contract';
 
 /** 부위마다 몸 그림 위에 재는 선을 표시한다. 단계 글이 같은 내용을 말하므로 그림은 보조로 둔다. */
 const MEASURE_MARK: Record<MeasurementField, ReactNode> = {
@@ -46,10 +46,28 @@ function MeasureFigure({ field }: { field: MeasurementField }) {
   );
 }
 
-export function MeasureGuide({ id, field, hidden }: { id: string; field: MeasurementField; hidden: boolean }) {
+/**
+ * 재는 법(몸 그림 + 단계). onClose가 있으면 몸 그림 카드 위에 뜨는 판(제목·닫기 단추)으로 그린다.
+ */
+export function MeasureGuide({ id, field, hidden, onClose }: { id: string; field: MeasurementField; hidden: boolean; onClose?: () => void }) {
   const guide = MEASURE_GUIDES[field];
+  const title = `${MEASUREMENT_LABEL[field]} 재는 법`;
   return (
-    <div id={id} className="guide" hidden={hidden}>
+    <div
+      id={id}
+      className={`guide${onClose ? ' is-overlay' : ''}`}
+      hidden={hidden}
+      role={onClose ? 'region' : undefined}
+      aria-label={onClose ? title : undefined}
+    >
+      {onClose && (
+        <div className="guide-head">
+          <strong>{title}</strong>
+          <button type="button" className="guide-close" onClick={onClose} aria-label="재는 법 닫기">
+            ×
+          </button>
+        </div>
+      )}
       <MeasureFigure field={field} />
       <div>
         <ol className="guide-steps">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   MEASUREMENT_FIELDS,
@@ -8,10 +8,12 @@ import {
   type MeasurementField,
 } from '../api/contract';
 import type { FieldError, Measurements } from '../api/types';
+import { BodyFigure } from '../components/BodyFigure';
 import { MeasureGuide } from '../components/MeasureGuide';
 import { useFitting } from '../state/fittingStore';
 import {
   EXAMPLE_MEASUREMENTS,
+  parseCm,
   validateDraft,
   validateField,
   type BodyDraft,
@@ -55,7 +57,18 @@ export function InputPage() {
   // 폼 위 알림의 출처. 남은 오류 수로 문구를 만들고, 오류가 모두 사라지면 알림도 사라진다.
   const [alertSource, setAlertSource] = useState<'submit' | 'server' | null>(returned ? 'server' : null);
   const [openGuide, setOpenGuide] = useState<MeasurementField | null>(null);
+  // 왼쪽 몸 그림에 재는 곳을 표시할 칸(마지막으로 고른 칸)
+  const [activeField, setActiveField] = useState<MeasurementField | null>(null);
   const inputs = useRef<Partial<Record<MeasurementField, HTMLInputElement | null>>>({});
+  const figureRef = useRef<HTMLElement>(null);
+
+  // 재는 법은 왼쪽 몸 그림 카드 위에 뜬다. 좁은 화면에서 카드가 화면 밖이면 보이게 옮긴다
+  useEffect(() => {
+    const el = figureRef.current;
+    if (!openGuide || !el) return;
+    const box = el.getBoundingClientRect();
+    if (box.top < 0 || box.bottom > window.innerHeight) el.scrollIntoView({ block: 'nearest' });
+  }, [openGuide]);
 
   useEffect(() => {
     if (!returned) return;
@@ -64,6 +77,19 @@ export function InputPage() {
     const first = MEASUREMENT_FIELDS.find((field) => serverErrors(returned.fields)[field]);
     if (first) inputs.current[first]?.focus();
   }, [returned, navigate, location.pathname]);
+
+  // 몸 그림에 넘길 값: 맞게 입력한 칸만 숫자로(나머지는 3D 기본값, 이름표는 "—")
+  const figure = useMemo(() => {
+    const numbers: Partial<Record<MeasurementField, number>> = {};
+    const values: Partial<Record<MeasurementField, string | null>> = {};
+    for (const field of MEASUREMENT_FIELDS) {
+      const ok = draft[field].trim() !== '' && validateField(field, draft[field]) === null;
+      const value = ok ? parseCm(draft[field]) : null;
+      if (value !== null) numbers[field] = value;
+      values[field] = value === null ? null : String(value);
+    }
+    return { numbers, values };
+  }, [draft]);
 
   const errorCount = MEASUREMENT_FIELDS.filter((field) => errors[field]).length;
   const alert =
@@ -108,29 +134,43 @@ export function InputPage() {
   }
 
   return (
-    <section>
-      <h1>내 치수 입력</h1>
-      <p className="lead">줄자로 잰 값을 cm로 넣어 주세요. 얇은 옷을 입고 재면 더 정확합니다.</p>
+    <section className="page page-input">
+      <header className="page-head">
+        <p className="kicker">1 / 3</p>
+        <h1>내 치수</h1>
+        <p className="lead">줄자로 잰 값을 cm로 넣어 주세요. 얇은 옷을 입고 재면 더 정확해요.</p>
+      </header>
 
-      <form className="card form" onSubmit={onSubmit} noValidate>
-        {alert && (
-          <p className="form-alert" role="alert">
-            {alert}
-          </p>
-        )}
+      <div className="input-layout">
+        <figure className="body-figure" ref={figureRef}>
+          <BodyFigure numbers={figure.numbers} values={figure.values} active={activeField} />
+          <figcaption>입력한 치수대로 몸이 바뀌어요. 칸을 고르면 재는 곳이 표시되고, 끌어서 돌려 볼 수 있어요.</figcaption>
+          {openGuide && (
+            <MeasureGuide id={`${openGuide}-guide`} field={openGuide} hidden={false} onClose={() => setOpenGuide(null)} />
+          )}
+        </figure>
 
-        {MEASUREMENT_FIELDS.map((field) => {
-          const range = MEASUREMENT_RANGES[field];
-          const error = errors[field];
-          const guideOpen = openGuide === field;
-          const describedBy = [`${field}-range`, error ? `${field}-error` : null].filter(Boolean).join(' ');
+        <form className="measure-form" onSubmit={onSubmit} noValidate>
+          {alert && (
+            <p className="notice notice-error" role="alert">
+              {alert}
+            </p>
+          )}
 
-          return (
-            <div className={`field${error ? ' field-invalid' : ''}`} key={field}>
-              <label htmlFor={field}>{MEASUREMENT_LABEL[field]}</label>
-              <div className="field-control">
-                <div className="input-row">
-                  <div className="input-unit">
+          {MEASUREMENT_FIELDS.map((field) => {
+            const range = MEASUREMENT_RANGES[field];
+            const error = errors[field];
+            const guideOpen = openGuide === field;
+            const describedBy = [`${field}-range`, error ? `${field}-error` : null].filter(Boolean).join(' ');
+
+            return (
+              <div
+                className={`measure-row${error ? ' is-invalid' : ''}${activeField === field ? ' is-active' : ''}`}
+                key={field}
+              >
+                <label htmlFor={field}>{MEASUREMENT_LABEL[field]}</label>
+                <div className="measure-control">
+                  <div className="measure-input">
                     <input
                       ref={(element) => {
                         inputs.current[field] = element;
@@ -143,14 +183,15 @@ export function InputPage() {
                       placeholder={`예: ${EXAMPLE_MEASUREMENTS[field]}`}
                       value={draft[field]}
                       onChange={(event) => onChange(field, event.target.value)}
+                      onFocus={() => setActiveField(field)}
                       onBlur={() => onBlur(field)}
                       aria-invalid={error ? true : undefined}
                       aria-describedby={describedBy}
                     />
-                    <span>cm</span>
+                    <span className="unit">cm</span>
                   </div>
-                  <span id={`${field}-range`} className="range-hint">
-                    {range.min}~{range.max} cm 사이
+                  <span id={`${field}-range`} className="range-hint num">
+                    {range.min}~{range.max}
                   </span>
                   <button
                     type="button"
@@ -158,12 +199,15 @@ export function InputPage() {
                     aria-label={`${MEASUREMENT_LABEL[field]} 재는 법`}
                     aria-expanded={guideOpen}
                     aria-controls={`${field}-guide`}
-                    onClick={() => setOpenGuide(guideOpen ? null : field)}
+                    onClick={() => {
+                      setOpenGuide(guideOpen ? null : field);
+                      setActiveField(field);
+                    }}
                   >
                     <span className="guide-icon" aria-hidden="true">
                       ?
                     </span>
-                    재는 법
+                    <span className="guide-text">재는 법</span>
                   </button>
                 </div>
                 {error && (
@@ -171,22 +215,20 @@ export function InputPage() {
                     {error}
                   </p>
                 )}
-                <MeasureGuide id={`${field}-guide`} field={field} hidden={!guideOpen} />
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
-        <div className="actions actions-split">
-          <button type="button" onClick={fillExample}>
-            예시 치수 넣기
-          </button>
-          <button type="submit" className="primary">
-            다음: 티셔츠 고르기
-          </button>
-        </div>
-      </form>
-      <p className="note">입력 범위와 재는 위치는 팀 계약(measure_v1)을 따릅니다.</p>
+          <div className="form-actions">
+            <button type="button" className="btn btn-ghost" onClick={fillExample}>
+              예시 치수 넣기
+            </button>
+            <button type="submit" className="btn btn-primary">
+              다음
+            </button>
+          </div>
+        </form>
+      </div>
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import type { ErrorCode, FitLabel, GarmentVariant, Region, Stage, StageStatus } from './api/types';
+import type { ErrorCode, FitLabel, GarmentVariant, Region } from './api/types';
 
 /** 화면에 보이는 이름. 서버가 문장(explanation·summary·safe_message)을 주는 곳은 서버 문장을 쓴다. */
 
@@ -31,26 +31,6 @@ export function fitLabelText(region: Region, label: FitLabel): string {
   if (label === 'UNKNOWN' || label === 'NOT_EVALUATED') return '판정 안 함';
   return LABEL_KO[region]?.[label] ?? label;
 }
-
-export const STAGE_LABEL: Record<Stage, string> = {
-  FIT_CALCULATE: '핏 계산',
-  FIT_REPORT: '핏 리포트',
-  BODY_FIT: '몸 생성',
-  DRAPE: '3D 착장',
-  RENDER: '정면 렌더',
-  REALIZE: '실사화',
-  VALIDATE: '검증',
-};
-
-export const STATUS_LABEL: Record<StageStatus, string> = {
-  WAITING: '대기',
-  QUEUED: '대기열',
-  RUNNING: '진행 중',
-  SUCCEEDED: '완료',
-  FAILED: '실패',
-  SKIPPED: '건너뜀',
-  CANCELLED: '취소됨',
-};
 
 /** 영상 경로 실패 안내. 서버는 코드만 주므로 화면이 문구를 고른다. */
 export const ERROR_LABEL: Partial<Record<ErrorCode, string>> = {
