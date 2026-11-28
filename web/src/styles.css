@@ -2122,6 +2122,91 @@ form > .notice {
   }
 }
 
+/* ---------- 낮은 화면(노트북 등): 피팅룸·결과 카드·입력 화면 3D 카드가 한 화면에 들어오게 ----------
+   무대는 폭 기준 크기와 '화면 높이 − 머리글·제목·설명·진행 표시' 중 작은 쪽을 쓴다(너무 작아지지 않게 최소 크기).
+   높이가 1040px를 넘으면 원래 크기로도 다 들어와서 바꾸지 않는다(이 높이에서 두 크기가 같아져 크기가 튀지 않는다) */
+@media (max-height: 1040px) {
+  .app-main {
+    padding-top: 16px;
+  }
+
+  .page-head {
+    margin-bottom: 14px;
+  }
+
+  .studio {
+    gap: 10px;
+    padding: 12px 14px 14px;
+    /* 머리글·위 여백·화면 제목(141) + 카드 여백·간격(46) + 설명(85) + 진행 표시(45) + 아래 틈(10). 실제로 재서 맞춘 값 */
+    --studio-chrome: 327px;
+  }
+
+  /* '1 / 4'는 아래 진행 표시와 겹치는 정보라 낮은 화면에서는 뺀다 */
+  .studio-kicker {
+    display: none;
+  }
+
+  .studio-caption {
+    gap: 2px;
+  }
+
+  .studio-caption h2 {
+    font-size: 19px;
+  }
+
+  .studio-doing {
+    font-size: 14px;
+  }
+
+  .studio-eta {
+    font-size: 12px;
+  }
+
+  .studio-stage.is-3d {
+    width: min(100%, calc(clamp(260px, 100vh - var(--studio-chrome), 627px) * 0.75));
+  }
+
+  .result-card {
+    gap: 10px;
+    padding: 14px;
+    /* 머리글·위 여백·화면 제목(141) + 카드 여백·간격(58) + 제목 줄(29) + 설명(21) + 진행 표시(66) + 아래 틈(10) */
+    --result-chrome: 325px;
+  }
+
+  /* 안내 상자(미동의·대체 결과·검증 실패 등)가 있으면 그만큼 더 뺀다 */
+  .result-card.has-notice {
+    --result-chrome: 425px;
+  }
+
+  .result-media {
+    width: min(100%, calc(clamp(260px, 100vh - var(--result-chrome), 587px) * 0.75));
+  }
+
+  @supports (height: 100dvh) {
+    .studio-stage.is-3d {
+      width: min(100%, calc(clamp(260px, 100dvh - var(--studio-chrome), 627px) * 0.75));
+    }
+
+    .result-media {
+      width: min(100%, calc(clamp(260px, 100dvh - var(--result-chrome), 587px) * 0.75));
+    }
+  }
+}
+
+/* 입력 화면(두 칸 배치): 왼쪽 3D 카드(위에 붙어 따라옴)도 화면 높이에 맞춘다.
+   머리글·위 여백·화면 제목(180) + 카드 여백(34) + 설명 글(46) + 아래 틈(10) */
+@media (max-height: 1040px) and (min-width: 880px) {
+  .figure-3d {
+    width: min(100%, calc(clamp(280px, 100vh - 270px, 507px) * 0.75));
+  }
+
+  @supports (height: 100dvh) {
+    .figure-3d {
+      width: min(100%, calc(clamp(280px, 100dvh - 270px, 507px) * 0.75));
+    }
+  }
+}
+
 /* 움직임 줄이기: 효과 없이 각 단계의 마지막 모습만 보인다 */
 @media (prefers-reduced-motion: reduce) {
   *,

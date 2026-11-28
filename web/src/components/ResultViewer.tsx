@@ -105,6 +105,8 @@ export function ResultViewer({
   const hasReal = media.video !== null || media.frame !== null;
   const has3d = media.preview !== null;
   const [tab, setTab] = useState<Tab>(hasReal ? 'real' : '3d');
+  // 안내 상자가 있는지(낮은 화면에서 사진 칸 크기를 정할 때 그만큼 뺀다)
+  const hasNotice = outcome.kind !== 'success' || qualityNote !== null;
   const shown: Tab = tab === 'real' && !hasReal ? '3d' : tab === '3d' && !has3d && hasReal ? 'real' : tab;
 
   const caption =
@@ -115,7 +117,7 @@ export function ResultViewer({
       : '고른 티셔츠를 내 치수의 3D 몸에 입혀 정면에서 본 모습이에요.';
 
   return (
-    <section className={`result-card is-${outcome.kind}`} aria-labelledby="result-title">
+    <section className={`result-card is-${outcome.kind}${hasNotice ? ' has-notice' : ''}`} aria-labelledby="result-title">
       <div className="result-card-head">
         <h2 id="result-title">{TITLE[outcome.kind]}</h2>
         {hasReal && has3d && (
