@@ -31,13 +31,13 @@ from fitting.verify.visual_check import (
     FrameMeasure,
     VisualCheckResult,
     VisualCriteria,
-    band_width,
     box_height,
     delta_e_2000,
     judge_video,
     mask_iou,
     median_lab,
     sample_indices,
+    span_width,
     srgb_to_lab,
     width_change,
     width_rows,
@@ -194,6 +194,26 @@ def as_mask(image: np.ndarray) -> np.ndarray:
 
 def bgr_to_lab(bgr: np.ndarray) -> np.ndarray:
     return srgb_to_lab(np.asarray(bgr)[..., ::-1])
+
+
+def cover(frame: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """같은 비율로 키우거나 줄여 `size`(가로, 세로)를 덮은 뒤 가운데를 자른다. 늘리지 않는다.
+
+    fal render-to-real은 출력 크기를 맞추려고 화면비를 바꾼다(768x1024 입력 → 704x896 출력, 4.8 %).
+    이때 내용은 세로에 맞춰 같은 비율로 줄이고 좌우를 덧붙인다(옷 위치로 확인,
+    docs/realize-fitroom.md).
+    그래서 같은 비율로 되돌린 뒤 덧붙은 가장자리를 잘라 내면 렌더와 겹친다.
+    """
+    width, height = size
+    fh, fw = frame.shape[:2]
+    if (fw, fh) == (width, height):
+        return frame
+    scale = max(width / fw, height / fh)
+    nw, nh = max(width, round(fw * scale)), max(height, round(fh * scale))
+    method = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+    resized = cv2.resize(frame, (nw, nh), interpolation=method)
+    x0, y0 = (nw - width) // 2, (nh - height) // 2
+    return np.ascontiguousarray(resized[y0 : y0 + height, x0 : x0 + width])
 
 
 def _px(ratio: float, height: int) -> int:
@@ -366,11 +386,13 @@ def measure_frame(
 ) -> FrameMeasure:
     """같은 크기의 렌더·실사 프레임과 두 옷 마스크로 프레임 하나의 측정값을 낸다."""
     rows = width_rows(render_mask, criteria.chest_height, criteria.hem_height)
-    n = criteria.width_rows
-    chest = width_change(
-        band_width(render_mask, rows.chest, n), band_width(real_mask, rows.chest, n)
-    )
-    hem = width_change(band_width(render_mask, rows.hem, n), band_width(real_mask, rows.hem, n))
+    n, span, gap = criteria.width_rows, criteria.width_span, criteria.width_gap_ratio
+
+    def width(mask: np.ndarray, row: int) -> float | None:
+        return span_width(mask, row, n, span, gap)
+
+    chest = width_change(width(render_mask, rows.chest), width(real_mask, rows.chest))
+    hem = width_change(width(render_mask, rows.hem), width(real_mask, rows.hem))
     render_area = int(render_mask.sum())
     common = erode(render_mask, criteria.color_erode_px) & erode(
         real_mask, criteria.color_erode_px
@@ -457,8 +479,7 @@ def check_videos(
     for fraction, match, mask in zip(criteria.sample_fractions, matches, masks, strict=True):
         assert mask is not None
         real = real_frames[match.real_index]
-        if (real.shape[1], real.shape[0]) != size:
-            real = cv2.resize(real, size, interpolation=cv2.INTER_AREA)
+        real = cover(real, size)
         real_mask, info = segment_garment(real, mask, params)
         run.real_masks.append(real_mask)
         run.segment_info.append({"fraction": fraction, **info})
@@ -507,7 +528,7 @@ def contact_sheet(run: VisualRun, height: int = 240) -> np.ndarray:
         render = run.render_frames[match.render_index].copy()
         real = run.real_frames[match.real_index]
         if (real.shape[1], real.shape[0]) != (render_w, render_h):
-            real = cv2.resize(real, (render_w, render_h), interpolation=cv2.INTER_AREA)
+            real = cover(real, (render_w, render_h))
         real = real.copy()
         render_mask = run.render_masks[k] if k < len(run.render_masks) else None
         real_mask = run.real_masks[k] if k < len(run.real_masks) else None

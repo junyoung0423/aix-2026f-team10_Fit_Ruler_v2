@@ -238,6 +238,19 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 
 `realize: "fitting.adapters.fal_ltx.factory:make_realizer"`로 연결합니다. `FAL_KEY`가 필요하고 호출마다 비용이 듭니다(`run_fitting_once`는 `--consent`로 돌릴 때 `--yes`를 요구합니다). 렌더 클립 파일이 있어야 하므로 실제 렌더(C5)와 함께 돌리거나 `python -m tools.realize_clip`으로 클립 하나씩 시험합니다. 재시도·같은 요청 ID 재조회·오류 코드·기록은 docs/realize.md, 프롬프트 템플릿(D5)은 docs/realize-pipeline.md 1절에 있습니다.
 
+## 피팅룸 실사화 어댑터 (`fitting.adapters.fal_fitroom.factory:make_fitroom_realizer`)
+
+`realize: "fitting.adapters.fal_fitroom.factory:make_fitroom_realizer"`로 연결합니다(2026-11-25 결정). 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 숨쉬며 제자리에서 한 바퀴 도는 8초 영상을 만들고, 옆모습에서 걸치는 수염 끝을 없애려고 영상 맨 위 32px을 잘라 냅니다(2026-11-27. 11-26에는 4초 1/4 바퀴 왕복). `FAL_KEY`와 맨 위 자르기에 쓸 Blender(`BLENDER_PATH`)가 필요하고, 작업 1건에 $1.10·약 2분 40초~3분이 듭니다(사진 28~39초·자세 27~32초·회전 52초·자르기 약 25초, 단계마다 따로 잰 값. v4로 한 번에 돌린 기록은 아직 없음).
+
+- 흐름(자르기 말고는 fal): 사진(렌더 첫 프레임 → 실사 사진, Nano Banana Pro 편집. 체형·자세·구도·옷 핏은 렌더 그대로) → 자세(팔을 내린 정면 사진, Nano Banana Pro 편집, $0.15) → 회전(시작·끝을 자세 사진으로 고정한 8초 한 바퀴 영상, Veo 3.1 Fast first-last-frame, 720×1280, $0.80. `turn_model="standard"`·`--turn-model standard`면 Veo 3.1 표준판, +$0.80. 길이는 `turn_duration_s`·`--duration`) → 맨 위 자르기(맨 위 32px을 잘라 같은 배율로 키움. OpenCV로 자르고 Blender 내장 FFmpeg로 H.264. `top_crop_px`·`--top-crop`, 0이면 끔). 자세는 기본으로 켜고, 끄면(`pose_step=False`·`--no-pose-step`) 사진을 바로 써서 팔을 벌린 채 시작·끝납니다. 예전의 핏 옮기기(LTX render-to-real)는 뺐습니다(docs/realize-fitroom.md 2.6절)
+- 입력: `input_artifact_ids[0]`(렌더 클립)의 `artifacts_dir/{id}.mp4`
+- 출력: 계약 출력 `{job_id}_video.mp4`(`REALIZE_OUTPUTS`). 계약 밖 중간 사진 `{job_id}_realize_fit_frame.png`(실사 사진, 검증 어댑터가 핏 확인에 씀), 자세 사진 `{job_id}_realize_pose.png`(자세를 끄면 없음). 받은 그대로의 회전 영상은 `FIT_WORK_DIR/{job_id}/realize/turn.mp4`
+- 재시도·재조회: D4 규칙을 단계마다 씁니다. 같은 `job_id`로 다시 불리면 끝난 단계는 건너뛰고 진행 중인 단계만 같은 요청 ID로 다시 조회합니다. 오류 코드는 `EXTERNAL_SUBMIT_UNKNOWN`·`BUDGET_LIMIT`·`REALIZE_TIMEOUT`·`REALIZE_FAILED`(검은 영상·자르기 실패 포함). 맨 위 자르기에 쓸 Blender가 없으면 fal을 부르기 전에 멈추고, 자르기가 실패하면 다시 부를 때 회전을 다시 제출하지 않고 자르기만 다시 합니다
+- 지표: `external_request_id`(회전), `cost_usd`·`estimated_cost_usd`, 단계별 시간 `photo_s`·`pose_s`·`turn_s`, `retries`, `video_width`·`video_height`, `top_crop_px`
+- 기록: `FIT_WORK_DIR/{job_id}/realize/realize.json`과 단계별 요청·응답
+
+영상 경로 5단계 중 실사화만 이 어댑터로 바꾼 설정은 `config/adapters/visual_fitroom.yaml`입니다. 서버 없이 클립 하나로 시험하려면 `python -m tools.realize_fitroom --input <렌더 클립>`(드라이런, `--yes`일 때만 실제 호출)을 씁니다. 실험·모델 선택·검증·한계는 docs/realize-fitroom.md에 있습니다.
+
 ## 검증 어댑터 (D5·D6, `fitting.adapters.media.factory:make_validator`)
 
 실사 영상을 렌더 클립과 비교해 색·실루엣을 판정합니다(명세서 7장). 실사 영상 길이의 0~100 % 11프레임을 같은 시각의 렌더 프레임과 비교하고, 9프레임 이상이 모든 기준(IoU ≥ 0.85, 가슴·밑단 폭 변화 ≤ 5 %, CIEDE2000 ≤ 8)을 통과하면 `PASS`입니다. 기준은 `config/validate/visual_check_v1.json`입니다. 필요한 것은 OpenCV(`pip install -e ".[realize]"`)뿐이고 모델 파일·GPU는 필요 없습니다.
@@ -249,6 +262,7 @@ python -m tools.render_clip --blend <...>_drape_result.blend --garment-id tee_re
 - 기록: `FIT_WORK_DIR/{job_id}/validate/validate.json`(`internal_details_ref`), 같은 폴더의 `contact_sheet.png`(11프레임 사람 확인용)·`masks/`(프레임별 실사 옷 영역)
 - 실패(`PortFailure`): 입력이 없거나 읽지 못하면 `VALIDATION_UNVERIFIABLE`, `retryable=false`
 - 중대한 변형·얼굴은 자동으로 찾지 않습니다. `PASS`에도 기록에 `human_review_required: true`가 남습니다
+- **피팅룸 실사화 결과**: `artifacts_dir/{job_id}_realize_fit_frame.png`가 있으면 11프레임 대신 피팅룸 검사를 합니다(`config/validate/fitroom_check_v1.json`). 렌더 ↔ 실사화 사진(핏 확인 사진)을 명세서 7장 프레임 기준으로 보고, 영상은 검은 화면·첫·끝 프레임 차이·시점마다 옷 색을 찾았는지·옷 밝기 흔들림·화면 튐(연속 프레임 변화)을 봅니다. 핏 확인 사진은 크기·위치를 렌더 마스크에 맞춘 뒤 잽니다(설정 1.1.0). 대표 프레임은 영상 첫 프레임, 대응 렌더 프레임은 렌더 첫 프레임이고, 지표는 `color_delta_e`·`silhouette_iou`·`width_change_ratio`·`end_frame_gap`·`garment_lightness_range`·`frame_jump_ratio`입니다(`frames_passed` 없음). 기록은 `validate.json`(`state: checked_fitroom`)·`fitroom_sheet.png`. 이미 있는 결과는 `python -m tools.check_visual --run <폴더> --mask <마스크> [--fit-frame <사진>]`으로 다시 판정합니다(docs/realize-fitroom.md 3절)
 
 `default.yaml`의 `validate`는 아직 `fake`입니다(바꿀 시점은 팀 결정, `docs/visual-check.md` 6절). 영상 경로 5단계를 모두 실제로 돌리는 설정은 `config/adapters/visual_real.yaml`입니다(몸 D3 · 착장 C4 · 렌더 C5 · 실사화 D4 · 검증 D6). Blender·GarmentCode·SMPL 모델·FAL_KEY가 모두 있어야 시작합니다.
 

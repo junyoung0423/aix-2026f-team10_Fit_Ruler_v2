@@ -31,7 +31,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from fitting.adapters.fal_ltx import ENDPOINT, PROMPT_VERSION, SUBJECTS, FalRealizer, RealizeOptions
+from fitting.adapters.fal_ltx import ENDPOINT, STYLE_VERSIONS, SUBJECTS, FalRealizer, RealizeOptions
 from fitting.adapters.fal_ltx.factory import make_realizer
 from fitting.adapters.media.frames import save_frame_pair, save_representative_frame
 from fitting.ports import PortFailure, PortRequest
@@ -65,6 +65,19 @@ def load_env_file(path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
+def seed_value(text: str) -> int | None:
+    """`--seed` 값: 0 이상 정수. random이면 None(보내지 않아 fal이 고른다)."""
+    if text == "random":
+        return None
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"정수나 random이어야 합니다: {text}") from None
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"0 이상이어야 합니다: {text}")
+    return value
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="렌더 클립을 fal로 실사화한다 (기본은 드라이런)")
     parser.add_argument("--input", type=Path, help="렌더 클립(.mp4). 이어 받기면 생략")
@@ -76,6 +89,18 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--garments-dir", type=Path, help="등록 의류 폴더 (기본 FIT_GARMENTS_DIR)")
     parser.add_argument(
         "--subject", choices=sorted(SUBJECTS), default="person", help="프롬프트 대상 (기본 person)"
+    )
+    parser.add_argument(
+        "--style",
+        choices=sorted(STYLE_VERSIONS),
+        default="studio",
+        help="프롬프트 장면: studio(v1, 회색 스튜디오), fitting_room(v2, 매장 피팅룸·실제 사람)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=seed_value,
+        default=42,
+        help="시드(0 이상 정수). random이면 보내지 않아 fal이 고른다 (기본 42)",
     )
     parser.add_argument("--resolution", choices=["480p", "720p"], default="720p")
     parser.add_argument("--intensity", choices=["light", "strong", "strong-v2"], default="light")
@@ -128,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         max_cost_usd=args.max_cost_usd,
         garment_text=args.garment_text,
         subject=args.subject,
+        style=args.style,
+        seed=args.seed,
         allow_resubmit=args.resubmit,
     )
     request = PortRequest(
@@ -156,7 +183,10 @@ def main(argv: list[str] | None = None) -> int:
         f"의류 {garment.id}"
     )
     prompt = plan["arguments_preview"]["prompt"]
-    print(f"프롬프트({PROMPT_VERSION}, 대상 {options.subject}): {prompt}")
+    print(f"프롬프트({STYLE_VERSIONS[options.style]}, 대상 {options.subject}): {prompt}")
+    negative = plan["arguments_preview"].get("negative_prompt")
+    print(f"부정 프롬프트: {negative if negative else '(보내지 않음, fal 기본값)'}")
+    print(f"시드: {plan['arguments_preview'].get('seed', '(보내지 않음, fal이 고름)')}")
     print(
         f"설정: {options.intensity}, {options.resolution}, {estimate['frames']}프레임, 오디오 끔 · "
         f"예상 비용(상한) ${estimate['usd']:.4f} / 한도 ${options.max_cost_usd:.2f}"

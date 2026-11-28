@@ -40,6 +40,7 @@ from fitting.ports import VALIDATE_OUTPUTS, PortError, PortFailure, PortRequest,
 from fitting.verify.frame_match import MATCH_MODES
 from fitting.verify.visual_check import CHECK_VERSION
 
+from .fitroom_measure import FitRoomConfig, check_fitroom, fitroom_sheet
 from .frames import read_image, save_frame_pair, write_image
 from .visual_measure import CheckConfig, VisualRun, as_mask, check_videos, contact_sheet
 
@@ -52,6 +53,11 @@ MASK_DIR = "masks"
 # 테스트로 같은지 확인한다.
 RENDER_MASK_ROLE = "render_mask"
 NO_MASK_REASON = "렌더 옷 마스크 파일이 없어 색·실루엣을 비교하지 못했습니다."
+# 피팅룸 실사화가 쓰는 핏 확인 사진 이름
+# 끝(`fitting.adapters.fal_fitroom.realizer.FIT_FRAME_ROLE`).
+# 테스트로 같은지 확인한다.
+FIT_FRAME_ROLE = "realize_fit_frame"
+FITROOM_SHEET_NAME = "fitroom_sheet.png"
 
 
 @dataclass
@@ -62,6 +68,8 @@ class VisualValidator:
     work_dir: Path
     config: CheckConfig
     mode: str = "time"
+    # 피팅룸 실사화(`fal_fitroom`) 결과 검사 설정. 실사화 중간 사진(핏 확인 프레임)이 있으면 쓴다
+    fitroom: FitRoomConfig | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in MATCH_MODES:
@@ -72,6 +80,7 @@ class VisualValidator:
             "validate": VALIDATE_VERSION,
             "visual_check": CHECK_VERSION,
             "validate_config": self.config.source,
+            **({"fitroom_config": self.fitroom.source} if self.fitroom is not None else {}),
             "opencv": cv2.__version__,
         }
 
@@ -159,6 +168,12 @@ class VisualValidator:
                     request, garment, real_video, render_clip, frame_id, render_frame_id
                 )
             render_mask = as_mask(read_image(mask_path, cv2.IMREAD_GRAYSCALE))
+            fit_frame = directory / f"{request.job_id}_{FIT_FRAME_ROLE}.png"
+            if self.fitroom is not None and fit_frame.is_file():
+                return self._validate_fitroom(
+                    request, garment, render_clip, real_video, render_mask, fit_frame,
+                    frame_id, render_frame_id, mask_id,
+                )
             run = check_videos(real_video, render_clip, render_mask, self.config, mode=self.mode)
             real_index, render_index = run.representative_pair()
             write_image(directory / f"{frame_id}.png", run.real_frames[real_index])
@@ -191,6 +206,55 @@ class VisualValidator:
             schema_version=SCHEMA_VERSION,
             output_artifact_ids=[frame_id, render_frame_id],
             metrics=metrics,
+            tool_versions=self.tool_versions(),
+        )
+
+    def _validate_fitroom(
+        self,
+        request: PortRequest,
+        garment: GarmentVariant,
+        render_clip: Path,
+        real_video: Path,
+        render_mask: np.ndarray,
+        fit_frame: Path,
+        frame_id: str,
+        render_frame_id: str,
+        mask_id: str,
+    ) -> PortResult:
+        """피팅룸 영상 검사: 렌더 ↔ 핏 확인 사진(정면 핏) + 영상(검은 화면·정면 끝·밝기 흐름).
+
+        대표 프레임은 영상 첫 프레임(정면 실사), 대응 렌더 프레임은 렌더 첫 프레임이다.
+        """
+        assert self.fitroom is not None
+        directory = Path(self.artifacts_dir)
+        run = check_fitroom(render_clip, render_mask, fit_frame, real_video, self.config,
+                            self.fitroom)
+        write_image(directory / f"{frame_id}.png", run.video_frames[0])
+        write_image(directory / f"{render_frame_id}.png", run.render_frame)
+        sheet = write_image(self._record_dir(request) / FITROOM_SHEET_NAME, fitroom_sheet(run))
+        if run.fit_mask is not None:
+            write_image(self._record_dir(request) / MASK_DIR / "fit_frame.png",
+                        run.fit_mask.astype(np.uint8) * 255)
+        result = run.result
+        self._write_record(
+            request,
+            {
+                "state": "checked_fitroom",
+                "garment_id": garment.id,
+                "render_mask_artifact_id": mask_id,
+                "fit_frame_artifact_id": fit_frame.stem,
+                "output_artifact_ids": [frame_id, render_frame_id],
+                "quality_status": result.status,
+                "fitroom_config": self.fitroom.to_record(),
+                "debug_files": {"fitroom_sheet": sheet.name, "masks": MASK_DIR},
+                "check": run.to_record(),
+                "segmentation_params": self.config.params.to_record(),
+            },
+        )
+        return PortResult(
+            schema_version=SCHEMA_VERSION,
+            output_artifact_ids=[frame_id, render_frame_id],
+            metrics=result.metrics(),
             tool_versions=self.tool_versions(),
         )
 

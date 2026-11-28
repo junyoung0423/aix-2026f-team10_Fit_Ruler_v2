@@ -35,7 +35,7 @@ def test_writes_the_contact_sheet_frames_and_record(tmp_path, clips, capsys):
     assert len(list((out / "masks").glob("real_*.png"))) == 11
     record = json.loads((out / "check.json").read_text(encoding="utf-8"))
     assert record["status"] == "PASS"
-    assert record["config"]["source"] == "visual_check_v1@1.0.0"
+    assert record["config"]["source"] == "visual_check_v1@1.1.0"
     assert record["representative_frames"] == {"real_index": 12, "render_index": 12}
     printed = capsys.readouterr().out
     assert "판정: PASS" in printed and "결과 폴더" in printed
@@ -85,3 +85,62 @@ def test_input_errors(tmp_path, clips, capsys):
         check_visual.main(
             ["--real", "a", "--render", "b", "--mask", "m", "--render-mask-dark", "80"]
         )
+
+
+# --- 피팅룸 검사 (--fit-frame) --------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def fitroom(tmp_path_factory) -> dict[str, Path]:
+    import cv2
+
+    root = tmp_path_factory.mktemp("fitroom_tool")
+    ok, buf = cv2.imencode(".png", vc.draw(vc.RENDER_SIZE, real=True, seed=5)[0])
+    assert ok
+    (root / "fit.png").write_bytes(buf.tobytes())
+    return {"fit": root / "fit.png", "turn": vc.real_clip(root / "turn.mp4", frames=49)}
+
+
+def test_fit_frame_switches_to_the_fitroom_check(tmp_path, clips, fitroom, capsys):
+    out = tmp_path / "out"
+    code = check_visual.main(
+        ["--real", str(fitroom["turn"]), "--render", str(clips["render"]),
+         "--mask", str(clips["mask"]), "--fit-frame", str(fitroom["fit"]), "--out-dir", str(out)]
+    )  # fmt: skip
+    assert code == check_visual.EXIT_OK
+    for name in ("fitroom_sheet.png", "frame.png", "render_frame.png", "check.json"):
+        assert (out / name).is_file()
+    assert (out / "masks" / "fit_frame.png").is_file()
+    record = json.loads((out / "check.json").read_text(encoding="utf-8"))
+    assert record["check_version"] == "fitroom_check_v1"
+    assert record["status"] == "PASS"
+    assert record["video_times"] == [0.0, 1.0, 2.0]
+    assert record["fitroom_config"]["source"] == "fitroom_check_v1@1.1.0"
+    printed = capsys.readouterr().out
+    assert "피팅룸 검사 판정: PASS" in printed and "첫·끝 차이" in printed
+    assert "화면 튐" in printed
+
+
+def test_run_folder_with_a_fit_frame_uses_the_fitroom_check(tmp_path, clips, fitroom):
+    run = tmp_path / "run"
+    (run / "artifacts").mkdir(parents=True)
+    (run / "artifacts" / "x_video.mp4").write_bytes(fitroom["turn"].read_bytes())
+    (run / "artifacts" / "x_render_clip.mp4").write_bytes(clips["render"].read_bytes())
+    (run / "artifacts" / "x_realize_fit_frame.png").write_bytes(fitroom["fit"].read_bytes())
+    out = tmp_path / "out"
+    args = ["--run", str(run), "--mask", str(clips["mask"]), "--out-dir", str(out)]
+    code = check_visual.main(args)
+    assert code == check_visual.EXIT_OK
+    record = json.loads((out / "check.json").read_text(encoding="utf-8"))
+    assert record["check_version"] == "fitroom_check_v1"
+
+
+def test_fitroom_check_needs_a_mask_file(tmp_path, clips, fitroom, capsys):
+    base = ["--real", str(fitroom["turn"]), "--render", str(clips["render"]),
+            "--fit-frame", str(fitroom["fit"]), "--out-dir", str(tmp_path / "out")]  # fmt: skip
+    assert check_visual.main(base) == check_visual.EXIT_INPUT
+    assert check_visual.main([*base, "--render-mask-dark", "80"]) == check_visual.EXIT_INPUT
+    assert "마스크" in capsys.readouterr().err
+    missing = ["--real", str(fitroom["turn"]), "--render", str(clips["render"]),
+               "--mask", str(clips["mask"]), "--fit-frame", str(tmp_path / "none.png")]  # fmt: skip
+    assert check_visual.main(missing) == check_visual.EXIT_INPUT

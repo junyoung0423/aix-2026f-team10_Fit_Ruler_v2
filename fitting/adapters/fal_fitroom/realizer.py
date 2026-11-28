@@ -1,0 +1,1077 @@
+"""피팅룸 실사화 어댑터 (`Realizer` 포트, #10). 렌더를 핏 참고로 써서 매장 피팅룸의 실제 사람이
+제자리에서 한 바퀴 도는 영상을 만든다.
+
+단계 (모두 fal, 이름은 기록·지표에 쓴다)
+1. `photo`: 렌더 클립 첫 프레임 → 실사 사진 `{job}_realize_fit_frame.png` (Nano Banana Pro 편집).
+   체형·자세·구도·옷 핏은 렌더 그대로 두라고 지시하고, 검증 어댑터가 이 사진을 렌더와 겹쳐 핏을
+   본다.
+   - 사진 핏 확인(v5): 사진을 받으면 검증과 같은 정면 핏 검사(렌더 첫 프레임 + 렌더 옷 마스크,
+     명세서 7장 기준)를 바로 돌린다. 떨어지면(FAIL) 그 사진은 `realize/photo_attempts/`에 두고
+     사진만 다시 만든다(모두 `photo_attempts`장, 기본 3장, 장당 $0.15). 다 떨어지면 가장 나은
+     사진으로 계속 가고 마지막 판정은 검증 단계가 한다. 렌더 옷 마스크가 없거나 측정할 수 없으면
+     확인 없이 그대로 쓴다. 비싼 회전 영상($0.80)을 만들기 전에 옷 모양이 바뀐 사진을 거른다
+     (2026-11-28 시연 작업은 사진의 가슴 폭이 렌더보다 9.7 % 좁아 끝까지 만든 뒤 검증에서 떨어졌다)
+   - 기준 그림(`photo_mask_reference`, 기본 끔): 렌더 옷 영역의 흰 실루엣을 둘째 그림으로 같이
+     보내고 사진 문장 뒤에 `photo_guide` 문장을 붙인다. 실제 호출로 효과를 확인하기 전이라 기본은
+     끈다
+2. `pose`(`pose_step`, 기본 켬): 1의 사진에서 팔을 내린 정면 사진 `{job}_realize_pose.png`
+   (Nano Banana Pro 편집). 1의 사진은 렌더의 A자세라 팔이 벌어져 있다
+3. `turn`: 시작·끝을 2의 사진(끄면 1의 사진)으로 둔 8초 한 바퀴 영상 `{job}_video.mp4`
+   (Veo 3.1 Fast first-last-frame, `turn_model="standard"`이면 Veo 3.1 표준판). 받은 영상의 맨 위
+   `top_crop_px`줄(기본 32)을 잘라 내고 같은 배율로 키워 크기를 지킨다(`encode.py`, Blender 내장
+   FFmpeg로 H.264). 옆모습에서 턱 끝·수염이 화면 맨 위에 걸치는 것을 없앤다. 0이면 받은 영상을
+   그대로 쓴다
+
+예전에 있던 "핏 옮기기"(렌더 클립 + 사진 → LTX render-to-real의 마지막 프레임)는 뺐다. 사진 문장에
+핏 지시와 옷과 대비되는 바지를 넣은 뒤로는 1의 사진이 렌더 핏을 더 잘 지켰고(IoU 0.973 대 0.948),
+빼면 실사화가 약 2분 짧아진다(docs/realize-fitroom.md 2.6절).
+
+계약 출력은 `REALIZE_OUTPUTS`(실사 영상)이고, 중간 사진은 계약 밖 산출물로 같은 폴더에 두고 지표
+(`realize_*_artifact_id`)로 알린다(C5 옷 마스크와 같은 방식). 검증 어댑터가 이름 규칙으로 찾는다.
+
+제출·재조회 규칙은 D4 어댑터(`fal_ltx.realizer`)와 같다.
+- 외부 호출(업로드·상태·결과·내려받기)은 일시 오류면 한 번 더 시도한다. **제출은 한 번만** 보낸다
+  (요청이 fal에 닿지 않았다고 확실할 때만 한 번 더).
+- 단계마다 요청 ID와 상태를 `work_dir/{job}/realize/realize.json`에 남긴다. 같은 작업으로 다시
+  부르면 **끝난 단계는 건너뛰고**, 진행 중이던 단계는 다시 제출하지 않고 같은 요청 ID로 결과만
+  받는다.
+- 접수 여부를 모르는 제출(요청 ID 없음) 뒤에 다시 부르면 다시 보내지 않고 실패로 알린다
+  (`allow_resubmit`을 명시할 때만 다시 보낸다).
+- 대기 한도(기본 `PortRequest.timeout_seconds`)는 모든 단계에 한 번 적용한다. 넘으면
+  `REALIZE_TIMEOUT`(retryable, 그 단계의 요청 ID).
+- 제출 전에 단계별 예상 비용 합이 `max_cost_usd`를 넘으면 `BUDGET_LIMIT`.
+- 회전 영상이 모두 검은 화면이면 `REALIZE_FAILED`(retryable=false). 다시 조회해도 같은 결과다.
+- 상태·결과 조회는 제출할 때 기록한 모델로 한다(다시 부를 때 옵션이 바뀌어도 같은 요청을 본다).
+- 맨 위 자르기에 쓸 Blender(`blender_path`)가 없으면 fal을 부르기 전에 멈춘다. 자르기가 실패하면
+  `REALIZE_FAILED`(retryable=false)로 알리고 회전 단계는 `completed`로 남긴다. 다시 부르면 다시
+  제출하지 않고 받은 결과로 자르기만 다시 한다.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import tempfile
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import cv2
+import numpy as np
+
+from fitting.adapters.fal_ltx.realizer import (
+    MAX_ATTEMPTS,
+    FalQueueClient,
+    is_transient,
+    submit_not_sent,
+    submit_rejected,
+)
+from fitting.adapters.fal_ltx.render_to_real import download
+from fitting.adapters.media.fitroom_measure import FitAlign, measure_fit_frame
+from fitting.adapters.media.frames import read_image as read_media_image
+from fitting.adapters.media.frames import read_video_info
+from fitting.adapters.media.validator import RENDER_MASK_ROLE
+from fitting.adapters.media.visual_measure import CheckConfig, as_mask
+from fitting.domain import SCHEMA_VERSION, ErrorCode, GarmentVariant, Stage
+from fitting.ports import REALIZE_OUTPUTS, PortError, PortFailure, PortRequest, PortResult
+from fitting.verify.visual_check import FAIL as CHECK_FAIL
+
+from .encode import (
+    DEFAULT_TOP_CROP_PX,
+    ENCODE_TIMEOUT_S,
+    TOP_CROP_MAX_PX,
+    Runner,
+    encode_h264,
+    subprocess_runner,
+    write_cropped_frames,
+)
+from .prompts import FITROOM_PROMPT_VERSION, FitRoomPrompts, build_fitroom_prompts
+from .steps import (
+    PHOTO_ENDPOINT,
+    PHOTO_USD,
+    PRICE_CHECKED_ON,
+    TURN_ENDPOINT,
+    TURN_MODELS,
+    first_frame,
+    is_black,
+    mask_guide,
+    photo_arguments,
+    read_image,
+    sample_frames,
+    turn_arguments,
+    turn_cost,
+    turn_endpoint,
+    write_png,
+)
+
+# v5: v4 + 사진 핏 확인·사진만 다시 만들기(+ 기준 그림 옵션). v4는 8초 한 바퀴 + 맨 위 자르기, v3은
+# 4초 1/4 바퀴 왕복, v2는 8초 한 바퀴(자르기 없음), v1은 핏 옮기기(LTX)가 있던 흐름
+REALIZE_VERSION = "realize_fitroom_v5"
+RECORD_DIR = "realize"
+SUMMARY_NAME = "realize.json"
+# 핏 확인에서 떨어진 사진을 두는 곳(record_dir 아래): `{번호}.png`와 그 요청·응답
+PHOTO_ATTEMPTS_DIR = "photo_attempts"
+# 사진 단계 기준 그림(렌더 옷 영역의 흰 실루엣)
+GUIDE_NAME = "photo_guide.png"
+# 단계 순서. `pose`는 `FitRoomOptions.pose_step`(기본 켬)으로 끌 수 있다
+STEPS = ("photo", "pose", "turn")
+# 계약 밖 중간 산출물 역할(지표로 ID를 알린다). 1의 사진이 핏 확인 프레임이고 검증 어댑터가 같은
+# 이름으로 찾는다
+FIT_FRAME_ROLE, POSE_ROLE = "realize_fit_frame", "realize_pose"
+# 기본 옵션(회전 Veo 3.1 Fast) 기준 단계별 모델. 옵션에 맞춘 값은 `FitRoomRealizer.endpoints()`
+ENDPOINTS = {
+    "photo": PHOTO_ENDPOINT,
+    "pose": PHOTO_ENDPOINT,
+    "turn": TURN_ENDPOINT,
+}
+
+# 단계 상태 (realize.json의 steps.{이름}.state)
+SUBMITTED, COMPLETED, DONE, FAILED, TIMEOUT, UNKNOWN = (
+    "submitted",
+    "completed",
+    "done",
+    "failed",
+    "timeout",
+    "unknown",
+)
+_RESUMABLE = {SUBMITTED, COMPLETED, TIMEOUT, UNKNOWN}
+
+Downloader = Callable[[str, Path], None]
+
+
+@dataclass
+class FitRoomOptions:
+    seed: int | None = 42  # 회전 영상에 보내는 시드(사진 편집은 fal이 고른다)
+    max_cost_usd: float = 3.0  # 예상 비용 합 상한(기본 흐름 $1.10)
+    poll_interval_s: float = 2.0
+    wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
+    garment_text: str | None = None  # 프롬프트 옷 설명(시험용)
+    allow_resubmit: bool = False  # 접수 여부를 모르는 이전 제출이 있어도 다시 보낸다(비용 위험)
+    photo_resolution: str = "2K"
+    # 팔 내리기 사진. 끄면 1의 사진(팔을 벌린 A자세)을 회전 영상의 시작·끝으로 바로 쓴다
+    pose_step: bool = True
+    turn_duration_s: int = 8  # 한 바퀴(4초 1/4 바퀴 왕복은 옆모습에서 뒤집혀 v4에서 되돌림)
+    turn_resolution: str = "720p"
+    turn_model: str = "fast"  # "fast": Veo 3.1 Fast(초당 $0.10) · "standard": 표준판($0.20)
+    # 회전 영상 맨 위를 잘라 낼 줄 수(px, 0이면 끔). 자르기에는 Blender(`blender_path`)가 필요하다
+    top_crop_px: int = DEFAULT_TOP_CROP_PX
+    # 사진 핏 확인에서 떨어지면 사진만 다시 만든다. 사진 최대 장수(1이면 확인만 하고 다시 만들지
+    # 않는다)
+    photo_attempts: int = 3
+    # 렌더 옷 영역(흰 실루엣)을 사진 단계의 둘째 그림으로 같이 보낸다(실제 효과 확인 전이라 기본 끔)
+    photo_mask_reference: bool = False
+
+
+@dataclass(frozen=True)
+class PhotoCheck:
+    """사진 핏 확인 기준(검증 어댑터와 같은 설정). 팩토리가 검증 설정 파일로 만든다."""
+
+    config: CheckConfig
+    align: FitAlign | None = None
+
+
+def _photo_score(check: dict[str, Any]) -> tuple[float, float, float]:
+    """떨어진 사진끼리 비교할 나쁜 정도(작을수록 낫다): 떨어진 항목 수, 가장 큰 폭 변화, IoU."""
+    widths = [
+        abs(float(v))
+        for v in (check.get("chest_width_change"), check.get("hem_width_change"))
+        if v is not None
+    ]
+    return (
+        float(len(check.get("fails") or [])),
+        max(widths) if widths else 9.0,
+        -float(check.get("silhouette_iou") or 0.0),
+    )
+
+
+@dataclass
+class _Record:
+    path: Path
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def save(self, **updates: Any) -> None:
+        self.data.update(updates)
+        self.data["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(
+            json.dumps(self.data, ensure_ascii=False, indent=2, default=str) + "\n",
+            encoding="utf-8",
+        )
+
+    def step(self, name: str) -> dict[str, Any]:
+        steps = self.data.setdefault("steps", {})
+        return steps.setdefault(name, {"state": None})
+
+    def save_step(self, name: str, **updates: Any) -> None:
+        self.step(name).update(updates)
+        self.save()
+
+
+def _write_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
+
+@dataclass
+class FitRoomRealizer:
+    """`Realizer` 포트 구현. 만들 때
+    `fitting.adapters.fal_fitroom.factory.make_fitroom_realizer`."""
+
+    client: FalQueueClient
+    artifacts_dir: Path
+    work_dir: Path
+    options: FitRoomOptions = field(default_factory=FitRoomOptions)
+    downloader: Downloader = download
+    clock: Callable[[], float] = time.monotonic
+    wall: Callable[[], float] = time.time
+    sleep: Callable[[float], None] = time.sleep
+    client_version: str = "unknown"
+    # 맨 위 자르기(H.264 다시 쓰기)에 쓰는 Blender. 팩토리가 BLENDER_PATH(BLENDER_EXE)로 넣는다
+    blender_path: Path | None = None
+    runner: Runner = subprocess_runner  # Blender 실행. 테스트는 가짜로 바꾼다
+    # 사진 핏 확인 기준. 없으면(None) 확인하지 않는다. 팩토리가 검증 설정으로 넣는다
+    photo_check: PhotoCheck | None = None
+
+    # --- 파일 -----------------------------------------------------------------------------
+
+    def input_clip(self, request: PortRequest) -> Path | None:
+        if not request.input_artifact_ids:
+            return None
+        directory = Path(self.artifacts_dir)
+        exact = directory / f"{request.input_artifact_ids[0]}.mp4"
+        if exact.is_file():
+            return exact
+        matches = sorted(directory.glob(f"{request.input_artifact_ids[0]}.*"))
+        return matches[0] if matches else None
+
+    def outputs(self, job_id: str) -> dict[str, Path]:
+        directory = Path(self.artifacts_dir)
+        return {
+            "photo": directory / f"{job_id}_{FIT_FRAME_ROLE}.png",
+            "pose": directory / f"{job_id}_{POSE_ROLE}.png",
+            "turn": directory / f"{job_id}_{REALIZE_OUTPUTS[0]}.mp4",
+        }
+
+    def render_mask_path(self, job_id: str) -> Path:
+        """C5 렌더 어댑터가 쓰는 렌더 옷 마스크(계약 밖 산출물, 검증 어댑터와 같은 이름 규칙)."""
+        return Path(self.artifacts_dir) / f"{job_id}_{RENDER_MASK_ROLE}.png"
+
+    def photo_check_ready(self, job_id: str) -> bool:
+        """사진 핏 확인을 할 수 있는가(기준이 있고 렌더 옷 마스크가 있다)."""
+        return self.photo_check is not None and self.render_mask_path(job_id).is_file()
+
+    def steps(self) -> tuple[str, ...]:
+        """옵션에 맞춘 단계(순서대로)."""
+        return tuple(s for s in STEPS if s != "pose" or self.options.pose_step)
+
+    def endpoints(self) -> dict[str, str]:
+        """옵션에 맞춘 단계별 fal 모델. Raises: ValueError — 모르는 회전 모델이다."""
+        models = {**ENDPOINTS, "turn": turn_endpoint(self.options.turn_model)}
+        return {step: models[step] for step in self.steps()}
+
+    # --- 계획(드라이런) ---------------------------------------------------------------------
+
+    def plan(self, request: PortRequest, garment: GarmentVariant) -> dict[str, Any]:
+        """fal을 부르지 않고 단계별 모델·설정·예상 비용을 계산한다.
+
+        Raises:
+            FileNotFoundError: 렌더 클립이 없다.
+            ValueError: 클립을 읽지 못했거나 설정·프롬프트가 틀렸다.
+        """
+        clip = self.input_clip(request)
+        if clip is None:
+            raise FileNotFoundError(f"렌더 클립이 없습니다: {request.input_artifact_ids}")
+        _, info = sample_frames(clip, count=1)
+        prompts = build_fitroom_prompts(garment, garment_text=self.options.garment_text)
+        endpoints = self.endpoints()
+        turn_arguments(  # 길이 검사
+            "<사진>",
+            prompts.turn,
+            prompts.turn_negative,
+            duration_s=self.options.turn_duration_s,
+            resolution=self.options.turn_resolution,
+            seed=self.options.seed,
+        )
+        crop = self.options.top_crop_px
+        if not 0 <= crop <= TOP_CROP_MAX_PX:
+            raise ValueError(f"맨 위 자르기는 0~{TOP_CROP_MAX_PX}px이어야 합니다: {crop}")
+        attempts = self.options.photo_attempts
+        if attempts < 1:
+            raise ValueError(f"사진 최대 장수는 1 이상이어야 합니다: {attempts}")
+        estimate = {
+            "photo": PHOTO_USD,
+            "pose": PHOTO_USD,
+            "turn": turn_cost(self.options.turn_duration_s, self.options.turn_model),
+        }
+        estimate = {step: estimate[step] for step in self.steps()}
+        total = sum(estimate.values())
+        checking = self.photo_check_ready(request.job_id)
+        # 사진을 다시 만들면 장당 사진 값이 더 든다. 상한 확인은 가장 많이 드는 경우로 한다
+        retries = PHOTO_USD * (attempts - 1) if checking else 0.0
+        mask_found = self.render_mask_path(request.job_id).is_file()
+        guide = self.options.photo_mask_reference and mask_found
+        return {
+            "version": REALIZE_VERSION,
+            "input": {"path": clip.name, **info},
+            "steps": list(self.steps()),
+            "endpoints": endpoints,
+            "turn_model": self.options.turn_model,
+            "top_crop_px": crop,
+            "photo_check": {"enabled": checking, "max_photos": attempts if checking else 1},
+            "photo_guide": "render_mask" if guide else "off",
+            "prompts": prompts.to_dict(),
+            "estimate_usd": {
+                **estimate,
+                "total": round(total, 4),
+                "photo_retries_max": round(retries, 4),
+                "max_total": round(total + retries, 4),
+            },
+            "max_cost_usd": self.options.max_cost_usd,
+            "price_checked_on": PRICE_CHECKED_ON,
+        }
+
+    # --- 포트 -------------------------------------------------------------------------------
+
+    def tool_versions(self) -> dict[str, str]:
+        return {
+            "realize": REALIZE_VERSION,
+            "prompt": FITROOM_PROMPT_VERSION,
+            "photo_endpoint": PHOTO_ENDPOINT,
+            "turn_endpoint": TURN_MODELS[self.options.turn_model][0]
+            if self.options.turn_model in TURN_MODELS
+            else f"unknown:{self.options.turn_model}",
+            "fal_client": self.client_version,
+            "price_checked_on": PRICE_CHECKED_ON,
+            "top_crop": f"{self.options.top_crop_px}px (blender)"
+            if self.options.top_crop_px
+            else "off",
+            "photo_check": f"fit_frame (max {self.options.photo_attempts} photos)"
+            if self.photo_check is not None
+            else "off",
+            "photo_guide": "render_mask" if self.options.photo_mask_reference else "off",
+        }
+
+    def blender_ready(self) -> bool:
+        """맨 위 자르기에 쓸 Blender 실행 파일이 있는가."""
+        return self.blender_path is not None and Path(self.blender_path).is_file()
+
+    def realize(self, request: PortRequest, garment: GarmentVariant) -> PortResult:
+        record_dir = Path(self.work_dir) / request.job_id / RECORD_DIR
+        record = _Record(record_dir / SUMMARY_NAME, self._load(record_dir))
+        outputs = self.outputs(request.job_id)
+        needed = [outputs[step] for step in self.steps()]
+        if record.data.get("state") == DONE and all(p.is_file() for p in needed):
+            return self._result(request.job_id, record)
+
+        started = self.clock()
+        record.save(
+            job_id=request.job_id,
+            attempt_id=request.attempt_id,
+            version=REALIZE_VERSION,
+            calls=int(record.data.get("calls", 0)) + 1,
+            retries=record.data.get("retries", []),
+            state="running",
+            error=None,
+        )
+        record.data.setdefault("t0", self.wall())
+
+        try:
+            plan = self.plan(request, garment)
+        except FileNotFoundError as error:
+            raise self._fail(
+                record,
+                record_dir,
+                "input",
+                ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                False,
+                "실사화할 렌더 클립을 찾지 못했습니다.",
+                FAILED,
+                error,
+            ) from error
+        except ValueError as error:
+            raise self._fail(
+                record,
+                record_dir,
+                "prepare",
+                ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                False,
+                "실사화 요청을 준비하지 못해 요청하지 않았습니다.",
+                FAILED,
+                error,
+            ) from error
+        _write_json(record_dir / "plan.json", plan)
+        record.save(estimate=plan["estimate_usd"], prompts_version=FITROOM_PROMPT_VERSION)
+        if plan["estimate_usd"]["max_total"] > self.options.max_cost_usd:
+            raise self._fail(
+                record,
+                record_dir,
+                "budget",
+                ErrorCode.BUDGET_LIMIT,
+                False,
+                "실사화 예상 비용이 한도를 넘어 요청하지 않았습니다.",
+                FAILED,
+            )
+        if self.options.top_crop_px and not self.blender_ready():
+            raise self._fail(
+                record,
+                record_dir,
+                "prepare",
+                ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                False,
+                "회전 영상 맨 위 자르기에 쓸 Blender가 없어 요청하지 않았습니다.",
+                FAILED,
+                FileNotFoundError(
+                    f"Blender 실행 파일이 없습니다(BLENDER_PATH): {self.blender_path}"
+                ),
+            )
+
+        prompts = build_fitroom_prompts(garment, garment_text=self.options.garment_text)
+        clip = self.input_clip(request)
+        assert clip is not None
+        deadline = started + (self.options.wait_limit_s or float(request.timeout_seconds))
+        context = {
+            "request": request,
+            "garment": garment,
+            "clip": clip,
+            "prompts": prompts,
+            "outputs": outputs,
+            "record_dir": record_dir,
+            "deadline": deadline,
+        }
+        for name in self.steps():
+            if name == "photo":
+                self._photo_step(record, context)
+            else:
+                self._run_step(name, record, context)
+        record.save(state=DONE, error=None)
+        return self._result(request.job_id, record)
+
+    # --- 사진 핏 확인 -------------------------------------------------------------------------
+
+    def _photo_step(self, record: _Record, ctx: dict[str, Any]) -> None:
+        """사진 단계 + 핏 확인. 떨어지면(FAIL) 그 사진을 보관하고 사진만 다시 만든다(모두
+        `photo_attempts`장). 다 떨어지면 가장 나은 사진을 쓴다(마지막 판정은 검증 단계).
+        확인할 수 없으면(렌더 옷 마스크 없음·측정 불가·오류) 받은 사진을 그대로 쓴다.
+
+        다시 불러도 같다: 확인을 마친 사진은 다시 재지 않고(요청 ID로 가린다), 보관한 사진은 다시
+        만들지 않는다. 다시 만드는 중이던 사진은 그 요청 ID로 결과만 받는다.
+        """
+        reference = self._check_reference(record, ctx)
+        while True:
+            self._run_step("photo", record, ctx)
+            if reference is None:
+                return
+            step = record.step("photo")
+            check = step.get("check")
+            if not check or check.get("request_id") != step.get("request_id"):
+                photo = ctx["outputs"]["photo"]
+                check = self._check_photo(reference, photo, step.get("request_id"))
+                record.save_step("photo", check=check)
+            tried = list(step.get("attempts") or [])
+            if check.get("status") != CHECK_FAIL or len(tried) + 1 >= self.options.photo_attempts:
+                break
+            tried.append(self._archive_photo(record, ctx, len(tried) + 1))
+            record.save_step(
+                "photo",
+                attempts=tried,
+                state=None,
+                request_id=None,
+                endpoint=None,
+                response=None,
+                check=None,
+                submitted_at=None,
+                completed_at=None,
+                finished_at=None,
+            )
+        self._keep_best_photo(record, ctx)
+
+    def _check_reference(
+        self, record: _Record, ctx: dict[str, Any]
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """(렌더 첫 프레임, 렌더 옷 마스크). 확인할 수 없으면 이유를 남기고 None."""
+        if self.photo_check is None:
+            return None
+        path = self.render_mask_path(ctx["request"].job_id)
+        reason = None
+        if not path.is_file():
+            reason = "렌더 옷 마스크가 없음"
+        else:
+            try:
+                mask = as_mask(read_media_image(path, cv2.IMREAD_GRAYSCALE))
+                render = first_frame(ctx["clip"])
+            except (ValueError, OSError) as error:
+                reason = f"{type(error).__name__}: {error}"[:300]
+            else:
+                if mask.shape == render.shape[:2]:
+                    return render, mask
+                reason = f"마스크 크기 {mask.shape[::-1]}가 렌더 {render.shape[1::-1]}와 다름"
+        record.save_step("photo", check_skipped=reason)
+        return None
+
+    def _check_photo(
+        self, reference: tuple[np.ndarray, np.ndarray], photo: Path, request_id: str | None
+    ) -> dict[str, Any]:
+        """검증 어댑터와 같은 정면 핏 검사. 재지 못하면 상태 ERROR(사진은 그대로 쓴다)."""
+        assert self.photo_check is not None
+        render, mask = reference
+        try:
+            result, _, _, info = measure_fit_frame(
+                render, mask, read_image(photo), self.photo_check.config, self.photo_check.align
+            )
+        except (ValueError, OSError, cv2.error) as error:
+            return {
+                "request_id": request_id,
+                "status": "ERROR",
+                "message": f"{type(error).__name__}: {error}"[:300],
+            }
+        return {"request_id": request_id, **result.to_record(), "alignment": info.get("alignment")}
+
+    def _archive_photo(self, record: _Record, ctx: dict[str, Any], number: int) -> dict[str, Any]:
+        """지금 사진·요청·응답 기록을 `photo_attempts/{번호}`로 옮기고 그 시도 기록을 돌려준다."""
+        record_dir: Path = ctx["record_dir"]
+        step = record.step("photo")
+        folder = record_dir / PHOTO_ATTEMPTS_DIR
+        folder.mkdir(parents=True, exist_ok=True)
+        os.replace(ctx["outputs"]["photo"], folder / f"{number}.png")
+        for name in ("photo.png", "photo_request.json", "photo_response.json"):
+            source = record_dir / name
+            if source.is_file():
+                os.replace(source, folder / f"{number}_{name}")
+        return {
+            "number": number,
+            "request_id": step.get("request_id"),
+            "endpoint": step.get("endpoint"),
+            "submitted_at": step.get("submitted_at"),
+            "completed_at": step.get("completed_at"),
+            "file": f"{PHOTO_ATTEMPTS_DIR}/{number}.png",
+            "check": step.get("check"),
+        }
+
+    def _keep_best_photo(self, record: _Record, ctx: dict[str, Any]) -> None:
+        """모든 사진이 떨어졌으면 가장 나은 사진을 핏 확인 사진(다음 단계 입력)으로 둔다."""
+        step = record.step("photo")
+        tried = list(step.get("attempts") or [])
+        check = step.get("check") or {}
+        current = len(tried) + 1
+        if check.get("status") != CHECK_FAIL or not tried:
+            record.save_step("photo", chosen=current)
+            return
+        best = min(tried, key=lambda attempt: _photo_score(attempt.get("check") or {}))
+        if _photo_score(check) <= _photo_score(best.get("check") or {}):
+            record.save_step("photo", chosen=current)
+            return
+        latest = self._archive_photo(record, ctx, current)
+        shutil.copyfile(Path(ctx["record_dir"]) / best["file"], ctx["outputs"]["photo"])
+        tried = [a for a in tried if a.get("number") != best["number"]] + [latest]
+        record.save_step(
+            "photo",
+            attempts=tried,
+            chosen=best["number"],
+            request_id=best.get("request_id"),
+            endpoint=best.get("endpoint"),
+            submitted_at=best.get("submitted_at"),
+            completed_at=best.get("completed_at"),
+            check=best.get("check"),
+            response=None,
+            state=DONE,
+        )
+
+    def _guide_image(
+        self, record: _Record, ctx: dict[str, Any], size: tuple[int, int]
+    ) -> Path | None:
+        """사진 단계 기준 그림(렌더 옷 영역의 흰 실루엣, 렌더와 같은 크기). 옵션이 꺼졌거나 렌더 옷
+        마스크를 읽지 못하면 None."""
+        if not self.options.photo_mask_reference:
+            return None
+        path = self.render_mask_path(ctx["request"].job_id)
+        try:
+            mask = as_mask(read_media_image(path, cv2.IMREAD_GRAYSCALE))
+        except (ValueError, OSError) as error:
+            record.save_step("photo", guide_skipped=f"{type(error).__name__}: {error}"[:300])
+            return None
+        height, width = size
+        if mask.shape != (height, width):
+            resized = cv2.resize(
+                mask.astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST
+            )
+            mask = resized > 0
+        return write_png(Path(ctx["record_dir"]) / GUIDE_NAME, mask_guide(mask))
+
+    # --- 단계 하나 ---------------------------------------------------------------------------
+
+    def _run_step(self, name: str, record: _Record, ctx: dict[str, Any]) -> None:
+        output: Path = ctx["outputs"][name]
+        step = record.step(name)
+        state, request_id = step.get("state"), step.get("request_id")
+        if state == DONE and output.is_file():
+            return
+        if state == UNKNOWN and not request_id and not self.options.allow_resubmit:
+            raise self._fail(
+                record,
+                ctx["record_dir"],
+                f"{name}:resubmit_guard",
+                ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                False,
+                "이전 실사화 요청이 접수됐는지 알 수 없어 다시 보내지 않았습니다.",
+                UNKNOWN,
+                step_name=name,
+            )
+        resumed = bool(request_id) and state in (_RESUMABLE | {DONE})
+        if not resumed:
+            arguments = self._arguments(name, record, ctx)
+            request_id = self._submit(name, arguments, record, ctx)
+        response = step.get("response") if step.get("state") in (COMPLETED, DONE) else None
+        if response is None:
+            self._wait(name, request_id, record, ctx)
+            response = self._fetch(name, request_id, record, ctx)
+        self._finish(name, response, request_id, record, ctx)
+        record.save_step(name, state=DONE, finished_at=round(self.wall() - record.data["t0"], 2))
+
+    def _arguments(self, name: str, record: _Record, ctx: dict[str, Any]) -> dict[str, Any]:
+        prompts: FitRoomPrompts = ctx["prompts"]
+        record_dir: Path = ctx["record_dir"]
+        if name == "photo":
+            frame = first_frame(ctx["clip"])
+            still = write_png(record_dir / "render_still.png", frame)
+            url = self._upload(name, still, record, ctx)
+            guide = self._guide_image(record, ctx, frame.shape[:2])
+            if guide is None:
+                return photo_arguments(url, prompts.photo, resolution=self.options.photo_resolution)
+            guide_url = self._upload(name, guide, record, ctx)
+            return photo_arguments(
+                url,
+                f"{prompts.photo} {prompts.photo_guide}",
+                resolution=self.options.photo_resolution,
+                reference_urls=(guide_url,),
+            )
+        if name == "pose":
+            url = self._upload(name, ctx["outputs"]["photo"], record, ctx)
+            return photo_arguments(url, prompts.pose, resolution=self.options.photo_resolution)
+        start = ctx["outputs"]["pose" if self.options.pose_step else "photo"]
+        url = self._upload(name, start, record, ctx)
+        return turn_arguments(
+            url,
+            prompts.turn,
+            prompts.turn_negative,
+            duration_s=self.options.turn_duration_s,
+            resolution=self.options.turn_resolution,
+            seed=self.options.seed,
+        )
+
+    def _upload(self, name: str, path: Path, record: _Record, ctx: dict[str, Any]) -> str:
+        url = self._call(f"{name}:upload", lambda: self.client.upload_file(path), record)
+        if isinstance(url, BaseException):
+            raise self._fail(
+                record,
+                ctx["record_dir"],
+                f"{name}:upload",
+                ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                False,
+                "실사화 서비스에 파일을 올리지 못했습니다.",
+                FAILED,
+                url,
+                step_name=name,
+            )
+        return str(url)
+
+    def _submit(
+        self, name: str, arguments: dict[str, Any], record: _Record, ctx: dict[str, Any]
+    ) -> str:
+        endpoint = self.endpoints()[name]
+        _write_json(
+            ctx["record_dir"] / f"{name}_request.json",
+            {"endpoint": endpoint, "arguments": arguments},
+        )
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                handle = self.client.submit(endpoint, arguments)
+                break
+            except Exception as error:  # noqa: BLE001 - 아래에서 종류를 가린다
+                if submit_not_sent(error) and attempt < MAX_ATTEMPTS:
+                    self._retry_note(record, f"{name}:submit", error)
+                    continue
+                refused = submit_not_sent(error) or submit_rejected(error)
+                raise self._fail(
+                    record,
+                    ctx["record_dir"],
+                    f"{name}:submit",
+                    ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                    False,
+                    "실사화 요청을 접수하지 못했습니다."
+                    if refused
+                    else "실사화 요청이 접수됐는지 확인하지 못했습니다.",
+                    FAILED if refused else UNKNOWN,
+                    error,
+                    step_name=name,
+                ) from error
+        request_id = str(handle.request_id)
+        record.save_step(
+            name,
+            state=SUBMITTED,
+            request_id=request_id,
+            endpoint=endpoint,
+            submitted_at=round(self.wall() - record.data["t0"], 2),
+            response=None,
+        )
+        return request_id
+
+    def _endpoint(self, name: str, record: _Record) -> str:
+        """제출할 때 기록한 모델(없으면 지금 옵션의 모델)."""
+        return str(record.step(name).get("endpoint") or self.endpoints()[name])
+
+    def _wait(self, name: str, request_id: str, record: _Record, ctx: dict[str, Any]) -> None:
+        endpoint = self._endpoint(name, record)
+        failures = 0
+        while True:
+            if self.clock() > ctx["deadline"]:
+                raise self._fail(
+                    record,
+                    ctx["record_dir"],
+                    f"{name}:wait",
+                    ErrorCode.REALIZE_TIMEOUT,
+                    True,
+                    "실사화 응답이 제시간에 오지 않았습니다.",
+                    TIMEOUT,
+                    step_name=name,
+                    external_request_id=request_id,
+                )
+            try:
+                status = self.client.status(endpoint, request_id, with_logs=False)
+                failures = 0
+            except Exception as error:  # noqa: BLE001
+                failures += 1
+                if is_transient(error) and failures < MAX_ATTEMPTS:
+                    self._retry_note(record, f"{name}:status", error)
+                    self.sleep(self.options.poll_interval_s)
+                    continue
+                raise self._fail(
+                    record,
+                    ctx["record_dir"],
+                    f"{name}:status",
+                    ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                    True,
+                    "실사화 진행 상태를 확인하지 못했습니다.",
+                    UNKNOWN,
+                    error,
+                    step_name=name,
+                    external_request_id=request_id,
+                ) from error
+            kind = type(status).__name__
+            if kind == "Completed":
+                error_text = getattr(status, "error", None)
+                if error_text:
+                    raise self._fail(
+                        record,
+                        ctx["record_dir"],
+                        f"{name}:generate",
+                        ErrorCode.REALIZE_FAILED,
+                        False,
+                        "실사화 서비스가 결과를 만들지 못했습니다.",
+                        FAILED,
+                        RuntimeError(f"{getattr(status, 'error_type', '')}: {error_text}"),
+                        step_name=name,
+                    )
+                return
+            self.sleep(self.options.poll_interval_s)
+
+    def _fetch(
+        self, name: str, request_id: str, record: _Record, ctx: dict[str, Any]
+    ) -> dict[str, Any]:
+        endpoint = self._endpoint(name, record)
+        response = self._call(
+            f"{name}:result", lambda: self.client.result(endpoint, request_id), record
+        )
+        if isinstance(response, BaseException) or not isinstance(response, dict):
+            error = response if isinstance(response, BaseException) else ValueError(response)
+            raise self._fail(
+                record,
+                ctx["record_dir"],
+                f"{name}:result",
+                ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                True,
+                "실사화 결과를 받지 못했습니다.",
+                UNKNOWN,
+                error,
+                step_name=name,
+                external_request_id=request_id,
+            )
+        _write_json(ctx["record_dir"] / f"{name}_response.json", response)
+        record.save_step(
+            name,
+            state=COMPLETED,
+            response=response,
+            completed_at=round(self.wall() - record.data["t0"], 2),
+        )
+        return response
+
+    def _finish(
+        self,
+        name: str,
+        response: dict[str, Any],
+        request_id: str,
+        record: _Record,
+        ctx: dict[str, Any],
+    ) -> None:
+        """결과 파일을 내려받아 단계 산출물로 만든다."""
+        record_dir: Path = ctx["record_dir"]
+        output: Path = ctx["outputs"][name]
+        try:
+            if name in ("photo", "pose"):
+                url = response["images"][0]["url"]
+            else:
+                url = response["video"]["url"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise self._fail(
+                record,
+                record_dir,
+                f"{name}:download",
+                ErrorCode.REALIZE_FAILED,
+                False,
+                "실사화 결과에 파일이 없습니다.",
+                FAILED,
+                error,
+                step_name=name,
+            ) from error
+        raw = (
+            record_dir
+            / {
+                "photo": "photo.png",
+                "pose": "pose.png",
+                "turn": "turn.mp4",
+            }[name]
+        )
+        outcome = self._call(f"{name}:download", lambda: self._fetch_file(url, raw), record)
+        if isinstance(outcome, BaseException):
+            raise self._fail(
+                record,
+                record_dir,
+                f"{name}:download",
+                ErrorCode.EXTERNAL_SUBMIT_UNKNOWN,
+                True,
+                "실사화 결과를 내려받지 못했습니다.",
+                COMPLETED,
+                outcome,
+                step_name=name,
+                external_request_id=request_id,
+            )
+        try:
+            if name in ("photo", "pose"):
+                write_png(output, read_image(raw))
+            else:
+                frames, info = sample_frames(raw)
+                if is_black(frames):
+                    raise _BlackOutput(info)
+                if self.options.top_crop_px:
+                    crop = self._crop_top(raw, output, record_dir)
+                    record.save_step(name, video=info, top_crop=crop)
+                else:
+                    partial = output.with_name(output.name + ".part")
+                    partial.write_bytes(raw.read_bytes())
+                    os.replace(partial, output)
+                    record.save_step(name, video=info)
+        except _BlackOutput as black:
+            raise self._fail(
+                record,
+                record_dir,
+                f"{name}:black",
+                ErrorCode.REALIZE_FAILED,
+                False,
+                "실사화 결과가 검은 화면이었습니다.",
+                FAILED,
+                RuntimeError(f"black output {black.info}"),
+                step_name=name,
+            ) from None
+        except _CropFailed as failed:
+            # 받은 결과는 그대로 두고(completed) 다시 부르면 자르기만 다시 한다
+            raise self._fail(
+                record,
+                record_dir,
+                f"{name}:crop",
+                ErrorCode.REALIZE_FAILED,
+                False,
+                "실사화 영상의 맨 위를 잘라 저장하지 못했습니다.",
+                COMPLETED,
+                failed,
+                step_name=name,
+            ) from None
+        except (ValueError, OSError) as error:
+            raise self._fail(
+                record,
+                record_dir,
+                f"{name}:output",
+                ErrorCode.REALIZE_FAILED,
+                False,
+                "실사화 결과 파일을 읽지 못했습니다.",
+                FAILED,
+                error,
+                step_name=name,
+            ) from error
+
+    def _fetch_file(self, url: str, path: Path) -> None:
+        partial = path.with_name(path.name + ".part")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.downloader(url, partial)
+        os.replace(partial, path)
+
+    def _crop_top(self, raw: Path, output: Path, record_dir: Path) -> dict[str, Any]:
+        """받은 회전 영상의 맨 위를 잘라 H.264로 다시 쓰고 계약 출력으로 둔다.
+
+        중간 프레임(8초 720p에 약 0.5 GB)과 다시 쓴 영상은 시스템 임시 폴더에 두고 끝나면 지운다
+        (작업 폴더가 OneDrive 같은 동기화 폴더일 수 있다). Blender 기록은 `crop_encode.log`.
+
+        Raises:
+            _CropFailed: 프레임을 쓰지 못했거나, Blender 인코딩이 실패했거나, 결과의 프레임 수·
+                크기가 원본과 다르다.
+        """
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix="fitroom_crop_", ignore_cleanup_errors=True
+            ) as tmp:
+                frames_dir, encoded = Path(tmp) / "frames", Path(tmp) / "turn_cropped.mp4"
+                geometry = write_cropped_frames(raw, frames_dir, self.options.top_crop_px)
+                if self.blender_path is None:
+                    raise _CropFailed("Blender 경로가 없습니다(BLENDER_PATH)")
+                outcome = encode_h264(
+                    Path(self.blender_path),
+                    frames_dir,
+                    encoded,
+                    float(geometry["fps"]),
+                    log_path=record_dir / "crop_encode.log",
+                    runner=self.runner,
+                )
+                if outcome.timed_out:
+                    raise _CropFailed(
+                        f"Blender 인코딩이 {ENCODE_TIMEOUT_S:g}초 안에 끝나지 않았습니다"
+                    )
+                if outcome.returncode != 0 or not encoded.is_file():
+                    raise _CropFailed(
+                        f"Blender 인코딩이 실패했습니다(종료 코드 {outcome.returncode})"
+                    )
+                check = read_video_info(encoded)
+                expected = (geometry["frames"], geometry["width"], geometry["height"])
+                got = (check.frame_count, check.width, check.height)
+                if got != expected:
+                    raise _CropFailed(f"원본과 다릅니다(프레임·폭·높이 {got} ≠ {expected})")
+                partial = output.with_name(output.name + ".part")
+                shutil.copyfile(encoded, partial)
+                os.replace(partial, output)
+        except (ValueError, OSError) as error:
+            raise _CropFailed(f"{type(error).__name__}: {error}") from error
+        return {**geometry, "encoder": "blender", "encode_s": outcome.seconds}
+
+    # --- 공통 -------------------------------------------------------------------------------
+
+    @staticmethod
+    def _load(record_dir: Path) -> dict[str, Any]:
+        path = record_dir / SUMMARY_NAME
+        if not path.is_file():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def _call(self, step: str, fn: Callable[[], Any], record: _Record) -> Any:
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                return fn()
+            except Exception as error:  # noqa: BLE001 - 일시 오류만 다시 시도한다
+                if is_transient(error) and attempt < MAX_ATTEMPTS:
+                    self._retry_note(record, step, error)
+                    continue
+                return error
+        raise AssertionError("도달하지 않는다")
+
+    def _retry_note(self, record: _Record, step: str, error: BaseException) -> None:
+        retries = list(record.data.get("retries", []))
+        retries.append({"step": step, "type": type(error).__name__, "message": str(error)[:300]})
+        record.save(retries=retries)
+
+    def _fail(
+        self,
+        record: _Record,
+        record_dir: Path,
+        stage: str,
+        code: ErrorCode,
+        retryable: bool,
+        message: str,
+        state: str,
+        error: BaseException | None = None,
+        *,
+        step_name: str | None = None,
+        external_request_id: str | None = None,
+    ) -> PortFailure:
+        detail: dict[str, Any] = {"stage": stage, "code": code.value, "retryable": retryable}
+        if error is not None:
+            detail.update(type=type(error).__name__, message=str(error)[:2000])
+            status = getattr(error, "status_code", None)
+            if status is not None:
+                detail["status_code"] = status
+        _write_json(record_dir / "error.json", detail)
+        if step_name is not None:
+            record.save_step(step_name, state=state)
+        record.save(state=state, error=detail)
+        return PortFailure(
+            PortError(
+                code=code,
+                stage=Stage.REALIZE,
+                retryable=retryable,
+                safe_message=message,
+                internal_details_ref=f"{record.data.get('job_id')}/{RECORD_DIR}/error.json",
+                external_request_id=external_request_id,
+            )
+        )
+
+    def _result(self, job_id: str, record: _Record) -> PortResult:
+        steps = record.data.get("steps", {})
+        outputs = self.outputs(job_id)
+
+        def seconds(name: str) -> float | None:
+            step = steps.get(name, {})
+            if step.get("submitted_at") is None or step.get("completed_at") is None:
+                return None
+            return round(float(step["completed_at"]) - float(step["submitted_at"]), 2)
+
+        estimate = record.data.get("estimate") or {}
+        photo = steps.get("photo", {})
+        extra_photos = len(photo.get("attempts") or [])  # 핏 확인에서 떨어져 다시 만든 사진
+        cost = sum(
+            float(steps.get(n, {}).get("cost_usd") or estimate.get(n) or 0.0) for n in self.steps()
+        ) + PHOTO_USD * extra_photos
+        video = steps.get("turn", {}).get("video") or {}
+        metrics: dict[str, Any] = {
+            "external_request_id": steps.get("turn", {}).get("request_id"),
+            "cost_usd": round(cost, 4),
+            "estimated_cost_usd": estimate.get("total"),
+            "photo_s": seconds("photo"),
+            "pose_s": seconds("pose"),
+            "turn_s": seconds("turn"),
+            "retries": len(record.data.get("retries", [])),
+            "video_width": video.get("width"),
+            "video_height": video.get("height"),
+            "top_crop_px": (steps.get("turn", {}).get("top_crop") or {}).get("px"),
+            "realize_fit_frame_artifact_id": outputs["photo"].stem,
+            "realize_pose_artifact_id": outputs["pose"].stem if self.options.pose_step else None,
+            "photo_attempts": extra_photos + 1,
+            "photo_fit_check": (photo.get("check") or {}).get("status"),
+        }
+        return PortResult(
+            schema_version=SCHEMA_VERSION,
+            output_artifact_ids=[outputs["turn"].stem],
+            metrics={k: v for k, v in metrics.items() if v is not None},
+            tool_versions=self.tool_versions(),
+        )
+
+
+class _BlackOutput(Exception):
+    def __init__(self, info: dict[str, float]) -> None:
+        super().__init__("black output")
+        self.info = info
+
+
+class _CropFailed(Exception):
+    """맨 위 자르기 실패. 이유는 메시지에 담는다."""

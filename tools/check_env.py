@@ -108,6 +108,8 @@ ADAPTER_NEEDS: tuple[tuple[str, frozenset[str]], ...] = (
     ("fitting.adapters.blender.draper", frozenset({NEED_BLENDER, NEED_GC, NEED_PREPARED})),
     ("fitting.adapters.blender.renderer", frozenset({NEED_BLENDER})),
     ("fitting.adapters.fal_ltx.", frozenset({"extra:realize", NEED_FAL_KEY})),
+    # 피팅룸 실사화는 회전 영상 맨 위 자르기(H.264 다시 쓰기)에 Blender를 쓴다
+    ("fitting.adapters.fal_fitroom.", frozenset({"extra:realize", NEED_FAL_KEY, NEED_BLENDER})),
     ("fitting.adapters.media.", frozenset({"extra:realize"})),
 )
 

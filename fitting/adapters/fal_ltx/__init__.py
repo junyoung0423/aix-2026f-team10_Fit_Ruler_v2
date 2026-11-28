@@ -7,6 +7,7 @@ D5 프롬프트 템플릿(`prompt.py`).
 from .prompt import (
     PROMPT_TEMPLATE,
     PROMPT_VERSION,
+    STYLE_VERSIONS,
     SUBJECTS,
     RealizePrompt,
     build_prompt,
@@ -46,6 +47,7 @@ __all__ = [
     "PROMPT_TEMPLATE",
     "PROMPT_VERSION",
     "REALIZE_VERSION",
+    "STYLE_VERSIONS",
     "SUBJECTS",
     "CostEstimate",
     "FalRealizer",

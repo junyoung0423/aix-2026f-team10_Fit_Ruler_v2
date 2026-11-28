@@ -18,11 +18,15 @@ from fitting.verify.visual_check import (
     delta_e_2000,
     judge_frame,
     judge_video,
+    mask_center_x,
     mask_iou,
     median_lab,
     pick_representative,
+    run_width,
     sample_indices,
+    span_width,
     srgb_to_lab,
+    torso_band_width,
     width_change,
     width_rows,
 )
@@ -47,6 +51,9 @@ def test_criteria_are_the_spec_chapter_7_initial_values():
     assert (c.chest_height, c.hem_height, c.width_rows) == (0.45, 0.9, 5)
     assert (c.area_ratio_min, c.area_ratio_max) == (0.5, 1.5)
     assert (c.color_erode_px, c.color_min_common_ratio) == (5, 0.2)
+    # 1.1.0: 가슴·밑단 폭은 소매를 뺀 몸통 구간(높이 2 %보다 좁은 틈은 이어짐)
+    assert (c.width_span, c.width_gap_ratio) == ("torso", 0.02)
+    assert c.to_record()["width_span"] == "torso"
     assert c.to_record()["source"] == "visual_check_v1@1.0.0"
 
 
@@ -69,6 +76,8 @@ def test_criteria_report_missing_blocks_and_values():
         ("measurement", "width_rows", 4, "홀수"),
         ("measurement", "chest_height", 0.95, "chest_height < hem_height"),
         ("measurement", "area_ratio_max", 0.9, "area_ratio_min < 1 < area_ratio_max"),
+        ("measurement", "width_span", "both", "width_span"),
+        ("measurement", "width_gap_ratio", 0.6, "width_gap_ratio"),
     ],
 )
 def test_criteria_reject_out_of_range_values(block, key, value, message):
@@ -336,3 +345,56 @@ def test_logic_module_imports_no_external_sdk_or_adapter():
             imported.add(node.module.split(".")[0])
     assert imported <= {"__future__", "math", "statistics", "collections", "dataclasses",
                         "typing", "numpy"}  # fmt: skip
+
+
+# -- 몸통 폭(소매 빼기, 설정 1.1.0) -------------------------------------------
+
+
+def test_criteria_without_width_span_measure_the_full_extent_like_1_0_0():
+    old = json.loads(json.dumps(CONFIG))
+    del old["measurement"]["width_span"], old["measurement"]["width_gap_ratio"]
+    criteria = VisualCriteria.from_config(old)
+    assert (criteria.width_span, criteria.width_gap_ratio) == ("full", 0.0)
+
+
+def body_with_sleeves(gap: int) -> np.ndarray:
+    """가운데 몸통(20~39열, 폭 20)과, 10~19행에 몸통에서 `gap`픽셀 떨어진 소매(폭 8)."""
+    mask = rect((40, 80), 0, 40, 20, 40)
+    mask[10:20, 20 - gap - 8 : 20 - gap] = True
+    mask[10:20, 40 + gap : 40 + gap + 8] = True
+    return mask
+
+
+def test_run_width_takes_the_run_through_the_center_or_the_nearest_one():
+    line = np.zeros(30, dtype=bool)
+    line[2:6] = line[10:20] = line[24:27] = True
+    assert run_width(line, 15) == 10
+    assert run_width(line, 7) == 4  # 빈 열: 2~5까지 2, 10~19까지 3
+    assert run_width(line, 8) == 10  # 2~5까지 3, 10~19까지 2
+    assert run_width(line, 15, max_gap=3) == 10  # 틈 4px는 끊는다
+    assert run_width(line, 15, max_gap=4) == 25  # 틈 4px까지 이어 2~26
+    assert run_width(np.zeros(5, dtype=bool), 2) == 0
+
+
+def test_torso_width_leaves_out_sleeves_apart_from_the_body():
+    mask = body_with_sleeves(gap=6)
+    assert mask_center_x(mask) == 30
+    assert span_width(mask, 15, 5, "full") == band_width(mask, 15, 5) == 48.0  # 소매까지
+    assert span_width(mask, 15, 5, "torso") == 20.0  # 몸통만
+    assert span_width(mask, 30, 5, "torso") == span_width(mask, 30, 5, "full") == 20.0
+    assert torso_band_width(mask, 50, 5, 30) is None  # 화면 밖
+
+
+def test_torso_width_joins_gaps_narrower_than_the_gap_ratio():
+    narrow = body_with_sleeves(gap=2)
+    assert span_width(narrow, 15, 5, "torso") == 20.0  # 비율 0이면 틈에서 끊는다
+    # 높이 40의 5 % = 2px까지 이으면 소매까지 10~49열
+    assert span_width(narrow, 15, 5, "torso", gap_ratio=0.05) == 40.0
+    assert span_width(body_with_sleeves(gap=6), 15, 5, "torso", gap_ratio=0.05) == 20.0
+
+
+def test_span_width_rejects_an_unknown_span_and_handles_an_empty_mask():
+    with pytest.raises(ValueError, match="폭 재는 방식"):
+        span_width(body_with_sleeves(gap=6), 15, 5, "both")
+    assert mask_center_x(np.zeros((5, 5), dtype=bool)) is None
+    assert span_width(np.zeros((5, 5), dtype=bool), 2, 3, "torso") == 0.0

@@ -1,0 +1,28 @@
+"""피팅룸 실사화 어댑터 (#10 #11): 렌더를 핏 참고로 써서 매장 피팅룸에서 실제 사람이 제자리에서 한
+바퀴 도는 영상을 만든다. `Realizer` 포트 구현은 `realizer.FitRoomRealizer`, 팩토리는
+`factory.make_fitroom_realizer`.
+
+흐름(1~3은 fal)
+1. 렌더 정지 프레임 → 실사 사진(Nano Banana Pro 편집). 렌더 핏을 그대로 두라고 지시하고, 이 사진이
+   핏 확인 프레임이다. 받은 사진을 바로 검증과 같은 정면 핏 검사로 재고, 떨어지면 사진만 다시
+   만든다(기본 최대 3장). 렌더 옷 영역을 기준 그림으로 같이 보내는 옵션도 있다(기본 끔)
+2. 팔을 내린 정면 사진(Nano Banana Pro 편집, 기본 켬. 1의 사진은 렌더의 A자세라 팔이 벌어져 있다)
+3. 시작·끝을 2의 사진(끄면 1의 사진)으로 고정한 8초 한 바퀴 영상(Veo 3.1 Fast
+   first-last-frame, 표준판은 옵션)
+4. 3의 영상 맨 위 32px을 잘라 같은 크기로 다시 쓴다(옆모습의 수염 끝을 없앤다. Blender로 H.264)
+근거·실험 결과는 docs/realize-fitroom.md.
+"""
+
+from .prompts import (
+    FITROOM_PROMPT_VERSION,
+    FitRoomPrompts,
+    build_fitroom_prompts,
+    pants_for,
+)
+
+__all__ = [
+    "FITROOM_PROMPT_VERSION",
+    "FitRoomPrompts",
+    "build_fitroom_prompts",
+    "pants_for",
+]

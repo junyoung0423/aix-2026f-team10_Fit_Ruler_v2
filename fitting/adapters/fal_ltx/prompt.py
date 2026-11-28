@@ -32,9 +32,18 @@ from typing import Literal
 
 from fitting.domain import FAMILY_BASIC_SHORT_SLEEVE_CREW, GarmentVariant
 
-PROMPT_VERSION = "realize_prompt_v1"
+PROMPT_VERSION = "realize_prompt_v1"  # 스튜디오 문장(기본)
 
 Subject = Literal["person", "mannequin"]
+Style = Literal["studio", "fitting_room"]
+
+# 장면 → 문장 판. `studio`는 v1(렌더 그대로의 회색 스튜디오), `fitting_room`은 v3(매장 피팅룸의 실제
+# 사람, 팔을 내리고 숨쉬기만). 강한 실사화 강도(`strong`·`strong-v2`)와 함께 쓰려고 만든 문장이다.
+# v2(실험 q1·q3)는 "밑단 당기기·앞판 펴기·어깨 돌리기"를 시켜 손이 밑단을 잡은 채 끝났다.
+STYLE_VERSIONS: dict[str, str] = {
+    "studio": PROMPT_VERSION,
+    "fitting_room": "realize_prompt_v3",
+}
 
 SUBJECTS: dict[str, str] = {
     "person": "a person",
@@ -47,6 +56,42 @@ PROMPT_TEMPLATE = (
     "front view from the neck down, cropped below the chin, "
     "plain medium gray studio background, soft even lighting, natural fabric folds. "
     "Keep the garment color, shape, length and fit exactly as in the render."
+)
+
+# v3: 매장형 피팅룸에서 실제 사람이 옷을 입고 선 장면. 얼굴은 v1처럼 턱 아래로 자른 구도를 적고,
+# 얼굴·머리는 부정 프롬프트로 막는다(본문에 부정문을 넣지 않는다). 거울은 화면에 넣지 않고 "카메라가
+# 거울인 것처럼" 적는다. 거울을 그리면 비친 얼굴이 생길 수 있어서다.
+FITTING_ROOM_TEMPLATE = (
+    "A realistic video of a real person wearing a {garment} in a bright retail clothing store "
+    "fitting room, checking the fit as if looking into a full-length mirror at the camera. "
+    "Front view from the neck down, cropped below the chin. "
+    "Natural skin with realistic texture on the neck and arms. "
+    "The person stands still and relaxed facing the camera, with both arms hanging naturally at "
+    "the sides and the hands not touching the shirt; the only movement is gentle breathing. "
+    "Clean modern fitting room with a light beige curtain, white walls and clothes hooks, "
+    "bright warm retail lighting from above with soft natural shadows. The camera stays fixed. "
+    "Realistic cotton fabric texture with natural folds and creases. "
+    "Keep the T-shirt color, shape, length and fit exactly as in the render."
+)
+
+# fal 기본 부정 프롬프트(2026-11-25 API 스키마에서 확인). 부정 프롬프트를 보내면 기본값이 통째로
+# 바뀌어서 기본값을 앞에 두고 v3용 낱말을 덧붙인다. 다만 움직임을 부추기는 "static·still·motionless
+# frame"은 v3(가만히 서서 숨쉬기만)와 맞지 않아 뺀다(`FITTING_ROOM_BASE_NEGATIVE`).
+FAL_DEFAULT_NEGATIVE_PROMPT = (
+    "color distortion, overexposure, static, blurry details, subtitles, style, artwork, painting, "
+    "frame, still, dim overall tone, worst quality, low quality, JPEG compression artifacts, ugly, "
+    "mutilated, extra fingers, poorly drawn hands, poorly drawn face, deformed, disfigured, "
+    "malformed limbs, fused fingers, motionless frame, cluttered background, three legs, crowded "
+    "background, walking backwards"
+)
+FITTING_ROOM_NEGATIVE_ADDITIONS = (
+    "face, head, mouth, eyes, mannequin, plastic skin, gray skin, CGI, 3D render, video game, "
+    "mirror reflection, text, logo, changing the shirt color, taking off the shirt, hand gestures, "
+    "touching the shirt, pulling the hem, hands on hips, raised arms"
+)
+_MOTION_TERMS = {"static", "still", "motionless frame"}
+FITTING_ROOM_BASE_NEGATIVE = ", ".join(
+    term for term in FAL_DEFAULT_NEGATIVE_PROMPT.split(", ") if term not in _MOTION_TERMS
 )
 
 # 의류군 → 프롬프트의 옷 이름
@@ -75,7 +120,7 @@ class RealizePrompt:
     version: str
     subject: str
     garment: str  # 옷 설명 부분
-    negative_prompt: str | None = None  # 보내지 않는다(fal 기본값 유지)
+    negative_prompt: str | None = None  # v1은 보내지 않는다(fal 기본값 유지). v3는 기본값 + 덧붙임
 
     def to_dict(self) -> dict[str, str | None]:
         return {
@@ -129,20 +174,40 @@ def garment_description(garment: GarmentVariant) -> str:
 
 
 def build_prompt(
-    garment: GarmentVariant, *, subject: str = "person", garment_text: str | None = None
+    garment: GarmentVariant,
+    *,
+    subject: str = "person",
+    garment_text: str | None = None,
+    style: str = "studio",
 ) -> RealizePrompt:
     """의류로 실사화 프롬프트를 만든다. `garment_text`가 있으면 옷 설명 대신 쓴다(시험용).
 
+    `style`이 `fitting_room`이면 v3 문장(매장 피팅룸·실제 사람·팔 내리고 숨쉬기만)과 부정 프롬프트를
+    쓴다. 이때 대상은 `person`만 된다.
+
     Raises:
-        ValueError: 모르는 `subject`이거나 `garment_text`가 비었다.
+        ValueError: 모르는 `subject`·`style`이거나 `garment_text`가 비었거나, 피팅룸에
+            마네킹을 골랐다.
     """
     if subject not in SUBJECTS:
         raise ValueError(f"모르는 대상입니다: {subject} (가능: {', '.join(SUBJECTS)})")
+    if style not in STYLE_VERSIONS:
+        raise ValueError(f"모르는 장면입니다: {style} (가능: {', '.join(STYLE_VERSIONS)})")
+    if style == "fitting_room" and subject != "person":
+        raise ValueError("피팅룸 장면(fitting_room)은 대상이 person일 때만 씁니다")
     if garment_text is not None:
         described = _clean(garment_text)
         if not described:
             raise ValueError("garment_text가 비었습니다")
     else:
         described = garment_description(garment)
+    if style == "fitting_room":
+        return RealizePrompt(
+            text=FITTING_ROOM_TEMPLATE.format(garment=described),
+            version=STYLE_VERSIONS[style],
+            subject=subject,
+            garment=described,
+            negative_prompt=f"{FITTING_ROOM_BASE_NEGATIVE}, {FITTING_ROOM_NEGATIVE_ADDITIONS}",
+        )
     text = PROMPT_TEMPLATE.format(subject=SUBJECTS[subject], garment=described)
     return RealizePrompt(text=text, version=PROMPT_VERSION, subject=subject, garment=described)

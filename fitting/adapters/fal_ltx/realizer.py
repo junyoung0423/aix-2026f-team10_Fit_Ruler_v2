@@ -60,7 +60,7 @@ from typing import Any, Protocol
 from fitting.domain import SCHEMA_VERSION, ErrorCode, GarmentVariant, Stage
 from fitting.ports import REALIZE_OUTPUTS, PortError, PortFailure, PortRequest, PortResult
 
-from .prompt import PROMPT_VERSION, Subject, build_prompt
+from .prompt import STYLE_VERSIONS, Style, Subject, build_prompt
 from .render_to_real import (
     ENDPOINT,
     MAX_SECONDS,
@@ -184,6 +184,7 @@ class RealizeOptions:
     wait_limit_s: float | None = None  # None이면 PortRequest.timeout_seconds
     garment_text: str | None = None  # 프롬프트 옷 설명(시험용). 없으면 의류에서 만든다
     subject: Subject = "person"  # 프롬프트 대상(prompt.SUBJECTS). 렌더 몸 재질과 함께 정한다
+    style: Style = "studio"  # 프롬프트 장면(prompt.STYLE_VERSIONS). fitting_room은 강한 강도와 함께
     # 접수 여부를 모르는 이전 제출(요청 ID 없음)이 있어도 다시 제출한다. 비용이 두 번 나갈 수 있어
     # 기본은 끔이다. 사람이 fal 대시보드를 확인한 뒤 명시적으로만 켠다
     # (`tools.realize_clip --resubmit`).
@@ -261,7 +262,9 @@ class FalRealizer:
         limit = int(math.floor(MAX_SECONDS[options.resolution] * options.output_fps))
         max_frames = max(9, (limit - 1) // 8 * 8 + 1)
         frames = min(frames_for_clip(info.frame_count, info.fps, options.output_fps), max_frames)
-        prompt = build_prompt(garment, subject=options.subject, garment_text=options.garment_text)
+        prompt = build_prompt(
+            garment, subject=options.subject, garment_text=options.garment_text, style=options.style
+        )
         settings = RenderToRealSettings(
             prompt=prompt.text,
             negative_prompt=prompt.negative_prompt,
@@ -301,7 +304,7 @@ class FalRealizer:
             "fal_endpoint": ENDPOINT,
             "fal_client": self.client_version,
             "realize": REALIZE_VERSION,
-            "prompt": PROMPT_VERSION,
+            "prompt": STYLE_VERSIONS[self.options.style],
             "price_checked_on": PRICE_CHECKED_ON,
         }
 
