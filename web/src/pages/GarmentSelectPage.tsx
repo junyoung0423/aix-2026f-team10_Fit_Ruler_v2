@@ -152,9 +152,9 @@ export function GarmentSelectPage() {
             <span>
               <strong>실사 착장 영상도 만들기</strong>
               <br />
-              신체 치수가 반영된 렌더 클립과 그로 만든 사진이 외부 서버(fal)로 전송되어 처리됩니다. 사진과
-              영상은 fal에서 Google(Veo·Nano Banana Pro)과 Lightricks(LTX) 모델로 만듭니다. 체크하지 않으면
-              핏 리포트와 3D 미리보기까지만 만듭니다.
+              내 치수로 만든 3D 정면 사진 한 장과, 그 사진으로 만든 실사 사진이 외부 서버(fal)로 전송되어
+              처리됩니다. 실사 사진과 8초 회전 영상은 fal을 통해 Google 모델(Nano Banana Pro·Veo)로 만듭니다.
+              체크하지 않으면 핏 리포트와 3D 미리보기까지만 만듭니다.
             </span>
           </label>
 
