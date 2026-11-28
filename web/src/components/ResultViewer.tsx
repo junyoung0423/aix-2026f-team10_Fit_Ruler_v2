@@ -20,8 +20,8 @@ export interface ResultMedia {
 type Tab = 'real' | '3d';
 
 const TITLE: Record<FinishedOutcome['kind'], string> = {
-  success: '실사 사진이 완성됐어요',
-  validation_failed: '실사 사진 · 검증 실패',
+  success: '실사 영상이 완성됐어요',
+  validation_failed: '실사 영상 · 검증 실패',
   no_consent: '3D 미리보기',
   fallback: '3D 미리보기 · 대체 결과',
 };
@@ -38,8 +38,8 @@ function Notice({ outcome, qualityNote }: { outcome: FinishedOutcome; qualityNot
     case 'no_consent':
       return (
         <div className="notice notice-info">
-          <strong>실사 사진은 만들지 않았어요</strong>
-          외부 전송에 동의하지 않아 3D 미리보기까지만 만들었어요. 다시 입어 볼 때 실사 사진을 켜면 만들 수 있어요.
+          <strong>실사 영상은 만들지 않았어요</strong>
+          외부 전송에 동의하지 않아 3D 미리보기까지만 만들었어요. 다시 입어 볼 때 &lsquo;실사 사진·회전 영상도 만들기&rsquo;를 켜면 만들 수 있어요.
         </div>
       );
     case 'fallback':
@@ -72,7 +72,7 @@ function RealMedia({ media }: { media: ResultMedia }) {
         />
       ) : (
         media.frame && (
-          <ArtifactImage key={media.frame} src={media.frame} alt="실사 사진(실사 영상의 대표 장면)" failText="실사 사진 파일을 불러오지 못했습니다." />
+          <ArtifactImage key={media.frame} src={media.frame} alt="실사 영상의 대표 장면" failText="실사 영상의 대표 장면을 불러오지 못했습니다." />
         )
       )}
       {reveal && media.renderFrame && (
@@ -86,7 +86,7 @@ function RealMedia({ media }: { media: ResultMedia }) {
 }
 
 /**
- * 작업이 끝난 뒤 결과 카드. 실사 사진(영상)과 3D 미리보기를 바꿔 볼 수 있다.
+ * 작업이 끝난 뒤 결과 카드. 실사 영상과 3D 미리보기를 바꿔 볼 수 있다.
  * 동의하지 않았거나 실사 단계에서 멈췄으면 3D 미리보기만, 검증만 실패했으면 실사를 보여 주되 검증 실패를 함께 알린다.
  */
 export function ResultViewer({
@@ -121,7 +121,7 @@ export function ResultViewer({
         {hasReal && has3d && (
           <div className="seg" role="tablist" aria-label="결과 보기">
             <button type="button" role="tab" aria-selected={shown === 'real'} onClick={() => setTab('real')}>
-              실사 사진
+              실사 영상
             </button>
             <button type="button" role="tab" aria-selected={shown === '3d'} onClick={() => setTab('3d')}>
               3D 미리보기

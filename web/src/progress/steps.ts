@@ -3,7 +3,7 @@ import { errorText } from './jobSummary';
 
 /**
  * 결과 화면의 사용자용 4단계. 서버 단계(몸 생성 → 3D 착장 → 정면 렌더 → 실사화 → 검증)를
- * 사용자가 알아듣는 이름으로 묶는다. 검증은 따로 보이지 않고 실사 사진 단계 안에서 "확인 중"으로 보인다.
+ * 사용자가 알아듣는 이름으로 묶는다. 검증은 따로 보이지 않고 실사 변환 단계 안에서 "확인 중"으로 보인다.
  * 서버 단계 이름은 화면에 보이지 않는다.
  */
 
@@ -13,22 +13,22 @@ export type StepState = 'waiting' | 'running' | 'done' | 'warning' | 'failed' | 
 export const STEP_ORDER: readonly StepKey[] = ['body', 'drape', 'render', 'realize'];
 
 export const STEP_LABEL: Record<StepKey, string> = {
-  body: '몸 만들기',
-  drape: '옷 입히기',
-  render: '정면 사진',
-  realize: '실사 사진',
+  body: '체형 생성',
+  drape: '가상 착용',
+  render: '3D 촬영',
+  realize: '실사 변환',
 };
 
 /** 진행 중일 때 단계 아래에 쓰는 문장 */
 export const STEP_DOING: Record<StepKey, string> = {
-  body: '입력한 치수로 몸을 만들고 있어요.',
-  drape: '고른 티셔츠를 몸에 입히고 있어요.',
-  render: '옷 입은 모습을 정면에서 3D 사진으로 찍고 있어요.',
-  realize: '3D 사진을 실제 사진처럼 바꾸고 8초 회전 영상을 만들고 있어요.',
+  body: '입력한 치수로 3D 체형을 만들고 있어요.',
+  drape: '고른 티셔츠를 3D 체형에 입히고 있어요.',
+  render: '티셔츠를 입은 모습을 정면에서 찍고 있어요.',
+  realize: '3D 사진을 실제 사람이 입은 모습으로 바꾸고 8초 회전 영상을 만들고 있어요.',
 };
 
 /** 실사화가 끝나고 검증하는 동안 */
-export const CHECKING_DOING = '실사 사진이 3D 사진과 같은 핏인지 확인하고 있어요.';
+export const CHECKING_DOING = '실사 영상이 3D 사진과 같은 핏인지 확인하고 있어요.';
 
 export interface StepEta {
   minSeconds: number;
@@ -38,10 +38,10 @@ export interface StepEta {
 
 /**
  * 보통 걸리는 시간. 실제 서버를 이 PC에서 돌린 실측으로 잡았다(가짜 API는 몇 초 만에 끝난다).
- * - 몸 만들기: docs/body-fit.md "통과하는 몸은 12~20초"
- * - 옷 입히기: docs/adapters.md 착장 "실측 40~430초"
- * - 정면 사진: docs/adapters.md 렌더 "실측 40~62초"
- * - 실사 사진: config/pipeline_v0.yaml "피팅룸 실사화(사진·회전 약 2분)" + 맨 위 자르기 약 25초
+ * - 체형 생성: docs/body-fit.md "통과하는 몸은 12~20초"
+ * - 가상 착용: docs/adapters.md 착장 "실측 40~430초"
+ * - 3D 촬영: docs/adapters.md 렌더 "실측 40~62초"
+ * - 실사 변환: config/pipeline_v0.yaml "피팅룸 실사화(사진·회전 약 2분)" + 맨 위 자르기 약 25초
  *   (docs/realize-fitroom.md) + 검증 약 15초(config/pipeline_v0.yaml)
  */
 export const STEP_ETA: Record<StepKey, StepEta> = {
@@ -75,7 +75,7 @@ function simpleState(status: StageStatus | undefined): StepState {
   }
 }
 
-/** 실사 사진 = 실사화 + 검증. 검증만 실패하면 영상은 있으므로 실패가 아니라 'warning'이다(wireframes.md ⑤). */
+/** 실사 변환 = 실사화 + 검증. 검증만 실패하면 영상은 있으므로 실패가 아니라 'warning'이다(wireframes.md ⑤). */
 function realizeState(job: FittingStatus): StepState {
   const realize = simpleState(backend(job, 'REALIZE'));
   if (realize !== 'done') return realize;
@@ -138,12 +138,12 @@ export type Outcome =
   | { kind: 'success' }
   /** 실사 영상은 있지만 렌더와 색·실루엣이 달라 검증을 통과하지 못함 */
   | { kind: 'validation_failed'; message: string }
-  /** 실사화(외부 전송)에 동의하지 않아 정면 사진까지만 */
+  /** 실사화(외부 전송)에 동의하지 않아 3D 촬영까지만 */
   | { kind: 'no_consent' }
   | { kind: 'report_only' }
-  /** 정면 사진·실사 사진 단계에서 멈춰 3D 미리보기를 대체 결과로 */
+  /** 3D 촬영·실사 변환 단계에서 멈춰 3D 미리보기를 대체 결과로 */
   | { kind: 'fallback'; failedStep: StepKey; message: string }
-  /** 몸 만들기·옷 입히기에서 멈췄거나 의류를 쓸 수 없어 핏 리포트만 */
+  /** 체형 생성·가상 착용에서 멈췄거나 의류를 쓸 수 없어 핏 리포트만 */
   | { kind: 'failed'; failedStep: StepKey | null; message: string }
   | { kind: 'cancelled' };
 

@@ -21,19 +21,19 @@ function withStages(base: FittingStatus, statuses: StageStatus[], jobStatus: Fit
 const states = (status: FittingStatus) => stepViews(status).map((view) => view.state);
 
 describe('stepViews (사용자용 4단계)', () => {
-  it('서버 다섯 단계를 몸 만들기·옷 입히기·정면 사진·실사 사진으로 묶는다', () => {
-    expect(stepViews(job('running')).map((view) => view.label)).toEqual(['몸 만들기', '옷 입히기', '정면 사진', '실사 사진']);
+  it('서버 다섯 단계를 체형 생성·가상 착용·3D 촬영·실사 변환으로 묶는다', () => {
+    expect(stepViews(job('running')).map((view) => view.label)).toEqual(['체형 생성', '가상 착용', '3D 촬영', '실사 변환']);
     expect(states(job('running'))).toEqual(['done', 'done', 'done', 'running']);
     expect(states(job('succeeded'))).toEqual(['done', 'done', 'done', 'done']);
   });
 
-  it('실사화가 끝나고 검증 중이면 실사 사진은 아직 진행 중이다', () => {
+  it('실사화가 끝나고 검증 중이면 실사 변환은 아직 진행 중이다', () => {
     const checking = withStages(job('running'), ['SUCCEEDED', 'SUCCEEDED', 'SUCCEEDED', 'SUCCEEDED', 'RUNNING']);
     expect(states(checking)[3]).toBe('running');
     expect(currentStep(checking)).toEqual({ key: 'realize', checking: true, preparing: false });
   });
 
-  it('검증만 실패하면 실사 사진은 실패가 아니라 검증 실패 표시다', () => {
+  it('검증만 실패하면 실사 변환은 실패가 아니라 검증 실패 표시다', () => {
     const view = stepViews(job('validation_failed'))[3];
     expect(view).toMatchObject({ state: 'warning', note: '검증 실패' });
   });
@@ -66,12 +66,12 @@ describe('outcomeOf (끝난 뒤 결과 칸)', () => {
     expect(outcomeOf(job('running'))).toEqual({ kind: 'running' });
   });
 
-  it('동의하지 않았으면 정면 사진까지만, 리포트만 요청했으면 리포트만', () => {
+  it('동의하지 않았으면 3D 촬영까지만, 리포트만 요청했으면 리포트만', () => {
     expect(outcomeOf(job('no_consent'))).toEqual({ kind: 'no_consent' });
     expect(outcomeOf(job('report_only'))).toEqual({ kind: 'report_only' });
   });
 
-  it('정면 사진·실사 사진에서 멈추면 3D 미리보기를 대체 결과로 보여 준다', () => {
+  it('3D 촬영·실사 변환에서 멈추면 3D 미리보기를 대체 결과로 보여 준다', () => {
     expect(outcomeOf(job('realize_failed'))).toEqual({
       kind: 'fallback',
       failedStep: 'realize',
@@ -79,7 +79,7 @@ describe('outcomeOf (끝난 뒤 결과 칸)', () => {
     });
   });
 
-  it('몸 만들기·옷 입히기에서 멈추면 대체 결과 없이 실패다', () => {
+  it('체형 생성·가상 착용에서 멈추면 대체 결과 없이 실패다', () => {
     expect(outcomeOf(job('drape_failed'))).toEqual({
       kind: 'failed',
       failedStep: 'drape',

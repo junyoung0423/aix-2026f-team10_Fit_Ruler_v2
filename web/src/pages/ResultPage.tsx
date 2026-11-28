@@ -205,7 +205,7 @@ function ResultView({ id }: { id: string }) {
     ? { ...etaNote(current.key, stepSeconds), elapsed: stepSeconds !== null ? formatElapsed(stepSeconds * 1000) : null }
     : null;
   const qualityNote =
-    visual?.quality_status === 'UNVERIFIABLE' ? '실사 사진을 자동으로 검증하지 못했어요. 참고로 봐 주세요.' : null;
+    visual?.quality_status === 'UNVERIFIABLE' ? '실사 영상을 자동으로 검증하지 못했어요. 참고로 봐 주세요.' : null;
   // 3D 피팅룸: 몸은 입력 치수로, 티셔츠는 핏 리포트의 옷 치수로 만든다.
   const sceneBody = bodyForScene(measurements, report?.regions);
   const sceneGarment = garmentForScene(sceneBody, report?.regions);

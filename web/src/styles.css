@@ -1,7 +1,7 @@
 /*
  * Fit Ruler 화면 스타일 (v3 컨셉: 조용한 고급스러움)
  * - 밝은 화면: 아이보리 바탕, 차콜 글자, 가는 구분선, 각진 검정 버튼
- * - 결과 화면의 피팅룸: 따뜻한 검정 바탕, 은은한 펄·샴페인 빛
+ * - 결과 화면의 피팅룸·결과 카드: 중간 밝기 회색 바탕, 흰 입자와 밝은 샴페인 글자
  * - 샴페인(--accent)은 아이보리 바탕에서 글자 대비가 약 2.4:1이라 선·점·빛 같은 장식에만 쓴다.
  *   글자와 선택 표시는 진한 브론즈(--accent-ink, 약 5.3:1)나 차콜을 쓴다.
  */
@@ -27,14 +27,15 @@
   --danger-wash: #f8ece9;
   --switch-off: #8f877b;
 
-  --studio: #0f0e0d;
-  --studio-text: #ede6da;
-  --studio-muted: #a39a8c;
+  /* 피팅룸·결과 카드: 중간 밝기 회색(흰 입자가 보이면서 너무 어둡지 않게). 글자 대비는 카드 아래쪽 기준 4.5:1 이상 */
+  --studio: #3a3c3f;
+  --studio-text: #f2f1ee;
+  --studio-muted: #c9cacc;
   --glow: #f4e8d2;
   --glow-warm: #d9c29a;
-  --studio-danger: #e39a8f;
+  --studio-danger: #f4bab0;
   /* 피팅룸 카드와 결과 카드의 바탕(3D 효과 화면은 투명해서 이 색이 그대로 비친다) */
-  --studio-bg: radial-gradient(120% 80% at 50% -10%, #3a332b 0%, #1a1714 38%, var(--studio) 70%);
+  --studio-bg: radial-gradient(120% 80% at 50% -10%, #606266 0%, #4b4d51 40%, var(--studio) 75%);
   --render-bg: #808080;
 
   --radius-sm: 6px;
@@ -1122,7 +1123,7 @@ form > .notice {
   height: 100%;
 }
 
-/* 몸 만들기: 빛 고리가 올라가며 마네킹이 드러난다. 위쪽은 아직 빛 먼지 실루엣 */
+/* 체형 생성: 빛 고리가 올라가며 마네킹이 드러난다. 위쪽은 아직 빛 먼지 실루엣 */
 .figure-ghost {
   opacity: 0.55;
   filter: brightness(1.8) sepia(0.25) drop-shadow(0 0 6px rgba(244, 232, 210, 0.35));
@@ -1175,7 +1176,7 @@ form > .notice {
   }
 }
 
-/* 옷 입히기: 빛 리본이 몸을 돌며 내려가고, 지나간 자리부터 티셔츠가 생긴다 */
+/* 가상 착용: 빛 리본이 몸을 돌며 내려가고, 지나간 자리부터 티셔츠가 생긴다 */
 .reveal-down {
   animation: reveal-down 7s var(--ease) both;
 }
@@ -1242,7 +1243,7 @@ form > .notice {
   }
 }
 
-/* 정면 사진: 네 귀퉁이에서 빛 사진틀이 그려지고 안쪽이 한 번씩 부드럽게 밝아진다 */
+/* 3D 촬영: 네 귀퉁이에서 빛 사진틀이 그려지고 안쪽이 한 번씩 부드럽게 밝아진다 */
 .light-frame {
   position: absolute;
 }
@@ -1373,7 +1374,7 @@ form > .notice {
   }
 }
 
-/* 사진 카드(정면 사진·실사 사진): 실제 렌더처럼 중간 회색 배경 */
+/* 사진 카드(3D 촬영·실사 변환): 실제 렌더처럼 중간 회색 배경 */
 .photo-card {
   position: absolute;
   top: 16%;
@@ -1397,7 +1398,7 @@ form > .notice {
   object-fit: cover;
 }
 
-/* 실사 사진: 빛이 카드 위를 옆으로 지나간다. 검증 중에는 더 천천히 */
+/* 실사 변환: 빛이 카드 위를 옆으로 지나간다. 검증 중에는 더 천천히 */
 .sheen {
   position: absolute;
   inset: 0;
@@ -1445,7 +1446,8 @@ form > .notice {
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--accent);
+  /* 회색 카드에서 샴페인(--accent)은 대비가 약해(약 3:1) 밝은 샴페인을 쓴다 */
+  color: var(--glow-warm);
 }
 
 .studio.is-failed .studio-caption h2 {
@@ -1535,8 +1537,8 @@ form > .notice {
   --dot-bg: var(--studio);
   --dot-border: rgba(237, 230, 218, 0.32);
   --label: var(--studio-muted);
-  --label-on: var(--accent);
-  --running: var(--accent);
+  --label-on: var(--glow-warm);
+  --running: var(--glow-warm);
   --done-bg: var(--glow-warm);
   --done-fg: var(--studio);
   --danger-c: var(--studio-danger);
@@ -1682,7 +1684,7 @@ form > .notice {
 
 /* ---------- 결과 카드 ---------- */
 
-/* 피팅룸 카드와 같은 어두운 카드. 진행 중 카드가 끝난 뒤 결과 카드로 바뀌어도 한 카드처럼 이어진다 */
+/* 피팅룸 카드와 같은 회색 카드. 진행 중 카드가 끝난 뒤 결과 카드로 바뀌어도 한 카드처럼 이어진다 */
 .result-card {
   display: grid;
   gap: 14px;
@@ -1705,10 +1707,10 @@ form > .notice {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--studio-text);
 }
 
-/* 결과 카드(어두운 바탕) 안의 실사 사진 | 3D 미리보기 전환 */
+/* 결과 카드(회색 바탕) 안의 실사 영상 | 3D 미리보기 전환 */
 .seg {
   display: inline-flex;
   padding: 3px;
@@ -1723,13 +1725,13 @@ form > .notice {
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--studio-muted);
+  color: var(--studio-text);
   font-size: 13.5px;
   cursor: pointer;
 }
 
 .seg button:hover {
-  color: var(--studio-text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .seg button[aria-selected='true'] {
@@ -1763,7 +1765,7 @@ form > .notice {
   color: var(--studio-muted);
 }
 
-/* 결과 카드 안의 안내(어두운 바탕용). 오류 안내는 피팅룸과 같은 규칙(.result-card .notice-error)을 쓴다 */
+/* 결과 카드 안의 안내(회색 바탕용). 오류 안내는 피팅룸과 같은 규칙(.result-card .notice-error)을 쓴다 */
 .result-card .notice-info {
   border-color: rgba(237, 230, 218, 0.16);
   background: rgba(255, 255, 255, 0.05);

@@ -23,7 +23,7 @@ function Mark({ state }: { state: StepState }) {
 }
 
 /**
- * 사용자용 4단계 진행 표시(점과 가는 선). 스튜디오(어두운 바탕)와 결과 카드(밝은 바탕)에서 같이 쓴다.
+ * 사용자용 4단계 진행 표시(점과 가는 선). 피팅룸과 결과 카드(회색 바탕)에서는 dark, 밝은 바탕에서는 light를 쓴다.
  * 화면 낭독기 알림은 스튜디오의 한 줄 상태가 맡고, 이 목록은 알리지 않는다.
  */
 export function StepTrack({ steps, tone }: { steps: StepView[]; tone: 'dark' | 'light' }) {

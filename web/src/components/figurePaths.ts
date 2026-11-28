@@ -38,7 +38,7 @@ export const TEE_COLLAR = 'M126 108 Q150 126 174 108';
 /** 티셔츠 주름(아주 옅게) */
 export const TEE_FOLDS = ['M118 200 C122 236 120 270 116 300', 'M182 196 C178 232 180 268 184 300', 'M136 150 C144 160 156 160 164 150'];
 
-/** 빛 사진틀(정면 사진 단계): 턱 아래부터 밑단 아래까지, 소매가 안에 들어오게 */
+/** 빛 사진틀(3D 촬영 단계): 턱 아래부터 밑단 아래까지, 소매가 안에 들어오게 */
 export const PHOTO_FRAME = { x: 52, y: 96, width: 196, height: 222 };
 
 export const PHOTO_FRAME_PATH = `M${PHOTO_FRAME.x} ${PHOTO_FRAME.y} H${PHOTO_FRAME.x + PHOTO_FRAME.width} V${

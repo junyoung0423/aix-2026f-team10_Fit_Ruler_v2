@@ -24,19 +24,19 @@ import { roundedRect } from './textures';
 /**
  * 결과 화면 피팅룸의 3D 장면(three.js). 트리포 AI가 모델을 만들 때처럼 작고 흰 입자 수만 개가 반짝이며 모양을 이룬다.
  * 배경은 투명해서 피팅룸 카드의 색이 그대로 비친다(효과 화면과 카드가 한 덩어리로 보인다).
- * - 몸 만들기: 입자가 화면 바깥 사방(위·아래·옆·앞뒤)에서 날아와 입력 치수에 맞춘 마네킹 모양 점구름이 된다(대기 중에는 빈 무대).
+ * - 체형 생성: 입자가 화면 바깥 사방(위·아래·옆·앞뒤)에서 날아와 입력 치수에 맞춘 마네킹 모양 점구름이 된다(대기 중에는 빈 무대).
  *   기다리는 동안 점구름은 천천히 돌며 점점 또렷해진다(치수 이름표는 붙이지 않는다).
- * - 옷 입히기: 몸 점구름이 모래알처럼 굳어 흰 마네킹이 되고, 입자가 화면 바깥 사방에서 날아와 고른 옷 치수의 티셔츠 모양으로 마네킹 위에 모인다.
+ * - 가상 착용: 몸 점구름이 모래알처럼 굳어 흰 마네킹이 되고, 입자가 화면 바깥 사방에서 날아와 고른 옷 치수의 티셔츠 모양으로 마네킹 위에 모인다.
  *   티셔츠는 끝까지 입자로 남는다(옷 색 천으로 굳히지 않는다). 기다리는 동안 밝은 띠가 어깨에서 밑단으로 지나간다.
- * - 정면 사진: 정면으로 돌아선 마네킹과 입자 티셔츠를 그대로 찍고, 모형이 입자로 흩어져 그 자리의 사진 판으로 납작하게 붙으며 정면 사진 한 장이 된다.
- * - 실사 사진: 사진이 다시 입자로 흩어졌다가, 기다리는 동안 입자가 하나씩 제자리를 찾아 사진이 맞춰진다(검증 중에는 빛 띠가 지나간다).
+ * - 3D 촬영: 정면으로 돌아선 마네킹과 입자 티셔츠를 그대로 찍고, 모형이 입자로 흩어져 그 자리의 사진 판으로 납작하게 붙으며 정면 사진 한 장이 된다.
+ * - 실사 변환: 사진이 다시 입자로 흩어졌다가, 기다리는 동안 입자가 하나씩 제자리를 찾아 사진이 맞춰진다(검증 중에는 빛 띠가 지나간다).
  * 실제 진행이 효과보다 빠르면 효과를 조금 빨리 돌려 따라가고, 단계마다 효과를 끝까지 보여 준다.
  * 움직임 줄이기(reducedMotion)면 애니메이션 없이 단계마다 마지막 모습 한 장만 그린다.
  */
 
 export interface StudioState {
   step: StepKey | null;
-  /** 단계가 아직 시작 전(대기열). 몸 만들기 전이면 입자를 날려 보내지 않고 기다린다 */
+  /** 단계가 아직 시작 전(대기열). 체형 생성 전이면 입자를 날려 보내지 않고 기다린다 */
   preparing: boolean;
   checking: boolean;
   failed: boolean;
@@ -103,7 +103,7 @@ interface Look {
   peelMorph: number;
   peelDots: number;
   card: number;
-  /** 사진 카드 바탕(회색). 실사 사진 단계에서 사람·옷이 입자로 흩어져도 남는다 */
+  /** 사진 카드 바탕(회색). 실사 변환 단계에서 사람·옷이 입자로 흩어져도 남는다 */
   back: number;
   border: number;
   dots: number;
@@ -590,7 +590,7 @@ export class StudioEngine {
       s.camera = t < R_PEEL + 0.35 ? 'front' : 'card';
       return s;
     }
-    // 실사 사진
+    // 실사 변환
     const begin = T.dotsIn + T.scatter * 0.6;
     s.card = reduced ? 1 : 1 - easeInOut(clamp01((t - 0.15) / T.dotsIn));
     s.back = 1;
@@ -620,16 +620,16 @@ export class StudioEngine {
       if (this.vis === 'realize' && st.checking) this.checkBoost = approach(this.checkBoost, 1, 0.9, dt);
     }
     if (reduced) this.visTime = 60;
-    // 몸 만들기 대기 중에는 입자를 날려 보내지 않는다(빈 무대)
+    // 체형 생성 대기 중에는 입자를 날려 보내지 않는다(빈 무대)
     else if (this.vis === 'body' && (st.preparing || st.step === null)) this.visTime = 0;
     const t = this.visTime;
 
-    // 2) 정면 사진은 돌아선 뒤 한 번 찍는다(실사 사진부터 시작하면 바로 찍는다)
+    // 2) 정면 사진은 돌아선 뒤 한 번 찍는다(실사 변환부터 시작하면 바로 찍는다)
     if (this.ready && !this.captured && ((this.vis === 'render' && t >= R_CAPTURE) || this.vis === 'realize')) this.capture();
 
     const look = this.look(this.vis, t);
 
-    // 턴테이블: 정면 사진 단계에서는 정해진 시간 안에 정확히 정면으로
+    // 턴테이블: 3D 촬영 단계에서는 정해진 시간 안에 정확히 정면으로
     if (this.turn) this.model.rotation.y = this.turn.from + (this.turn.to - this.turn.from) * easeInOut(clamp01(t / T.turn));
     else if (advance && !st.failed && !reduced) this.model.rotation.y += look.spin * dt;
     this.model.updateMatrixWorld();
@@ -665,7 +665,7 @@ export class StudioEngine {
     }
     this.ground.material.opacity = look.shadow;
 
-    // 정면 사진 판과 실사 사진 점
+    // 정면 사진 판과 실사 변환의 사진 점
     if (this.peel) {
       const u = this.peel.material.uniforms;
       u.uTime.value = this.time;

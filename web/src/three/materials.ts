@@ -179,7 +179,7 @@ export function glitterMaterial(pixelRatio: number): THREE.ShaderMaterial {
 }
 
 /**
- * 정면 사진: 모형 겉의 점(aFrom)이 앞쪽 사진 판(position)으로 날아가 붙는다.
+ * 3D 촬영: 모형 겉의 점(aFrom)이 앞쪽 사진 판(position)으로 날아가 붙는다.
  * 날아가는 동안은 흰 반짝임, 붙으면 찍어 둔 정면 사진(uImage)의 그 자리 색이 된다.
  */
 export function peelMaterial(pixelRatio: number, image: THREE.Texture): THREE.ShaderMaterial {
@@ -229,7 +229,7 @@ export function peelMaterial(pixelRatio: number, image: THREE.Texture): THREE.Sh
 }
 
 /**
- * 실사 사진: 사진 속 사람·옷 자리(알파가 있는 곳)를 이루는 점 격자. uScatter만큼 흩어졌다가,
+ * 실사 변환: 사진 속 사람·옷 자리(알파가 있는 곳)를 이루는 점 격자. uScatter만큼 흩어졌다가,
  * uSettle이 오르면 점마다 다른 때에 제자리를 찾는다. 흩어진 점은 흰 반짝임, 제자리를 찾은 점은 사진(uImage) 색.
  * 배경 자리 점은 그리지 않는다(뒤의 회색 카드가 그대로 보인다). uWaveX를 지나는 비스듬한 띠는 조금 밝다.
  */
