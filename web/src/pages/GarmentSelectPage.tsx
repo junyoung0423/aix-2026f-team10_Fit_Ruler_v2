@@ -50,7 +50,8 @@ export function GarmentSelectPage() {
   const [garments, setGarments] = useState<GarmentListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // 실사화는 렌더 클립을 외부 서버로 보내므로 동의해야 한다. 기본은 꺼짐(wireframes.md 규칙 2).
+  // 실사화는 3D 정면 사진(렌더 첫 장면)과 그걸로 만든 실사 사진을 외부 서버(fal)로 보내므로 동의해야
+  // 한다. 기본은 꺼짐(wireframes.md 규칙 2).
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string[] | null>(null);
@@ -176,9 +177,9 @@ export function GarmentSelectPage() {
             <span className="consent-text">
               <strong id="consent-title">실사 사진·회전 영상도 만들기</strong>
               <span id="consent-desc">
-                켜면 신체 치수가 반영된 렌더 클립과 그로 만든 사진이 외부 서버(fal)로 전송되어 처리됩니다. 사진과 영상은
-                fal에서 Google(Veo·Nano Banana Pro)과 Lightricks(LTX) 모델로 만듭니다. 끄면 핏 리포트와 3D 미리보기까지만
-                만들어요.
+                켜면 내 치수로 만든 3D 정면 사진 한 장과, 그 사진으로 만든 실사 사진이 외부 서버(fal)로 전송돼
+                처리돼요. 실사 사진과 8초 회전 영상은 fal을 통해 Google 모델(Nano Banana Pro·Veo)로 만들어요. 끄면 핏
+                리포트와 3D 미리보기까지만 만들어요.
               </span>
             </span>
             <input
