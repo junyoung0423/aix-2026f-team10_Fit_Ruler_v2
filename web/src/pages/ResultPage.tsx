@@ -166,7 +166,7 @@ function ResultView({ id }: { id: string }) {
 
   if (!report && !job) {
     return (
-      <section className="page">
+      <section className="page page-result">
         <header className="page-head">
           <p className="kicker">3 / 3</p>
           <h1>{garmentTitle}</h1>
@@ -265,7 +265,7 @@ function ResultView({ id }: { id: string }) {
   }
 
   return (
-    <section className="page">
+    <section className="page page-result">
       <header className="page-head page-head-row">
         <div>
           <p className="kicker">3 / 3</p>

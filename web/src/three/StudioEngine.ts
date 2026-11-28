@@ -221,6 +221,8 @@ export class StudioEngine {
   private readonly camPos = new THREE.Vector3();
   private readonly camTarget = new THREE.Vector3();
   private size = { w: 1, h: 1 };
+  /** 화면 아래쪽에 겹친 설명·진행 표시가 덮는 몫(0~0.45). CSS 변수 --overlay-bottom(px)을 캔버스 높이로 나눈 값 */
+  private insetBottom = 0;
   private raf = 0;
   private running = false;
   private visible = true;
@@ -588,6 +590,9 @@ export class StudioEngine {
     this.bloom.resolution.set(w / 2, h / 2);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    // 넓은 화면에서는 설명이 3D 화면 아래쪽에 겹친다. 그 높이만큼 모형을 위쪽에 담는다
+    const overlay = parseFloat(getComputedStyle(this.host).getPropertyValue('--overlay-bottom')) || 0;
+    this.insetBottom = Math.min(0.45, Math.max(0, overlay / h));
     if (!this.running) this.renderStill();
   }
 
@@ -596,23 +601,27 @@ export class StudioEngine {
     const L = this.layout;
     const tanV = Math.tan(((this.camera.fov * Math.PI) / 180) / 2);
     const tanH = tanV * this.camera.aspect;
-    const fit = (h: number, w: number) => Math.max(h / 2 / tanV, w / 2 / tanH);
+    // 아래쪽 겹친 설명이 덮는 몫을 뺀 위쪽에 모형이 들어오게: 높이는 남은 몫으로 맞추고, 화면 가운데를 그만큼 내린다
+    const usable = 1 - this.insetBottom;
+    const fit = (h: number, w: number) => Math.max(h / usable / 2 / tanV, w / 2 / tanH);
+    const lift = (d: number) => this.insetBottom * d * tanV;
     if (kind === 'full') {
       const d = fit(p.height * 1.14, (Math.abs(p.joints.wristR[0]) + 0.34) * 2);
-      const ty = p.height * 0.5;
+      const ty = p.height * 0.5 - lift(d);
       return { pos: new THREE.Vector3(0, ty + d * 0.06, d), target: new THREE.Vector3(0, ty, 0) };
     }
     if (kind === 'upper') {
       const top = p.height + 0.06;
       const bottom = L.hemY - 0.16;
       const d = fit(top - bottom, (Math.abs(L.cuffR[0]) + 0.22) * 2);
-      const ty = (top + bottom) / 2;
+      const ty = (top + bottom) / 2 - lift(d);
       return { pos: new THREE.Vector3(0, ty + d * 0.07, d), target: new THREE.Vector3(0, ty, 0) };
     }
     // 사진 틀(카드)이 화면에 여유 있게 들어오는 정면
     const c = this.cardCenter;
     const d = fit(this.cardSize.h * 1.2, this.cardSize.w * 1.2);
-    return { pos: new THREE.Vector3(0, c.y, c.z + d), target: c.clone() };
+    const ty = c.y - lift(d);
+    return { pos: new THREE.Vector3(0, ty, c.z + d), target: new THREE.Vector3(c.x, ty, c.z) };
   }
 
   /** 단계와 그 안의 시간 → 장면 모습 */

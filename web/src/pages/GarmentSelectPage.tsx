@@ -24,8 +24,16 @@ function GarmentCardBody({ item }: { item: GarmentListItem }) {
       <span className="garment-info">
         <span className="garment-name">{garmentName(garment)}</span>
         <span className="garment-sizes num">{sizeText(sizeItems(garment.measurements))}</span>
-        {fabric && <span className="garment-meta">{fabric}</span>}
-        {badge?.kind === 'measured' && <span className="garment-source">{badge.source}</span>}
+        {fabric && (
+          <span className="garment-meta" title={fabric}>
+            {fabric}
+          </span>
+        )}
+        {badge?.kind === 'measured' && (
+          <span className="garment-source" title={badge.source}>
+            {badge.source}
+          </span>
+        )}
       </span>
       <span className="garment-check" aria-hidden="true">
         <svg viewBox="0 0 16 16" focusable="false">
@@ -110,7 +118,7 @@ export function GarmentSelectPage() {
   }
 
   return (
-    <section className="page">
+    <section className="page page-garments">
       <header className="page-head">
         <p className="kicker">2 / 3</p>
         <h1>티셔츠 고르기</h1>

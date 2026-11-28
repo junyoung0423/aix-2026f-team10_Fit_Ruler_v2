@@ -60,6 +60,15 @@ export function InputPage() {
   // 왼쪽 몸 그림에 재는 곳을 표시할 칸(마지막으로 고른 칸)
   const [activeField, setActiveField] = useState<MeasurementField | null>(null);
   const inputs = useRef<Partial<Record<MeasurementField, HTMLInputElement | null>>>({});
+  const figureRef = useRef<HTMLElement>(null);
+
+  // 재는 법은 왼쪽 몸 그림 카드 위에 뜬다. 좁은 화면에서 카드가 화면 밖이면 보이게 옮긴다
+  useEffect(() => {
+    const el = figureRef.current;
+    if (!openGuide || !el) return;
+    const box = el.getBoundingClientRect();
+    if (box.top < 0 || box.bottom > window.innerHeight) el.scrollIntoView({ block: 'nearest' });
+  }, [openGuide]);
 
   useEffect(() => {
     if (!returned) return;
@@ -125,7 +134,7 @@ export function InputPage() {
   }
 
   return (
-    <section className="page">
+    <section className="page page-input">
       <header className="page-head">
         <p className="kicker">1 / 3</p>
         <h1>내 치수</h1>
@@ -133,9 +142,12 @@ export function InputPage() {
       </header>
 
       <div className="input-layout">
-        <figure className="body-figure">
+        <figure className="body-figure" ref={figureRef}>
           <BodyFigure numbers={figure.numbers} values={figure.values} active={activeField} />
           <figcaption>입력한 치수대로 몸이 바뀌어요. 칸을 고르면 재는 곳이 표시되고, 끌어서 돌려 볼 수 있어요.</figcaption>
+          {openGuide && (
+            <MeasureGuide id={`${openGuide}-guide`} field={openGuide} hidden={false} onClose={() => setOpenGuide(null)} />
+          )}
         </figure>
 
         <form className="measure-form" onSubmit={onSubmit} noValidate>
@@ -203,7 +215,6 @@ export function InputPage() {
                     {error}
                   </p>
                 )}
-                <MeasureGuide id={`${field}-guide`} field={field} hidden={!guideOpen} />
               </div>
             );
           })}
