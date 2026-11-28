@@ -124,7 +124,7 @@ def test_record_keeps_method_criteria_frames_and_review_flag(tmp_path, clips):
 
     assert data["state"] == "checked"
     assert data["version"] == VALIDATE_VERSION
-    assert data["config"]["source"] == "visual_check_v1@1.0.0"
+    assert data["config"]["source"] == "visual_check_v1@1.1.0"
     assert len(data["config"]["sha256"]) == 64
     assert data["render_mask_artifact_id"] == f"{JOB}_render_mask"
     assert data["representative_frames"] == {"real_index": 12, "render_index": 12}
@@ -231,8 +231,8 @@ def test_factory_builds_the_validator_with_the_default_criteria(tmp_path):
     assert isinstance(validator, VisualValidator)
     assert validator.artifacts_dir == tmp_path / "artifacts"
     assert validator.work_dir == tmp_path / "work"
-    assert validator.config.source == "visual_check_v1@1.0.0"
-    assert validator.tool_versions()["validate_config"] == "visual_check_v1@1.0.0"
+    assert validator.config.source == "visual_check_v1@1.1.0"
+    assert validator.tool_versions()["validate_config"] == "visual_check_v1@1.1.0"
 
 
 def test_factory_reports_a_broken_criteria_file(tmp_path, monkeypatch):

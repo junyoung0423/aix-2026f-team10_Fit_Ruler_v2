@@ -42,7 +42,7 @@ def clips(tmp_path_factory) -> dict[str, object]:
 
 
 def test_config_loads_with_source_and_hash():
-    assert CONFIG.source == "visual_check_v1@1.0.0"
+    assert CONFIG.source == "visual_check_v1@1.1.0"
     assert CONFIG.path == "config/validate/visual_check_v1.json"
     assert len(CONFIG.sha256) == 64
     assert CONFIG.params.method == "color_seed_v1"
@@ -194,3 +194,23 @@ def test_contact_sheet_shows_eleven_frame_pairs(clips):
         vc.real_clip(clips["root"] / "long2.mp4", frames=41), clips["render"], clips["mask"], CONFIG
     )
     assert contact_sheet(blocked, height=120).shape[0] == 28 + 120 * 2 + 52  # 판정 없이도 그린다
+
+
+def test_sleeves_reaching_the_chest_row_do_not_count_in_the_chest_width():
+    """실사에서 팔이 올라가 소매가 가슴 줄까지 내려와도(몸통과 떨어져 있으면) 몸통만 잰다."""
+    from dataclasses import replace
+
+    from fitting.adapters.media.visual_measure import measure_frame
+    from fitting.verify.frame_match import FrameMatch
+
+    render = np.zeros((100, 80), dtype=bool)
+    render[10:90, 25:55] = True  # 몸통만(가슴 줄 46행)
+    real = render.copy()
+    real[40:52, 5:20] = real[40:52, 60:75] = True  # 소매: 몸통에서 5px 떨어짐(높이 2 %는 2px)
+    frame = np.zeros((100, 80, 3), np.uint8)
+    match = FrameMatch(0, 0.0, 0, 0.0, "still", False)
+    torso = measure_frame(frame, frame, render, real, CONFIG.criteria, fraction=0.0, match=match)
+    assert torso.chest_change == 0.0 and torso.hem_change == 0.0
+    full = replace(CONFIG.criteria, width_span="full")  # 1.0.0 방식이면 소매까지 잰다
+    wide = measure_frame(frame, frame, render, real, full, fraction=0.0, match=match)
+    assert wide.chest_change == pytest.approx(70 / 30 - 1, abs=1e-3)

@@ -1,12 +1,17 @@
-"""피팅룸 실사화 프롬프트 (`fitroom_prompt_v4`).
+"""피팅룸 실사화 프롬프트 (`fitroom_prompt_v5`).
 
 단계마다 문장이 다르다. 문장을 바꾸면 판을 올린다. 문장은 2026-11-25~26 실험에서 결과를 보고 고른
-것이다(docs/realize-fitroom.md 2절).
+것이다(docs/realize-fitroom.md 2절). v5는 v4에 사진 기준 그림 문장(`photo_guide`)만 더했다(나머지
+문장은 v4와 글자까지 같다).
 
 - 사진(`photo`): 렌더 정지 프레임을 매장 피팅룸의 실제 사람 사진으로 바꾼다. 재질·피부·배경·조명만
   바꾸고 구도(화면 위치)·체형·자세(A자세)와 옷의 핏(박스형 몸판·넓은 소매·기장)은 렌더 그대로 둔다.
   옷 설명에는 핏 이름을 넣지 않는다(정돈된 핏으로 끌 수 있어서). 이 사진이 핏 확인 프레임이다.
   v2는 같은 뜻을 짧게 적었고, 신체 1 렌더에서 팔을 내리고 확대했다(v3에서 바꾼 이유).
+- 사진 기준 그림(`photo_guide`, 실사화 옵션 `photo_mask_reference`를 켰을 때만): 렌더 옷 영역을 검은
+  바탕의 흰 실루엣으로 둘째 그림에 같이 보내고, 사진의 옷이 그 흰 영역을 그대로 채우게(가슴·허리·
+  밑단 폭과 소매) 하는 문장을 사진 문장 뒤에 붙인다. 문장만으로는 사진 모델이 옷을 더 붙게 만든 일이
+  있어서다(2026-11-28 시연 작업, 핏 확인 가슴 폭 −9.7 %).
 - 자세(`pose`, 기본 켬): 사진에서 팔을 자연스럽게 내리고 나머지는 그대로 둔다.
 - 회전(`turn`): 고정 카메라, 숨쉬기만, 앞 → 옆 → 뒤 → 반대쪽 옆 → 앞 한 바퀴(8초). 턱·입·수염·
   얼굴은 옆모습을 포함해 도는 내내 화면에 들어오지 않는다고 적는다. v3의 4초 1/4 바퀴 왕복은 문장과
@@ -36,7 +41,7 @@ from fitting.adapters.fal_ltx.prompt import (
 from fitting.domain import GarmentVariant
 from fitting.verify.visual_check import delta_e_2000, srgb_to_lab
 
-FITROOM_PROMPT_VERSION = "fitroom_prompt_v4"
+FITROOM_PROMPT_VERSION = "fitroom_prompt_v5"
 
 # 바지 후보: (프롬프트 문구, sRGB hex). 옷과 대비되는 쪽을 고른다
 PANTS: tuple[tuple[str, str], ...] = (
@@ -67,6 +72,15 @@ PHOTO_TEMPLATE = (
     "plain {pants}, standing in a bright modern retail clothing store fitting room with a "
     "light beige curtain, white walls and clothes hooks, lit by warm overhead store lighting "
     "with soft natural shadows. Photorealistic, natural fabric texture, high detail."
+)
+
+# 사진 기준 그림(둘째 그림 = 렌더 옷 영역의 흰 실루엣)을 같이 보낼 때 사진 문장 뒤에 붙인다(v5)
+PHOTO_GUIDE = (
+    "The second image is only a guide and must not appear in the photo: it is a black-and-white "
+    "silhouette of the shirt in the first image, at exactly the same framing (white = shirt). "
+    "The shirt in the photo must fill exactly this white area: the same width at the chest, at "
+    "the waist and at the hem, and the same sleeves. Never make the shirt narrower, tighter or "
+    "more fitted than this silhouette."
 )
 
 POSE_TEMPLATE = (
@@ -121,6 +135,7 @@ class FitRoomPrompts:
     pose: str
     turn: str
     turn_negative: str
+    photo_guide: str = PHOTO_GUIDE  # 기준 그림을 같이 보낼 때 사진 문장 뒤에 붙인다
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -132,6 +147,7 @@ class FitRoomPrompts:
             "pose": self.pose,
             "turn": self.turn,
             "turn_negative": self.turn_negative,
+            "photo_guide": self.photo_guide,
         }
 
 

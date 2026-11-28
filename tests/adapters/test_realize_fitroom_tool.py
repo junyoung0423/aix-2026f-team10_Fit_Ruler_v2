@@ -167,3 +167,27 @@ def test_unknown_garment_is_a_setup_error(tmp_path, media, capsys):
                       str(tmp_path / "out"), "--garment-id", "없는_옷"])
     assert code == tool.EXIT_SETUP
     assert "의류를 찾을 수 없습니다" in capsys.readouterr().err
+
+
+def test_mask_turns_on_the_photo_check_and_the_guide_option(tmp_path, media, capsys):
+    _, mask = vc.render_clip(tmp_path / "render_for_mask.mp4")
+    mask_path = vc.write_mask(tmp_path / "mask.png", mask)
+    code = tool.main(["--input", str(media["render"]), "--name", "f5", "--out-dir",
+                      str(tmp_path / "out"), "--mask", str(mask_path), "--photo-guide"])
+
+    assert code == tool.EXIT_OK
+    out = tmp_path / "out" / "f5"
+    plan = json.loads((out / "plan.json").read_text(encoding="utf-8"))
+    assert plan["photo_check"] == {"enabled": True, "max_photos": 3}
+    assert plan["photo_guide"] == "render_mask"
+    assert plan["estimate_usd"]["max_total"] == pytest.approx(1.40)  # 사진 2장을 더 만들 수 있다
+    assert (out / "artifacts" / "f5_render_mask.png").is_file()
+    printed = capsys.readouterr().out
+    assert "사진 핏 확인 켬" in printed and "사진 기준 그림 켬" in printed
+
+
+def test_a_missing_mask_file_is_a_setup_error(tmp_path, media, capsys):
+    code = tool.main(["--input", str(media["render"]), "--name", "f6", "--out-dir",
+                      str(tmp_path / "out"), "--mask", str(tmp_path / "none.png")])
+    assert code == tool.EXIT_SETUP
+    assert "렌더 옷 마스크가 없습니다" in capsys.readouterr().err

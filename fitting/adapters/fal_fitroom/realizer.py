@@ -3,7 +3,17 @@
 
 단계 (모두 fal, 이름은 기록·지표에 쓴다)
 1. `photo`: 렌더 클립 첫 프레임 → 실사 사진 `{job}_realize_fit_frame.png` (Nano Banana Pro 편집).
-   체형·자세·구도·옷 핏은 렌더 그대로 두라고 지시하고, 검증 어댑터가 이 사진을 렌더와 겹쳐 핏을 본다
+   체형·자세·구도·옷 핏은 렌더 그대로 두라고 지시하고, 검증 어댑터가 이 사진을 렌더와 겹쳐 핏을
+   본다.
+   - 사진 핏 확인(v5): 사진을 받으면 검증과 같은 정면 핏 검사(렌더 첫 프레임 + 렌더 옷 마스크,
+     명세서 7장 기준)를 바로 돌린다. 떨어지면(FAIL) 그 사진은 `realize/photo_attempts/`에 두고
+     사진만 다시 만든다(모두 `photo_attempts`장, 기본 3장, 장당 $0.15). 다 떨어지면 가장 나은
+     사진으로 계속 가고 마지막 판정은 검증 단계가 한다. 렌더 옷 마스크가 없거나 측정할 수 없으면
+     확인 없이 그대로 쓴다. 비싼 회전 영상($0.80)을 만들기 전에 옷 모양이 바뀐 사진을 거른다
+     (2026-11-28 시연 작업은 사진의 가슴 폭이 렌더보다 9.7 % 좁아 끝까지 만든 뒤 검증에서 떨어졌다)
+   - 기준 그림(`photo_mask_reference`, 기본 끔): 렌더 옷 영역의 흰 실루엣을 둘째 그림으로 같이
+     보내고 사진 문장 뒤에 `photo_guide` 문장을 붙인다. 실제 호출로 효과를 확인하기 전이라 기본은
+     끈다
 2. `pose`(`pose_step`, 기본 켬): 1의 사진에서 팔을 내린 정면 사진 `{job}_realize_pose.png`
    (Nano Banana Pro 편집). 1의 사진은 렌더의 A자세라 팔이 벌어져 있다
 3. `turn`: 시작·끝을 2의 사진(끄면 1의 사진)으로 둔 8초 한 바퀴 영상 `{job}_video.mp4`
@@ -50,6 +60,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import cv2
+import numpy as np
+
 from fitting.adapters.fal_ltx.realizer import (
     MAX_ATTEMPTS,
     FalQueueClient,
@@ -58,9 +71,14 @@ from fitting.adapters.fal_ltx.realizer import (
     submit_rejected,
 )
 from fitting.adapters.fal_ltx.render_to_real import download
+from fitting.adapters.media.fitroom_measure import FitAlign, measure_fit_frame
+from fitting.adapters.media.frames import read_image as read_media_image
 from fitting.adapters.media.frames import read_video_info
+from fitting.adapters.media.validator import RENDER_MASK_ROLE
+from fitting.adapters.media.visual_measure import CheckConfig, as_mask
 from fitting.domain import SCHEMA_VERSION, ErrorCode, GarmentVariant, Stage
 from fitting.ports import REALIZE_OUTPUTS, PortError, PortFailure, PortRequest, PortResult
+from fitting.verify.visual_check import FAIL as CHECK_FAIL
 
 from .encode import (
     DEFAULT_TOP_CROP_PX,
@@ -80,6 +98,7 @@ from .steps import (
     TURN_MODELS,
     first_frame,
     is_black,
+    mask_guide,
     photo_arguments,
     read_image,
     sample_frames,
@@ -89,11 +108,15 @@ from .steps import (
     write_png,
 )
 
-# v4: 8초 한 바퀴 + 맨 위 자르기. v3은 4초 1/4 바퀴 왕복, v2는 8초 한 바퀴(자르기 없음), v1은 핏
-# 옮기기(LTX)가 있던 흐름
-REALIZE_VERSION = "realize_fitroom_v4"
+# v5: v4 + 사진 핏 확인·사진만 다시 만들기(+ 기준 그림 옵션). v4는 8초 한 바퀴 + 맨 위 자르기, v3은
+# 4초 1/4 바퀴 왕복, v2는 8초 한 바퀴(자르기 없음), v1은 핏 옮기기(LTX)가 있던 흐름
+REALIZE_VERSION = "realize_fitroom_v5"
 RECORD_DIR = "realize"
 SUMMARY_NAME = "realize.json"
+# 핏 확인에서 떨어진 사진을 두는 곳(record_dir 아래): `{번호}.png`와 그 요청·응답
+PHOTO_ATTEMPTS_DIR = "photo_attempts"
+# 사진 단계 기준 그림(렌더 옷 영역의 흰 실루엣)
+GUIDE_NAME = "photo_guide.png"
 # 단계 순서. `pose`는 `FitRoomOptions.pose_step`(기본 켬)으로 끌 수 있다
 STEPS = ("photo", "pose", "turn")
 # 계약 밖 중간 산출물 역할(지표로 ID를 알린다). 1의 사진이 핏 확인 프레임이고 검증 어댑터가 같은
@@ -136,6 +159,33 @@ class FitRoomOptions:
     turn_model: str = "fast"  # "fast": Veo 3.1 Fast(초당 $0.10) · "standard": 표준판($0.20)
     # 회전 영상 맨 위를 잘라 낼 줄 수(px, 0이면 끔). 자르기에는 Blender(`blender_path`)가 필요하다
     top_crop_px: int = DEFAULT_TOP_CROP_PX
+    # 사진 핏 확인에서 떨어지면 사진만 다시 만든다. 사진 최대 장수(1이면 확인만 하고 다시 만들지
+    # 않는다)
+    photo_attempts: int = 3
+    # 렌더 옷 영역(흰 실루엣)을 사진 단계의 둘째 그림으로 같이 보낸다(실제 효과 확인 전이라 기본 끔)
+    photo_mask_reference: bool = False
+
+
+@dataclass(frozen=True)
+class PhotoCheck:
+    """사진 핏 확인 기준(검증 어댑터와 같은 설정). 팩토리가 검증 설정 파일로 만든다."""
+
+    config: CheckConfig
+    align: FitAlign | None = None
+
+
+def _photo_score(check: dict[str, Any]) -> tuple[float, float, float]:
+    """떨어진 사진끼리 비교할 나쁜 정도(작을수록 낫다): 떨어진 항목 수, 가장 큰 폭 변화, IoU."""
+    widths = [
+        abs(float(v))
+        for v in (check.get("chest_width_change"), check.get("hem_width_change"))
+        if v is not None
+    ]
+    return (
+        float(len(check.get("fails") or [])),
+        max(widths) if widths else 9.0,
+        -float(check.get("silhouette_iou") or 0.0),
+    )
 
 
 @dataclass
@@ -183,6 +233,8 @@ class FitRoomRealizer:
     # 맨 위 자르기(H.264 다시 쓰기)에 쓰는 Blender. 팩토리가 BLENDER_PATH(BLENDER_EXE)로 넣는다
     blender_path: Path | None = None
     runner: Runner = subprocess_runner  # Blender 실행. 테스트는 가짜로 바꾼다
+    # 사진 핏 확인 기준. 없으면(None) 확인하지 않는다. 팩토리가 검증 설정으로 넣는다
+    photo_check: PhotoCheck | None = None
 
     # --- 파일 -----------------------------------------------------------------------------
 
@@ -203,6 +255,14 @@ class FitRoomRealizer:
             "pose": directory / f"{job_id}_{POSE_ROLE}.png",
             "turn": directory / f"{job_id}_{REALIZE_OUTPUTS[0]}.mp4",
         }
+
+    def render_mask_path(self, job_id: str) -> Path:
+        """C5 렌더 어댑터가 쓰는 렌더 옷 마스크(계약 밖 산출물, 검증 어댑터와 같은 이름 규칙)."""
+        return Path(self.artifacts_dir) / f"{job_id}_{RENDER_MASK_ROLE}.png"
+
+    def photo_check_ready(self, job_id: str) -> bool:
+        """사진 핏 확인을 할 수 있는가(기준이 있고 렌더 옷 마스크가 있다)."""
+        return self.photo_check is not None and self.render_mask_path(job_id).is_file()
 
     def steps(self) -> tuple[str, ...]:
         """옵션에 맞춘 단계(순서대로)."""
@@ -239,12 +299,21 @@ class FitRoomRealizer:
         crop = self.options.top_crop_px
         if not 0 <= crop <= TOP_CROP_MAX_PX:
             raise ValueError(f"맨 위 자르기는 0~{TOP_CROP_MAX_PX}px이어야 합니다: {crop}")
+        attempts = self.options.photo_attempts
+        if attempts < 1:
+            raise ValueError(f"사진 최대 장수는 1 이상이어야 합니다: {attempts}")
         estimate = {
             "photo": PHOTO_USD,
             "pose": PHOTO_USD,
             "turn": turn_cost(self.options.turn_duration_s, self.options.turn_model),
         }
         estimate = {step: estimate[step] for step in self.steps()}
+        total = sum(estimate.values())
+        checking = self.photo_check_ready(request.job_id)
+        # 사진을 다시 만들면 장당 사진 값이 더 든다. 상한 확인은 가장 많이 드는 경우로 한다
+        retries = PHOTO_USD * (attempts - 1) if checking else 0.0
+        mask_found = self.render_mask_path(request.job_id).is_file()
+        guide = self.options.photo_mask_reference and mask_found
         return {
             "version": REALIZE_VERSION,
             "input": {"path": clip.name, **info},
@@ -252,8 +321,15 @@ class FitRoomRealizer:
             "endpoints": endpoints,
             "turn_model": self.options.turn_model,
             "top_crop_px": crop,
+            "photo_check": {"enabled": checking, "max_photos": attempts if checking else 1},
+            "photo_guide": "render_mask" if guide else "off",
             "prompts": prompts.to_dict(),
-            "estimate_usd": {**estimate, "total": round(sum(estimate.values()), 4)},
+            "estimate_usd": {
+                **estimate,
+                "total": round(total, 4),
+                "photo_retries_max": round(retries, 4),
+                "max_total": round(total + retries, 4),
+            },
             "max_cost_usd": self.options.max_cost_usd,
             "price_checked_on": PRICE_CHECKED_ON,
         }
@@ -273,6 +349,10 @@ class FitRoomRealizer:
             "top_crop": f"{self.options.top_crop_px}px (blender)"
             if self.options.top_crop_px
             else "off",
+            "photo_check": f"fit_frame (max {self.options.photo_attempts} photos)"
+            if self.photo_check is not None
+            else "off",
+            "photo_guide": "render_mask" if self.options.photo_mask_reference else "off",
         }
 
     def blender_ready(self) -> bool:
@@ -325,7 +405,7 @@ class FitRoomRealizer:
             ) from error
         _write_json(record_dir / "plan.json", plan)
         record.save(estimate=plan["estimate_usd"], prompts_version=FITROOM_PROMPT_VERSION)
-        if plan["estimate_usd"]["total"] > self.options.max_cost_usd:
+        if plan["estimate_usd"]["max_total"] > self.options.max_cost_usd:
             raise self._fail(
                 record,
                 record_dir,
@@ -363,9 +443,163 @@ class FitRoomRealizer:
             "deadline": deadline,
         }
         for name in self.steps():
-            self._run_step(name, record, context)
+            if name == "photo":
+                self._photo_step(record, context)
+            else:
+                self._run_step(name, record, context)
         record.save(state=DONE, error=None)
         return self._result(request.job_id, record)
+
+    # --- 사진 핏 확인 -------------------------------------------------------------------------
+
+    def _photo_step(self, record: _Record, ctx: dict[str, Any]) -> None:
+        """사진 단계 + 핏 확인. 떨어지면(FAIL) 그 사진을 보관하고 사진만 다시 만든다(모두
+        `photo_attempts`장). 다 떨어지면 가장 나은 사진을 쓴다(마지막 판정은 검증 단계).
+        확인할 수 없으면(렌더 옷 마스크 없음·측정 불가·오류) 받은 사진을 그대로 쓴다.
+
+        다시 불러도 같다: 확인을 마친 사진은 다시 재지 않고(요청 ID로 가린다), 보관한 사진은 다시
+        만들지 않는다. 다시 만드는 중이던 사진은 그 요청 ID로 결과만 받는다.
+        """
+        reference = self._check_reference(record, ctx)
+        while True:
+            self._run_step("photo", record, ctx)
+            if reference is None:
+                return
+            step = record.step("photo")
+            check = step.get("check")
+            if not check or check.get("request_id") != step.get("request_id"):
+                photo = ctx["outputs"]["photo"]
+                check = self._check_photo(reference, photo, step.get("request_id"))
+                record.save_step("photo", check=check)
+            tried = list(step.get("attempts") or [])
+            if check.get("status") != CHECK_FAIL or len(tried) + 1 >= self.options.photo_attempts:
+                break
+            tried.append(self._archive_photo(record, ctx, len(tried) + 1))
+            record.save_step(
+                "photo",
+                attempts=tried,
+                state=None,
+                request_id=None,
+                endpoint=None,
+                response=None,
+                check=None,
+                submitted_at=None,
+                completed_at=None,
+                finished_at=None,
+            )
+        self._keep_best_photo(record, ctx)
+
+    def _check_reference(
+        self, record: _Record, ctx: dict[str, Any]
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """(렌더 첫 프레임, 렌더 옷 마스크). 확인할 수 없으면 이유를 남기고 None."""
+        if self.photo_check is None:
+            return None
+        path = self.render_mask_path(ctx["request"].job_id)
+        reason = None
+        if not path.is_file():
+            reason = "렌더 옷 마스크가 없음"
+        else:
+            try:
+                mask = as_mask(read_media_image(path, cv2.IMREAD_GRAYSCALE))
+                render = first_frame(ctx["clip"])
+            except (ValueError, OSError) as error:
+                reason = f"{type(error).__name__}: {error}"[:300]
+            else:
+                if mask.shape == render.shape[:2]:
+                    return render, mask
+                reason = f"마스크 크기 {mask.shape[::-1]}가 렌더 {render.shape[1::-1]}와 다름"
+        record.save_step("photo", check_skipped=reason)
+        return None
+
+    def _check_photo(
+        self, reference: tuple[np.ndarray, np.ndarray], photo: Path, request_id: str | None
+    ) -> dict[str, Any]:
+        """검증 어댑터와 같은 정면 핏 검사. 재지 못하면 상태 ERROR(사진은 그대로 쓴다)."""
+        assert self.photo_check is not None
+        render, mask = reference
+        try:
+            result, _, _, info = measure_fit_frame(
+                render, mask, read_image(photo), self.photo_check.config, self.photo_check.align
+            )
+        except (ValueError, OSError, cv2.error) as error:
+            return {
+                "request_id": request_id,
+                "status": "ERROR",
+                "message": f"{type(error).__name__}: {error}"[:300],
+            }
+        return {"request_id": request_id, **result.to_record(), "alignment": info.get("alignment")}
+
+    def _archive_photo(self, record: _Record, ctx: dict[str, Any], number: int) -> dict[str, Any]:
+        """지금 사진·요청·응답 기록을 `photo_attempts/{번호}`로 옮기고 그 시도 기록을 돌려준다."""
+        record_dir: Path = ctx["record_dir"]
+        step = record.step("photo")
+        folder = record_dir / PHOTO_ATTEMPTS_DIR
+        folder.mkdir(parents=True, exist_ok=True)
+        os.replace(ctx["outputs"]["photo"], folder / f"{number}.png")
+        for name in ("photo.png", "photo_request.json", "photo_response.json"):
+            source = record_dir / name
+            if source.is_file():
+                os.replace(source, folder / f"{number}_{name}")
+        return {
+            "number": number,
+            "request_id": step.get("request_id"),
+            "endpoint": step.get("endpoint"),
+            "submitted_at": step.get("submitted_at"),
+            "completed_at": step.get("completed_at"),
+            "file": f"{PHOTO_ATTEMPTS_DIR}/{number}.png",
+            "check": step.get("check"),
+        }
+
+    def _keep_best_photo(self, record: _Record, ctx: dict[str, Any]) -> None:
+        """모든 사진이 떨어졌으면 가장 나은 사진을 핏 확인 사진(다음 단계 입력)으로 둔다."""
+        step = record.step("photo")
+        tried = list(step.get("attempts") or [])
+        check = step.get("check") or {}
+        current = len(tried) + 1
+        if check.get("status") != CHECK_FAIL or not tried:
+            record.save_step("photo", chosen=current)
+            return
+        best = min(tried, key=lambda attempt: _photo_score(attempt.get("check") or {}))
+        if _photo_score(check) <= _photo_score(best.get("check") or {}):
+            record.save_step("photo", chosen=current)
+            return
+        latest = self._archive_photo(record, ctx, current)
+        shutil.copyfile(Path(ctx["record_dir"]) / best["file"], ctx["outputs"]["photo"])
+        tried = [a for a in tried if a.get("number") != best["number"]] + [latest]
+        record.save_step(
+            "photo",
+            attempts=tried,
+            chosen=best["number"],
+            request_id=best.get("request_id"),
+            endpoint=best.get("endpoint"),
+            submitted_at=best.get("submitted_at"),
+            completed_at=best.get("completed_at"),
+            check=best.get("check"),
+            response=None,
+            state=DONE,
+        )
+
+    def _guide_image(
+        self, record: _Record, ctx: dict[str, Any], size: tuple[int, int]
+    ) -> Path | None:
+        """사진 단계 기준 그림(렌더 옷 영역의 흰 실루엣, 렌더와 같은 크기). 옵션이 꺼졌거나 렌더 옷
+        마스크를 읽지 못하면 None."""
+        if not self.options.photo_mask_reference:
+            return None
+        path = self.render_mask_path(ctx["request"].job_id)
+        try:
+            mask = as_mask(read_media_image(path, cv2.IMREAD_GRAYSCALE))
+        except (ValueError, OSError) as error:
+            record.save_step("photo", guide_skipped=f"{type(error).__name__}: {error}"[:300])
+            return None
+        height, width = size
+        if mask.shape != (height, width):
+            resized = cv2.resize(
+                mask.astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST
+            )
+            mask = resized > 0
+        return write_png(Path(ctx["record_dir"]) / GUIDE_NAME, mask_guide(mask))
 
     # --- 단계 하나 ---------------------------------------------------------------------------
 
@@ -401,9 +635,19 @@ class FitRoomRealizer:
         prompts: FitRoomPrompts = ctx["prompts"]
         record_dir: Path = ctx["record_dir"]
         if name == "photo":
-            still = write_png(record_dir / "render_still.png", first_frame(ctx["clip"]))
+            frame = first_frame(ctx["clip"])
+            still = write_png(record_dir / "render_still.png", frame)
             url = self._upload(name, still, record, ctx)
-            return photo_arguments(url, prompts.photo, resolution=self.options.photo_resolution)
+            guide = self._guide_image(record, ctx, frame.shape[:2])
+            if guide is None:
+                return photo_arguments(url, prompts.photo, resolution=self.options.photo_resolution)
+            guide_url = self._upload(name, guide, record, ctx)
+            return photo_arguments(
+                url,
+                f"{prompts.photo} {prompts.photo_guide}",
+                resolution=self.options.photo_resolution,
+                reference_urls=(guide_url,),
+            )
         if name == "pose":
             url = self._upload(name, ctx["outputs"]["photo"], record, ctx)
             return photo_arguments(url, prompts.pose, resolution=self.options.photo_resolution)
@@ -793,9 +1037,11 @@ class FitRoomRealizer:
             return round(float(step["completed_at"]) - float(step["submitted_at"]), 2)
 
         estimate = record.data.get("estimate") or {}
+        photo = steps.get("photo", {})
+        extra_photos = len(photo.get("attempts") or [])  # 핏 확인에서 떨어져 다시 만든 사진
         cost = sum(
             float(steps.get(n, {}).get("cost_usd") or estimate.get(n) or 0.0) for n in self.steps()
-        )
+        ) + PHOTO_USD * extra_photos
         video = steps.get("turn", {}).get("video") or {}
         metrics: dict[str, Any] = {
             "external_request_id": steps.get("turn", {}).get("request_id"),
@@ -810,6 +1056,8 @@ class FitRoomRealizer:
             "top_crop_px": (steps.get("turn", {}).get("top_crop") or {}).get("px"),
             "realize_fit_frame_artifact_id": outputs["photo"].stem,
             "realize_pose_artifact_id": outputs["pose"].stem if self.options.pose_step else None,
+            "photo_attempts": extra_photos + 1,
+            "photo_fit_check": (photo.get("check") or {}).get("status"),
         }
         return PortResult(
             schema_version=SCHEMA_VERSION,

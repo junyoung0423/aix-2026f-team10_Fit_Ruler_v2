@@ -42,11 +42,17 @@ BLACK_MEAN_MAX = 8.0
 BLACK_STD_MAX = 4.0
 
 
-def photo_arguments(image_url: str, prompt: str, *, resolution: str = "2K") -> dict[str, Any]:
-    """Nano Banana Pro 편집: 사진 1장, 3:4, PNG."""
+def photo_arguments(
+    image_url: str,
+    prompt: str,
+    *,
+    resolution: str = "2K",
+    reference_urls: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Nano Banana Pro 편집: 사진 1장, 3:4, PNG. 바꿀 그림이 첫째, `reference_urls`는 기준 그림."""
     return {
         "prompt": prompt,
-        "image_urls": [image_url],
+        "image_urls": [image_url, *reference_urls],
         "num_images": 1,
         "aspect_ratio": "3:4",
         "resolution": resolution,
@@ -118,6 +124,13 @@ def write_png(path: Path, image: np.ndarray) -> Path:
     partial.write_bytes(encoded.tobytes())
     partial.replace(path)
     return path
+
+
+def mask_guide(mask: np.ndarray) -> np.ndarray:
+    """렌더 옷 마스크 → 사진 단계 기준 그림(검은 바탕에 옷 자리만 흰색, 렌더와 같은 크기·구도)."""
+    guide = np.zeros((*mask.shape[:2], 3), np.uint8)
+    guide[np.asarray(mask, dtype=bool)] = 255
+    return guide
 
 
 def first_frame(video: Path) -> np.ndarray:
